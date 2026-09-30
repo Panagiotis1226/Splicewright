@@ -237,7 +237,7 @@ private struct MediaTable: View {
             }
             .width(min: 70, ideal: 110)
             TableColumn("Color") { item in
-                ColorCell(video: item.info.video)
+                ColorCell(item: item)
             }
             .width(min: 70, ideal: 110)
             TableColumn("Audio") { item in
@@ -296,13 +296,14 @@ private struct MediaNameCell: View {
 }
 
 private struct ColorCell: View {
-    let video: VideoStreamInfo?
+    let item: MediaItem
 
     var body: some View {
-        if let video {
+        if item.info.video != nil, let color = item.effectiveColor {
             HStack(spacing: 4) {
-                Text(video.color.displayName)
-                if video.dynamicRange.isHDR {
+                Text(item.colorOverride == nil ? color.displayName : "\(color.displayName) (overridden)")
+                    .help(item.colorOverride == nil ? "From the file's color tags" : "Set with Interpret Footage")
+                if color.dynamicRange.isHDR {
                     Text("HDR")
                         .font(.system(size: 8, weight: .heavy))
                         .padding(.horizontal, 3)
@@ -378,6 +379,14 @@ private struct MediaContextMenu: View {
             Button("Open in Source Monitor") { workspace.openInSource(id) }
             Button("New Sequence from Clip") { workspace.newSequence(fromClip: id) }
         }
+        Menu("Interpret Footage") {
+            Button("Automatic (from file)") { workspace.setColorOverride(nil, for: ids) }
+            Divider()
+            Button("Rec.709 (SDR)") { workspace.setColorOverride(.rec709, for: ids) }
+            Button("Rec.2100 HLG (HDR)") { workspace.setColorOverride(.rec2100HLG, for: ids) }
+            Button("Rec.2100 PQ (HDR)") { workspace.setColorOverride(.rec2100PQ, for: ids) }
+        }
+        .disabled(ids.isEmpty)
         Menu("Move to Bin") {
             Button("Project Root") { workspace.moveMedia(ids, toBin: nil) }
             ForEach(workspace.project.bins) { bin in

@@ -61,6 +61,8 @@ checks = {
     "playback advanced": r["playheadAfter"] - r["playheadBefore"] >= 20,
     "program frame rendered": r["programFrameRendered"],
     "undo works": r["undoWorks"],
+    "export wrote 30 frames of H.264": r.get("exportSucceeded") and r.get("exportedFrames") == 30
+        and r.get("exportedCodec") == "H.264",
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

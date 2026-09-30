@@ -28,6 +28,8 @@ struct LayerFrame {
     var opacity: Double
     /// Used when the frame itself carries no color attachments.
     var fallbackColor: ColorDescription
+    /// Interpret Footage override; wins over the frame's attachments.
+    var forcedColor: ColorDescription?
 }
 
 enum RenderError: Error {
@@ -89,7 +91,8 @@ final class MetalRenderer {
     }
 
     /// Renders `layers` over black into `output` (a 64RGBAHalf buffer) encoded for `space`.
-    func render(layers: [LayerFrame], into output: CVPixelBuffer, space: SequenceColorSpace) throws {
+    func render(layers: [LayerFrame], into output: CVPixelBuffer, space: SequenceColorSpace,
+                overlay: OverlayMode = .none) throws {
         lock.lock()
         defer { lock.unlock() }
 
@@ -129,7 +132,8 @@ final class MetalRenderer {
         outputPass.colorAttachments[0].storeAction = .store
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: outputPass) {
             encoder.setRenderPipelineState(outputPipeline)
-            var uniforms = OutputUniforms(params: SIMD4(Float(Self.outputSpaceIndex(space)), 0, 0, 0))
+            var uniforms = OutputUniforms(params: SIMD4(Float(Self.outputSpaceIndex(space)),
+                                                        overlay == .clipping ? 1 : 0, 0, 0))
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<OutputUniforms>.stride, index: 0)
             encoder.setFragmentTexture(working, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
@@ -147,7 +151,8 @@ final class MetalRenderer {
                          renderWidth: Int, renderHeight: Int) -> LayerUniforms {
         let t = layer.transform
         let height = CVPixelBufferGetHeight(layer.pixelBuffer)
-        let color = ColorAttachments.read(layer.pixelBuffer, fallback: layer.fallbackColor).resolved(forHeight: height)
+        let color = (layer.forcedColor ?? ColorAttachments.read(layer.pixelBuffer, fallback: layer.fallbackColor))
+            .resolved(forHeight: height)
         let isHDRSource = color.transfer == .hlg || color.transfer == .pq
         let toneMap = space == .rec709 && isHDRSource
         // Both HLG and (without mastering metadata) PQ sources are treated as 1000-nit masters.

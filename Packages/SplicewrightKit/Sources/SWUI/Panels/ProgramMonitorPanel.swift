@@ -43,6 +43,11 @@ struct ProgramMonitorPanel: View {
                 .font(Theme.timecodeFont)
                 .foregroundStyle(Theme.timecode)
             Spacer()
+            Toggle(isOn: $engine.showsClipping) { Image(systemName: "exclamationmark.triangle") }
+                .toggleStyle(.button)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Show clipping: magenta above SDR white or 1000 nits, blue below black or out of gamut")
             Picker("Playback Resolution", selection: $engine.renderScale) {
                 Text("Full").tag(1.0)
                 Text("1/2").tag(0.5)
@@ -83,6 +88,9 @@ struct ProgramMonitorPanel: View {
                 .help("Lift (;)")
             Button { workspace.liftOrExtract(extract: true) } label: { Image(systemName: "rectangle.compress.vertical") }
                 .help("Extract (')")
+            Divider().frame(height: 14)
+            Button { workspace.requestExport() } label: { Image(systemName: "square.and.arrow.up.on.square") }
+                .help("Export Media… (⌘M)")
         }
         .buttonStyle(.borderless)
         .font(.system(size: 13))

@@ -11,6 +11,15 @@ struct InstructionLayer {
     var sourceWidth: Double
     var sourceHeight: Double
     var fallbackColor: ColorDescription
+    /// Interpret Footage override: used instead of the frame's own tags.
+    var forcedColor: ColorDescription?
+}
+
+/// Program-monitor diagnostics drawn by the compositor's output pass.
+public enum OverlayMode: Sendable, Hashable {
+    case none
+    /// Magenta where the output clips (above SDR white or 1000 nits), blue below black or out of gamut.
+    case clipping
 }
 
 /// Describes what to draw for one stretch of the timeline.
@@ -23,11 +32,14 @@ final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProto
 
     let layers: [InstructionLayer]
     let outputSpace: SequenceColorSpace
+    let overlay: OverlayMode
 
-    init(timeRange: CMTimeRange, layers: [InstructionLayer], outputSpace: SequenceColorSpace) {
+    init(timeRange: CMTimeRange, layers: [InstructionLayer], outputSpace: SequenceColorSpace,
+         overlay: OverlayMode = .none) {
         self.timeRange = timeRange
         self.layers = layers
         self.outputSpace = outputSpace
+        self.overlay = overlay
         let ids = Array(Set(layers.map(\.trackID))).sorted()
         requiredSourceTrackIDs = ids.isEmpty ? nil : ids.map { NSNumber(value: $0) }
     }
@@ -99,9 +111,9 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
             guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { return nil }
             return LayerFrame(pixelBuffer: buffer, transform: layer.transform, sourceWidth: layer.sourceWidth,
                               sourceHeight: layer.sourceHeight, opacity: layer.opacity,
-                              fallbackColor: layer.fallbackColor)
+                              fallbackColor: layer.fallbackColor, forcedColor: layer.forcedColor)
         }
-        try renderer.render(layers: frames, into: output, space: instruction.outputSpace)
+        try renderer.render(layers: frames, into: output, space: instruction.outputSpace, overlay: instruction.overlay)
         return output
     }
 }

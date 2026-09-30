@@ -56,9 +56,20 @@ public struct CompositionOutput {
 public struct CompositionBuilder {
     /// 1, 0.5 or 0.25: the Program monitor's playback resolution.
     public var renderScale: Double
+    /// Exact output size (export). Overrides `renderScale` when set.
+    public var renderSize: CGSize?
+    /// Encode for this color space instead of the sequence's (e.g. an SDR deliverable
+    /// from an HDR sequence; HDR clips are tone-mapped).
+    public var outputColorSpace: SequenceColorSpace?
+    /// Diagnostic overlay for the Program monitor. Exports always use `.none`.
+    public var overlay: OverlayMode
 
-    public init(renderScale: Double = 1) {
+    public init(renderScale: Double = 1, renderSize: CGSize? = nil, outputColorSpace: SequenceColorSpace? = nil,
+                overlay: OverlayMode = .none) {
         self.renderScale = renderScale
+        self.renderSize = renderSize
+        self.outputColorSpace = outputColorSpace
+        self.overlay = overlay
     }
 
     public func build(_ sequence: EditSequence, project: Project, cache: MediaAssetCache) async -> CompositionOutput {
@@ -136,14 +147,16 @@ public struct CompositionBuilder {
                                       project: Project) -> AVMutableVideoComposition {
         let settings = sequence.settings
         let rate = sequence.rate
-        let renderWidth = max(2, (Double(settings.width) * renderScale).rounded(.down))
-        let renderHeight = max(2, (Double(settings.height) * renderScale).rounded(.down))
+        let outputSpace = outputColorSpace ?? settings.colorSpace
+        let renderWidth = max(2, renderSize.map { Double($0.width) } ?? (Double(settings.width) * renderScale).rounded(.down))
+        let renderHeight = max(2, renderSize.map { Double($0.height) }
+                               ?? (Double(settings.height) * renderScale).rounded(.down))
 
         let videoComposition = AVMutableVideoComposition()
         videoComposition.customVideoCompositorClass = SplicewrightCompositor.self
         videoComposition.frameDuration = rate.cmFrameDuration
         videoComposition.renderSize = CGSize(width: renderWidth, height: renderHeight)
-        let tags = OutputColorTags(settings.colorSpace.color)
+        let tags = OutputColorTags(outputSpace.color)
         videoComposition.colorPrimaries = tags.primaries as String
         videoComposition.colorTransferFunction = tags.transfer as String
         videoComposition.colorYCbCrMatrix = tags.matrix as String
@@ -158,14 +171,16 @@ public struct CompositionBuilder {
                 let transform = Affine2D.fit(sourceWidth: media.naturalSize.width, sourceHeight: media.naturalSize.height,
                                              orientation: orientation, renderWidth: renderWidth,
                                              renderHeight: renderHeight)
-                let fallback = project.item(layer.mediaID)?.info.video?.color ?? .untagged
+                let item = project.item(layer.mediaID)
                 return InstructionLayer(trackID: trackIDs[layer.trackIndex], opacity: layer.opacity,
                                         transform: transform, sourceWidth: media.naturalSize.width,
-                                        sourceHeight: media.naturalSize.height, fallbackColor: fallback)
+                                        sourceHeight: media.naturalSize.height,
+                                        fallbackColor: item?.info.video?.color ?? .untagged,
+                                        forcedColor: item?.colorOverride)
             }
             let range = CMTimeRange(start: RationalTime(frames: segment.range.start, rate: rate).cmTime,
                                     end: RationalTime(frames: segment.range.end, rate: rate).cmTime)
-            return CompositionInstruction(timeRange: range, layers: layers, outputSpace: settings.colorSpace)
+            return CompositionInstruction(timeRange: range, layers: layers, outputSpace: outputSpace, overlay: overlay)
         }
         return videoComposition
     }

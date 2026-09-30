@@ -181,6 +181,13 @@ public struct Project: Sendable, Hashable, Codable {
     }
 
     /// Points a media item at a new location (used when a moved file is found again).
+    /// Sets or clears (nil) how a clip's colors are interpreted.
+    public mutating func setColorOverride(_ color: ColorDescription?, for ids: Set<UUID>) {
+        for index in media.indices where ids.contains(media[index].id) && media[index].info.video != nil {
+            media[index].colorOverride = color
+        }
+    }
+
     public mutating func relink(_ id: UUID, toPath path: String, bookmark: Data?) {
         guard let index = media.firstIndex(where: { $0.id == id }) else { return }
         media[index].filePath = path

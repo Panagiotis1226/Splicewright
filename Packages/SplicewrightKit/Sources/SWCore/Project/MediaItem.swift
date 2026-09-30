@@ -49,6 +49,9 @@ public struct MediaItem: Sendable, Hashable, Codable, Identifiable {
     public var binID: UUID?
     public var marks: SourceMarks
     public var importedAt: Date
+    /// "Interpret Footage": replaces the file's color tags when set. Optional, so older
+    /// projects decode without it.
+    public var colorOverride: ColorDescription?
 
     public init(id: UUID = UUID(), name: String, filePath: String, bookmark: Data? = nil,
                 info: MediaInfo, binID: UUID? = nil, marks: SourceMarks = .empty, importedAt: Date = Date()) {
@@ -65,6 +68,11 @@ public struct MediaItem: Sendable, Hashable, Codable, Identifiable {
     public var url: URL { URL(fileURLWithPath: filePath) }
 
     public var warnings: [MediaWarning] { MediaSupport.warnings(for: info) }
+
+    /// The color interpretation used for rendering: the override, else the file's tags.
+    public var effectiveColor: ColorDescription? {
+        colorOverride ?? info.video?.color
+    }
 }
 
 /// A folder in the Project panel. Bins are flat in v1.

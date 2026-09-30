@@ -79,6 +79,9 @@ public struct WorkspaceView: View {
         .sheet(item: $workspace.sequenceSheet) { request in
             SequenceSettingsSheet(workspace: workspace, request: request)
         }
+        .sheet(isPresented: $workspace.isExportSheetPresented) {
+            ExportSheet(workspace: workspace)
+        }
         .alert(item: $workspace.importReport) { report in
             Alert(
                 title: Text("Some files weren't imported"),

@@ -19,6 +19,10 @@ public final class PlaybackEngine: ObservableObject {
     @Published public var renderScale: Double = 1 {
         didSet { if renderScale != oldValue { scheduleRebuild(immediately: true) } }
     }
+    /// Highlights clipped or out-of-gamut pixels in the Program monitor.
+    @Published public var showsClipping = false {
+        didSet { if showsClipping != oldValue { scheduleRebuild(immediately: true) } }
+    }
 
     public private(set) var frameRate: FrameRate = .fps30
     private var sequence: EditSequence?
@@ -74,7 +78,7 @@ public final class PlaybackEngine: ObservableObject {
         }
         let project = self.project
         let cache = self.cache
-        let builder = CompositionBuilder(renderScale: renderScale)
+        let builder = CompositionBuilder(renderScale: renderScale, overlay: showsClipping ? .clipping : .none)
         isBuilding = true
         buildTask = Task { [weak self] in
             if !immediately { try? await Task.sleep(nanoseconds: 120_000_000) }

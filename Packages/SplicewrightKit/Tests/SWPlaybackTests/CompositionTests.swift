@@ -171,3 +171,81 @@ final class CompositionTests: XCTestCase {
         }
     }
 }
+
+final class ClippingOverlayTests: XCTestCase {
+    func testOverlayMarksPixelsAbove1000Nits() async throws {
+        guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("No Metal device") }
+        // A PQ signal of 85% is roughly 2300 nits: above the 1000-nit mastering range.
+        guard let url = try await FixtureWriter.writeVideo(
+            FixtureWriter.hevcPQ(frames: 10, width: 1280, height: 720, fill: .grey(0.85, tenBit: true)), name: "pq-hot.mp4"
+        ) else { throw XCTSkip("HEVC encoder unavailable") }
+        var project = Project()
+        let imported = await MediaImporter().importMedia(from: [url], into: nil, existingPaths: [])
+        let item = try XCTUnwrap(imported.items.first)
+        project.addMedia([item])
+        var sequence = EditSequence(name: "PQ", settings: SequenceSettings(width: 1280, height: 720, frameRate: .fps30,
+                                                                           colorSpace: .rec2100PQ))
+        sequence.overwrite([TrackPlacement(trackID: sequence.videoTracks[0].id, clip: Clip(
+            mediaID: item.id, name: "hot", start: 0, duration: 10, sourceStart: .zero))])
+
+        func centre(_ overlay: OverlayMode) async throws -> [Int] {
+            let output = await CompositionBuilder(overlay: overlay).build(sequence, project: project, cache: MediaAssetCache())
+            let generator = AVAssetImageGenerator(asset: output.composition)
+            generator.videoComposition = output.videoComposition
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            let image = try await generator.image(at: CMTime(value: 5, timescale: 30)).image
+            var pixel = [UInt8](repeating: 0, count: 4)
+            let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+            pixel.withUnsafeMutableBytes { raw in
+                let context = CGContext(data: raw.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                        space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                context?.draw(image, in: CGRect(x: -CGFloat(image.width) / 2, y: -CGFloat(image.height) / 2,
+                                                width: CGFloat(image.width), height: CGFloat(image.height)))
+            }
+            return pixel.prefix(3).map(Int.init)
+        }
+        let marked = try await centre(.clipping)
+        XCTAssertGreaterThan(marked[0], 150, "red channel of magenta: \(marked)")
+        XCTAssertLessThan(marked[1], 90, "green channel of magenta: \(marked)")
+        let plain = try await centre(.none)
+        XCTAssertGreaterThan(plain[1], 150, "without the overlay the pixel is a bright grey: \(plain)")
+    }
+
+    func testColorOverrideReplacesFileTags() async throws {
+        guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("No Metal device") }
+        guard let url = try await FixtureWriter.writeVideo(
+            FixtureWriter.h264SDR30(frames: 10, width: 1280, height: 720, fill: .grey(0.75, tenBit: false)),
+            name: "override.mov"
+        ) else { throw XCTSkip("H.264 encoder unavailable") }
+        var project = Project()
+        let imported = await MediaImporter().importMedia(from: [url], into: nil, existingPaths: [])
+        let item = try XCTUnwrap(imported.items.first)
+        project.addMedia([item])
+        var sequence = EditSequence(name: "O", settings: SequenceSettings(width: 1280, height: 720, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        sequence.overwrite([TrackPlacement(trackID: sequence.videoTracks[0].id, clip: Clip(
+            mediaID: item.id, name: "o", start: 0, duration: 10, sourceStart: .zero))])
+
+        func level() async throws -> Int {
+            let output = await CompositionBuilder().build(sequence, project: project, cache: MediaAssetCache())
+            let generator = AVAssetImageGenerator(asset: output.composition)
+            generator.videoComposition = output.videoComposition
+            let image = try await generator.image(at: CMTime(value: 5, timescale: 30)).image
+            var pixel = [UInt8](repeating: 0, count: 4)
+            let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+            pixel.withUnsafeMutableBytes { raw in
+                let context = CGContext(data: raw.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                        space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                context?.draw(image, in: CGRect(x: -CGFloat(image.width) / 2, y: -CGFloat(image.height) / 2,
+                                                width: CGFloat(image.width), height: CGFloat(image.height)))
+            }
+            return Int(pixel[1])
+        }
+        let asTagged = try await level()
+        // The same 75% signal read as PQ is about 1000 nits, which tone-maps to a different SDR level.
+        project.setColorOverride(.rec2100PQ, for: [item.id])
+        let asPQ = try await level()
+        XCTAssertNotEqual(asTagged, asPQ, "override had no effect (\(asTagged))")
+    }
+}

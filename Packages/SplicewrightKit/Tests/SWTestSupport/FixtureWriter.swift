@@ -90,11 +90,11 @@ public enum FixtureWriter {
                   profileLevel: kVTProfileLevel_HEVC_Main10_AutoLevel as String, fill: fill)
     }
 
-    public static func hevcPQ() -> VideoSpec {
-        VideoSpec(fileType: .mp4, codec: .hevc, width: 3840, height: 2160,
-                  frameDuration: CMTime(value: 1, timescale: 30), frameCount: 15,
+    public static func hevcPQ(frames: Int = 15, width: Int = 3840, height: Int = 2160, fill: Fill? = nil) -> VideoSpec {
+        VideoSpec(fileType: .mp4, codec: .hevc, width: width, height: height,
+                  frameDuration: CMTime(value: 1, timescale: 30), frameCount: frames,
                   tenBit: true, colorProperties: rec2100PQ,
-                  profileLevel: kVTProfileLevel_HEVC_Main10_AutoLevel as String, fill: nil)
+                  profileLevel: kVTProfileLevel_HEVC_Main10_AutoLevel as String, fill: fill)
     }
 
     public static func proRes422() -> VideoSpec {

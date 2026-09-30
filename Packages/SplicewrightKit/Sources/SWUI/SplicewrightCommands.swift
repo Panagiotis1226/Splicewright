@@ -15,6 +15,13 @@ public struct SplicewrightCommands: Commands {
             Button("New Bin") { workspace?.newBin() }
                 .keyboardShortcut("b", modifiers: .command)
                 .disabled(workspace == nil)
+            Divider()
+            Menu("Export") {
+                // ⌘M matches Premiere Pro (it takes precedence over Window ▸ Minimize).
+                Button("Media…") { workspace?.requestExport() }
+                    .keyboardShortcut("m", modifiers: .command)
+            }
+            .disabled(workspace?.activeSequenceID == nil)
         }
         CommandMenu("Sequence") {
             Button("New Sequence…") { workspace?.requestNewSequence() }

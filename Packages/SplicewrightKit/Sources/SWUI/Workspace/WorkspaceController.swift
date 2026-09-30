@@ -3,6 +3,7 @@ import Combine
 import SwiftUI
 import SWCore
 import SWMedia
+import SWExport
 import SWPlayback
 
 /// The panels of the Premiere-style workspace. The active panel receives transport shortcuts.
@@ -36,6 +37,11 @@ public final class WorkspaceController: ObservableObject {
     @Published public var activeSequenceID: UUID?
     /// Non-nil while the New Sequence / Sequence Settings sheet is shown.
     @Published public var sequenceSheet: SequenceSheetRequest?
+    /// Shows the Export sheet; the session appears once an export starts.
+    @Published public var isExportSheetPresented = false
+    @Published public private(set) var exportSession: ExportSession?
+    /// Settings from the last export in this window, reused as the sheet's defaults.
+    public var lastExportSettings: ExportSettings?
 
     public let sourceMonitor = SourceMonitorModel()
     public let timeline = TimelineState()

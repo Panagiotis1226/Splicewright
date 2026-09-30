@@ -24,7 +24,7 @@ enum Shaders {
     };
 
     struct OutputUniforms {
-        float4 params;  // output space (0 rec709, 1 hlg, 2 pq)
+        float4 params;  // output space (0 rec709, 1 hlg, 2 pq), clipping overlay (0/1)
     };
 
     struct VertexOut {
@@ -202,6 +202,14 @@ enum Shaders {
                                    constant OutputUniforms& u [[buffer(0)]]) {
         float3 lin = working.read(uint2(in.position.xy)).rgb;
         int space = int(u.params.x);
+        bool overlay = u.params.y > 0.5;
+        const float4 over = float4(1.0, 0.0, 1.0, 1.0);
+        const float4 under = float4(0.0, 0.35, 1.0, 1.0);
+        if (overlay && space != 0) {
+            float peakNits = max(max(lin.r, lin.g), lin.b) * refWhite;
+            if (peakNits > 1000.5) { return over; }
+            if (min(min(lin.r, lin.g), lin.b) < -0.001) { return under; }
+        }
         if (space == 1) {
             // Inverse HLG OOTF for a 1000 cd/m² display, then the OETF.
             float3 display = clamp(lin * refWhite / 1000.0, 0.0, 1.0);
@@ -212,7 +220,12 @@ enum Shaders {
         if (space == 2) {
             return float4(nitsToPQ(max(lin, 0.0) * refWhite), 1.0);
         }
-        float3 sdr = clamp(rec2020To709(lin), 0.0, 1.0);
+        float3 unclamped = rec2020To709(lin);
+        if (overlay) {
+            if (max(max(unclamped.r, unclamped.g), unclamped.b) > 1.001) { return over; }
+            if (min(min(unclamped.r, unclamped.g), unclamped.b) < -0.001) { return under; }
+        }
+        float3 sdr = clamp(unclamped, 0.0, 1.0);
         return float4(pow(sdr, 1.0 / 2.4), 1.0);
     }
     """

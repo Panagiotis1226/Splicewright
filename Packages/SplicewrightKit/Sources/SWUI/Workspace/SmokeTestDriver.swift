@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import SWCore
+import SWExport
 import SWMedia
 import SWPlayback
 
@@ -24,6 +25,9 @@ enum SmokeTestDriver {
         var droppedFrames = 0
         var programFrameRendered = false
         var windowSnapshot = false
+        var exportSucceeded = false
+        var exportedFrames: Int64 = 0
+        var exportedCodec = ""
         var undoWorks = false
         var undoDiagnostics = ""
         var errors: [String] = []
@@ -93,9 +97,31 @@ enum SmokeTestDriver {
         report.programFrameRendered = await saveProgramFrame(workspace, to: outputDirectory.appending(path: "program.png"),
                                                               errors: &report.errors)
         report.windowSnapshot = saveWindowSnapshot(workspace.window, to: outputDirectory.appending(path: "window.png"))
+        await exportClip(workspace, to: outputDirectory.appending(path: "export.mp4"), report: &report)
         // Give the script time to take a real screenshot while the window is still up.
         FileManager.default.createFile(atPath: outputDirectory.appending(path: "snapshot.ready").path, contents: nil)
         try? await Task.sleep(nanoseconds: 3_000_000_000)
+    }
+
+    /// Exports frames 10...39 as H.264 SDR and probes the result.
+    private static func exportClip(_ workspace: WorkspaceController, to url: URL, report: inout Report) async {
+        guard var sequence = workspace.activeSequence else { return }
+        sequence.marks = SequenceMarks(inFrame: 10, outFrame: 39)
+        let session = ExportSession(sequence: sequence, project: workspace.project,
+                                    settings: ExportSettings(preset: .h264SDR, range: .inToOut), outputURL: url)
+        let state = await session.run()
+        guard state == .finished(url) else {
+            report.errors.append("Export: \(state)")
+            return
+        }
+        do {
+            let info = try await MediaProber().probe(url)
+            report.exportSucceeded = true
+            report.exportedFrames = info.duration.frameIndex(at: sequence.rate)
+            report.exportedCodec = info.video?.codec.displayName ?? "none"
+        } catch {
+            report.errors.append("Probing export: \(error.localizedDescription)")
+        }
     }
 
     /// Makes an edit, then sends Edit ▸ Undo through the responder chain, as ⌘Z does.
