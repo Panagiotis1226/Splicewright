@@ -1,0 +1,164 @@
+import Foundation
+
+/// The whole editable state of a `.splicewright` document.
+///
+/// `Project` is a value type: undo is implemented by keeping previous values,
+/// and every mutation below is a pure function that can be unit-tested.
+public struct Project: Sendable, Hashable, Codable {
+    public static let currentSchemaVersion = 1
+
+    public var schemaVersion: Int
+    public var bins: [Bin]
+    public var media: [MediaItem]
+
+    public init(bins: [Bin] = [], media: [MediaItem] = []) {
+        self.schemaVersion = Self.currentSchemaVersion
+        self.bins = bins
+        self.media = media
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        bins = try container.decodeIfPresent([Bin].self, forKey: .bins) ?? []
+        media = try container.decodeIfPresent([MediaItem].self, forKey: .media) ?? []
+    }
+
+    // MARK: - Lookup
+
+    public func item(_ id: UUID) -> MediaItem? {
+        media.first { $0.id == id }
+    }
+
+    public func bin(_ id: UUID) -> Bin? {
+        bins.first { $0.id == id }
+    }
+
+    /// Items directly in `binID` (nil is the project root).
+    public func items(inBin binID: UUID?) -> [MediaItem] {
+        media.filter { $0.binID == binID }
+    }
+
+    public func containsMedia(atPath path: String) -> Bool {
+        media.contains { $0.filePath == path }
+    }
+
+    // MARK: - Bins
+
+    /// Adds a bin, choosing "Bin", "Bin 2", ... when `name` is taken.
+    @discardableResult
+    public mutating func addBin(named name: String = "Bin") -> Bin {
+        let base = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Bin" : name
+        var candidate = base
+        var suffix = 2
+        let existing = Set(bins.map(\.name))
+        while existing.contains(candidate) {
+            candidate = "\(base) \(suffix)"
+            suffix += 1
+        }
+        let bin = Bin(name: candidate)
+        bins.append(bin)
+        return bin
+    }
+
+    public mutating func renameBin(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = bins.firstIndex(where: { $0.id == id }) else { return }
+        bins[index].name = trimmed
+    }
+
+    /// Removes a bin. Its media moves to the project root rather than being deleted.
+    public mutating func deleteBin(_ id: UUID) {
+        bins.removeAll { $0.id == id }
+        for index in media.indices where media[index].binID == id {
+            media[index].binID = nil
+        }
+    }
+
+    // MARK: - Media
+
+    /// Adds items, skipping any whose file is already in the project. Returns the items added.
+    @discardableResult
+    public mutating func addMedia(_ items: [MediaItem]) -> [MediaItem] {
+        var paths = Set(media.map(\.filePath))
+        var added: [MediaItem] = []
+        for var item in items where !paths.contains(item.filePath) {
+            if let binID = item.binID, bin(binID) == nil { item.binID = nil }
+            paths.insert(item.filePath)
+            media.append(item)
+            added.append(item)
+        }
+        return added
+    }
+
+    public mutating func removeMedia(_ ids: Set<UUID>) {
+        media.removeAll { ids.contains($0.id) }
+    }
+
+    public mutating func moveMedia(_ ids: Set<UUID>, toBin binID: UUID?) {
+        if let binID, bin(binID) == nil { return }
+        for index in media.indices where ids.contains(media[index].id) {
+            media[index].binID = binID
+        }
+    }
+
+    public mutating func renameMedia(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = media.firstIndex(where: { $0.id == id }) else { return }
+        media[index].name = trimmed
+    }
+
+    /// Updates a clip's marks, clamped to the clip's duration and snapped to its frames.
+    public mutating func updateMarks(of id: UUID, _ change: (inout SourceMarks) -> Void) {
+        guard let index = media.firstIndex(where: { $0.id == id }) else { return }
+        let info = media[index].info
+        let rate = info.displayFrameRate
+        let lastFrame = max(RationalTime.zero, info.duration - rate.frameDuration).snapped(to: rate)
+        var marks = media[index].marks
+        change(&marks)
+        func clamp(_ time: RationalTime?) -> RationalTime? {
+            time.map { min(max($0.snapped(to: rate), .zero), lastFrame) }
+        }
+        marks.inPoint = clamp(marks.inPoint)
+        marks.outPoint = clamp(marks.outPoint)
+        media[index].marks = marks
+    }
+
+    /// Points a media item at a new location (used when a moved file is found again).
+    public mutating func relink(_ id: UUID, toPath path: String, bookmark: Data?) {
+        guard let index = media.firstIndex(where: { $0.id == id }) else { return }
+        media[index].filePath = path
+        if let bookmark { media[index].bookmark = bookmark }
+    }
+}
+
+public enum ProjectFileError: Error, Equatable {
+    case newerSchema(found: Int, supported: Int)
+    case corrupt
+}
+
+/// Reads and writes `project.json` inside a `.splicewright` package.
+public enum ProjectFileCoder {
+    public static let projectFileName = "project.json"
+    public static let packageExtension = "splicewright"
+
+    public static func encode(_ project: Project) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .deferredToDate
+        return try encoder.encode(project)
+    }
+
+    public static func decode(_ data: Data) throws -> Project {
+        struct VersionProbe: Decodable { var schemaVersion: Int }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .deferredToDate
+        guard let version = try? decoder.decode(VersionProbe.self, from: data).schemaVersion else {
+            throw ProjectFileError.corrupt
+        }
+        guard version <= Project.currentSchemaVersion else {
+            throw ProjectFileError.newerSchema(found: version, supported: Project.currentSchemaVersion)
+        }
+        return try decoder.decode(Project.self, from: data)
+    }
+}

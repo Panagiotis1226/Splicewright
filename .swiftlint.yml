@@ -1,0 +1,32 @@
+included:
+  - App
+  - Packages/SplicewrightKit/Sources
+  - Packages/SplicewrightKit/Tests
+excluded:
+  - build
+  - Packages/SplicewrightKit/.build
+
+disabled_rules:
+  - todo
+  - trailing_comma          # trailing commas keep diffs of lists one line long
+  - identifier_name         # timecode math reads better with short names (a, b, h, m, s)
+
+line_length:
+  warning: 130
+  error: 200
+  ignores_comments: true
+type_body_length:
+  warning: 400
+  error: 600
+file_length:
+  warning: 600
+  error: 1000
+function_body_length:
+  warning: 80
+  error: 150
+cyclomatic_complexity:
+  warning: 15
+  error: 25
+large_tuple:
+  warning: 3
+  error: 4

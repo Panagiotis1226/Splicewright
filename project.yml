@@ -1,0 +1,93 @@
+# XcodeGen spec for Splicewright.xcodeproj.
+#
+# The generated project is committed, so building only needs Xcode. After editing
+# this file, run `make generate` (requires XcodeGen) and commit both files; CI fails
+# if they drift apart.
+name: Splicewright
+options:
+  bundleIdPrefix: com.splicewright
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+  groupSortPosition: top
+
+settings:
+  base:
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  SplicewrightKit:
+    path: Packages/SplicewrightKit
+
+targets:
+  Splicewright:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: SplicewrightKit
+        product: SplicewrightKit
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Splicewright
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.video
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: ""
+        NSDesktopFolderUsageDescription: Splicewright reads media you import from your Desktop.
+        NSDocumentsFolderUsageDescription: Splicewright reads media you import from your Documents folder.
+        NSDownloadsFolderUsageDescription: Splicewright reads media you import from your Downloads folder.
+        NSRemovableVolumesUsageDescription: Splicewright reads media you import from external drives.
+        NSNetworkVolumesUsageDescription: Splicewright reads media you import from network volumes.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Splicewright Project
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSTypeIsPackage: true
+            LSItemContentTypes:
+              - com.splicewright.project
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.splicewright.project
+            UTTypeDescription: Splicewright Project
+            UTTypeConformsTo:
+              - com.apple.package
+              - public.composite-content
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - splicewright
+    settings:
+      base:
+        PRODUCT_NAME: Splicewright
+        PRODUCT_BUNDLE_IDENTIFIER: com.splicewright.Splicewright
+        # "Sign to Run Locally": ad-hoc signing, no Apple Developer account needed.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_PREVIEWS: YES
+      configs:
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
+
+schemes:
+  Splicewright:
+    build:
+      targets:
+        Splicewright: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release

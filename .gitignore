@@ -1,0 +1,15 @@
+# Build output
+build/
+.build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+Packages/SplicewrightKit/.swiftpm/
+Packages/SplicewrightKit/Package.resolved
+
+# Generated sample media (scripts/make-fixtures.sh)
+TestMedia/
+
+# macOS
+.DS_Store
