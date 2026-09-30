@@ -1,13 +1,19 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds the app and attaches a .dmg to a GitHub Release.
+# Builds the app and attaches a .dmg to a GitHub Release.
 # The build is ad-hoc signed, not notarized: users allow it once in System Settings ▸
 # Privacy & Security (see .github/release-notes.md). Tags with a "-" (v0.3.0-alpha) are
 # published as pre-releases.
 # Developer ID signing + notarization is added in M8 (needs an Apple Developer account).
+#
+# Two ways to release:
+#   - push a tag like v0.3.0, or
+#   - change VERSION on a branch; the workflow then creates the tag v<VERSION> itself.
 on:
   push:
     tags: ["v*"]
+    branches: [main, "claude/**"]
+    paths: [VERSION]
 
 permissions:
   contents: write
@@ -18,15 +24,28 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - name: Release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then tag="$GITHUB_REF_NAME"; else tag="v$(tr -d '[:space:]' < VERSION)"; fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; nothing to do."
+            echo "SKIP=true" >> "$GITHUB_ENV"
+          fi
       - name: Build .dmg
+        if: env.SKIP != 'true'
         run: |
           make dmg
           codesign -dv --verbose=2 build/DerivedData/Build/Products/Release/Splicewright.app
       - name: Publish release
+        if: env.SKIP != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=()
-          [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" build/Splicewright.dmg "${prerelease[@]}" \
-            --title "Splicewright $GITHUB_REF_NAME" --notes-file .github/release-notes.md --generate-notes
+          [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
+          # --target creates the tag at this commit when it doesn't exist yet.
+          gh release create "$TAG" build/Splicewright.dmg "${prerelease[@]}" --target "$GITHUB_SHA" \
+            --title "Splicewright $TAG" --notes-file .github/release-notes.md --generate-notes

@@ -58,7 +58,7 @@ You don't need Xcode to try Splicewright. Download `Splicewright.dmg` from the [
 1. Open the `.dmg` and drag Splicewright to Applications.
 2. The build isn't notarized yet, so macOS blocks the first launch. Open the app once, then go to **System Settings ▸ Privacy & Security** and click **Open Anyway**. Alternatively, run `xattr -dr com.apple.quarantine /Applications/Splicewright.app`.
 
-Notarized builds need a paid Apple Developer account and are planned for M8. Maintainers publish a release by pushing a `v*` tag. Tags with a `-`, such as `v0.3.0-alpha`, are published as pre-releases.
+Notarized builds need a paid Apple Developer account and are planned for M8. To publish a release, change `VERSION` or push a `v*` tag; CI builds the `.dmg` and creates the release. Versions with a `-`, such as `0.3.0-alpha`, are published as pre-releases.
 
 ### Troubleshooting
 
