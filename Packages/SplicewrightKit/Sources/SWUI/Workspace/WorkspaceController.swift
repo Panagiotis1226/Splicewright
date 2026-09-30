@@ -39,7 +39,7 @@ public final class WorkspaceController: ObservableObject {
     @Published public var sequenceSheet: SequenceSheetRequest?
     /// Shows the Export sheet; the session appears once an export starts.
     @Published public var isExportSheetPresented = false
-    @Published public private(set) var exportSession: ExportSession?
+    @Published public internal(set) var exportSession: ExportSession?
     /// Settings from the last export in this window, reused as the sheet's defaults.
     public var lastExportSettings: ExportSettings?
 
