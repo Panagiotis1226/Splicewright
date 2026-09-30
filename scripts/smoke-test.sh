@@ -21,7 +21,7 @@ SPLICEWRIGHT_SMOKE_MEDIA="$out/media" SPLICEWRIGHT_SMOKE_OUTPUT="$out" \
 pid=$!
 
 screenshot_taken=false
-for _ in $(seq 1 150); do
+for _ in $(seq 1 240); do
   if [[ -f "$out/snapshot.ready" && $screenshot_taken == false ]]; then
     screencapture -x "$out/screen.png" 2>/dev/null || echo "screencapture unavailable"
     screenshot_taken=true

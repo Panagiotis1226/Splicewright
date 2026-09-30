@@ -241,11 +241,20 @@ final class ExportWorker: @unchecked Sendable {
         return input
     }
 
+    /// Stops the export. Cancelling the reader wakes a pump blocked waiting for a rendered frame;
+    /// a pump whose writer input never becomes ready again is released shortly after.
     func cancel() {
         lock.lock()
         cancelled = true
+        let pending = pumps
         lock.unlock()
+        if reader.status == .reading { reader.cancelReading() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+            pending.forEach { $0.finish() }
+        }
     }
+
+    private var pumps: [PumpCompletion] = []
 
     private var isCancelled: Bool {
         lock.lock()
@@ -254,10 +263,16 @@ final class ExportWorker: @unchecked Sendable {
     }
 
     func run(progress: @escaping @Sendable (Double) -> Void) async throws {
+        if isCancelled { throw CancellationError() }
         guard writer.startWriting() else { throw writer.error ?? ExportError.message("Couldn't create the file.") }
         guard reader.startReading() else {
             writer.cancelWriting()
             throw reader.error ?? ExportError.message("Couldn't start rendering the sequence.")
+        }
+        if isCancelled {
+            reader.cancelReading()
+            writer.cancelWriting()
+            throw CancellationError()
         }
         writer.startSession(atSourceTime: range.start)
         let duration = max(range.duration.seconds, 1e-6)
@@ -293,27 +308,59 @@ final class ExportWorker: @unchecked Sendable {
     private func pump(_ output: AVAssetReaderOutput, into input: AVAssetWriterInput, queue label: String,
                       onSample: ((CMTime) -> Void)?) async {
         let queue = DispatchQueue(label: "com.splicewright.export.\(label)")
+        let completion = PumpCompletion()
+        lock.lock()
+        pumps.append(completion)
+        let alreadyCancelled = cancelled
+        lock.unlock()
+        if alreadyCancelled { completion.finish() }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            var finished = false
+            completion.wait(continuation)
             input.requestMediaDataWhenReady(on: queue) { [self] in
-                guard !finished else { return }
-                while input.isReadyForMoreMediaData {
-                    guard !isCancelled, reader.status == .reading, let sample = output.copyNextSampleBuffer() else {
-                        finished = true
+                while !completion.isFinished && input.isReadyForMoreMediaData {
+                    guard !isCancelled, reader.status == .reading, let sample = output.copyNextSampleBuffer(),
+                          input.append(sample) else {
                         input.markAsFinished()
-                        continuation.resume()
-                        return
-                    }
-                    if !input.append(sample) {
-                        finished = true
-                        input.markAsFinished()
-                        continuation.resume()
+                        completion.finish()
                         return
                     }
                     onSample?(CMSampleBufferGetPresentationTimeStamp(sample))
                 }
             }
         }
+    }
+}
+
+/// Resumes a pump's continuation exactly once, from the pump or from `cancel()`.
+private final class PumpCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var finished = false
+
+    var isFinished: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return finished
+    }
+
+    func wait(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        if finished {
+            lock.unlock()
+            continuation.resume()
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func finish() {
+        lock.lock()
+        finished = true
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume()
     }
 }
 

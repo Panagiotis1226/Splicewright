@@ -109,7 +109,17 @@ enum SmokeTestDriver {
         sequence.marks = SequenceMarks(inFrame: 10, outFrame: 39)
         let session = ExportSession(sequence: sequence, project: workspace.project,
                                     settings: ExportSettings(preset: .h264SDR, range: .inToOut), outputURL: url)
+        // Cancel rather than hang the smoke test if the export stalls.
+        let watchdog = Task { @MainActor in
+            try await Task.sleep(nanoseconds: 90_000_000_000)
+            session.cancel()
+        }
         let state = await session.run()
+        watchdog.cancel()
+        if state == .cancelled {
+            report.errors.append("Export stalled at \(Int(session.progress * 100))% and was cancelled after 90 s")
+            return
+        }
         guard state == .finished(url) else {
             report.errors.append("Export: \(state)")
             return

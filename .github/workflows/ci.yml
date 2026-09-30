@@ -55,6 +55,9 @@ jobs:
         run: make build
       - name: Unit tests
         run: make test
+        timeout-minutes: 15
+        env:
+          NSUnbufferedIO: "YES"
       - name: App smoke test
         run: make smoke
       - name: Package .dmg
