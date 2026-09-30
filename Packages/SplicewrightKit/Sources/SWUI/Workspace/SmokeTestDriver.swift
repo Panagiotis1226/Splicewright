@@ -101,7 +101,9 @@ enum SmokeTestDriver {
     /// Makes an edit, then sends Edit ▸ Undo through the responder chain, as ⌘Z does.
     private static func checkUndo(_ workspace: WorkspaceController) async -> (Bool, String) {
         guard let before = workspace.activeSequence else { return (false, "no sequence") }
+        NSApp.activate(ignoringOtherApps: true)
         workspace.window?.makeKeyAndOrderFront(nil)
+        try? await Task.sleep(nanoseconds: 300_000_000)
         workspace.addTrack(.video)
         let added = workspace.activeSequence?.videoTracks.count == before.videoTracks.count + 1
         // Let the run loop close the automatic undo group before undoing.

@@ -19,8 +19,8 @@ public struct WorkspaceView: View {
     }
 
     public var body: some View {
-        VSplitView {
-            HSplitView {
+        SplitPane(.vertical, fraction: 0.52, minFirst: 220, minSecond: 260) {
+            SplitPane(.horizontal, fraction: 0.5, minFirst: 320, minSecond: 320) {
                 PanelContainer(
                     tabs: [
                         PanelTab(id: .source, title: sourceTitle),
@@ -36,21 +36,17 @@ public struct WorkspaceView: View {
                     default: SourceMonitorPanel(workspace: workspace)
                     }
                 }
-                .frame(minWidth: 360, idealWidth: 640)
-
+            } second: {
                 PanelContainer(.program, title: programTitle, workspace: workspace) {
                     ProgramMonitorPanel(workspace: workspace)
                 }
-                .frame(minWidth: 360, idealWidth: 640)
             }
-            .frame(minHeight: 300, idealHeight: 460)
-
-            HSplitView {
+        } second: {
+            SplitPane(.horizontal, fraction: 0.33, minFirst: 300, minSecond: 480) {
                 PanelContainer(.project, title: "Project", workspace: workspace) {
                     ProjectPanel(workspace: workspace)
                 }
-                .frame(minWidth: 380, idealWidth: 520)
-
+            } second: {
                 HStack(spacing: 0) {
                     ToolsPanel(workspace: workspace)
                     PanelContainer(.timeline, title: "Timeline", workspace: workspace) {
@@ -58,9 +54,7 @@ public struct WorkspaceView: View {
                     }
                     AudioMetersPanel(engine: workspace.program)
                 }
-                .frame(minWidth: 480)
             }
-            .frame(minHeight: 240, idealHeight: 340)
         }
         .background(Theme.windowBackground)
         .preferredColorScheme(.dark)

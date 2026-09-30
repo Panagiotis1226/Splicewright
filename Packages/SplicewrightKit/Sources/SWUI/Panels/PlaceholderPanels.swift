@@ -16,6 +16,15 @@ struct ToolsPanel: View {
     ]
 
     var body: some View {
+        // Scrolls rather than overflowing when the panel is shorter than the tool column.
+        ScrollView(.vertical, showsIndicators: false) {
+            tools
+        }
+        .frame(width: 34)
+        .background(Theme.panelBackground)
+    }
+
+    private var tools: some View {
         VStack(spacing: 6) {
             ForEach(groups.indices, id: \.self) { index in
                 VStack(spacing: 2) {
@@ -31,13 +40,11 @@ struct ToolsPanel: View {
                     }
                 }
             }
-            Spacer()
         }
         .font(.system(size: 13))
         .foregroundStyle(Theme.textPrimary)
         .padding(.vertical, 8)
         .frame(width: 34)
-        .background(Theme.panelBackground)
     }
 
     private func symbol(for tool: EditTool) -> String {

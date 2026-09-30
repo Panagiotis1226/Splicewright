@@ -61,11 +61,16 @@ public final class ProjectDocument: ReferenceFileDocument {
 
     private func registerUndo(restoring previous: Project, actionName: String, undoManager: UndoManager?) {
         guard let undoManager else { return }
+        // Edits made outside an event (an import finishing, say) would otherwise sit in an
+        // automatic group that stays open until the next event; give them their own step.
+        let ownsGroup = undoManager.groupingLevel == 0 && !undoManager.isUndoing && !undoManager.isRedoing
+        if ownsGroup { undoManager.beginUndoGrouping() }
         undoManager.registerUndo(withTarget: self) { document in
             let current = document.project
             document.project = previous
             document.registerUndo(restoring: current, actionName: actionName, undoManager: undoManager)
         }
         undoManager.setActionName(actionName)
+        if ownsGroup { undoManager.endUndoGrouping() }
     }
 }
