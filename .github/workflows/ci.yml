@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: swift test --package-path Packages/SplicewrightKit
 
   lint:
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/realm/swiftlint:0.65.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: swiftlint lint --strict --reporter github-actions-logging
 
   macos:
@@ -32,7 +32,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Toolchain
         run: |
           xcodebuild -version
