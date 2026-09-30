@@ -70,6 +70,16 @@ struct FrameRateTests {
         #expect(FrameRate.standard(matchingFrameDuration: 0, timescale: 600) == nil)
     }
 
+    @Test func resolvingQuantizedDurations() {
+        // 29.97 fps in a 600-tick movie: durations of 20 ticks read as exactly 1/30 s.
+        #expect(FrameRate.resolve(nominalFPS: 29.97, minFrameDuration: 20, timescale: 600) == .fps29_97)
+        // True 30 fps in a 600-tick movie.
+        #expect(FrameRate.resolve(nominalFPS: 30, minFrameDuration: 20, timescale: 600) == .fps30)
+        // A short 59.94 clip whose averaged nominal rate rounds to 60.
+        #expect(FrameRate.resolve(nominalFPS: 60, minFrameDuration: 1001, timescale: 60000) == .fps59_94)
+        #expect(FrameRate.resolve(nominalFPS: 120, minFrameDuration: 5, timescale: 600) == FrameRate(numerator: 120))
+    }
+
     @Test func displayNames() {
         #expect(FrameRate.fps29_97.displayName == "29.97")
         #expect(FrameRate.fps59_94.displayName == "59.94")

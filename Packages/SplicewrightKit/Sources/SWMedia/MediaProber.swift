@@ -67,9 +67,10 @@ public struct MediaProber: Sendable {
         let hasMinDuration = minFrameDuration.isValid && minFrameDuration.isNumeric
         let minDuration = hasMinDuration ? minFrameDuration.seconds : 0
         let isVariable = FrameRateAnalysis.isVariable(nominalFPS: nominalFPS, minFrameDurationSeconds: minDuration)
-        let exactRate = hasMinDuration && !isVariable
-            ? FrameRate.standard(matchingFrameDuration: minFrameDuration.value, timescale: minFrameDuration.timescale)
-            : nil
+        let frameRate = hasMinDuration && !isVariable
+            ? FrameRate.resolve(nominalFPS: nominalFPS, minFrameDuration: minFrameDuration.value,
+                                timescale: minFrameDuration.timescale)
+            : FrameRate.approximating(nominalFPS)
 
         let atoms = description.flatMap(Self.sampleDescriptionAtoms) ?? [:]
         let decoderConfig: DecoderConfiguration?
@@ -89,8 +90,8 @@ public struct MediaProber: Sendable {
             width: Int(abs(displayRect.width).rounded()),
             height: Int(abs(displayRect.height).rounded()),
             rotationDegrees: normalizedRotation,
-            frameRate: exactRate ?? FrameRate.approximating(nominalFPS),
-            nominalFPS: exactRate?.framesPerSecond ?? nominalFPS,
+            frameRate: frameRate,
+            nominalFPS: nominalFPS,
             isVariableFrameRate: isVariable,
             bitDepth: Self.bitDepth(decoderConfig: decoderConfig, explicit: explicitDepth, codec: codec, color: color),
             chroma: decoderConfig?.chroma ?? Self.impliedChroma(codec: codec),

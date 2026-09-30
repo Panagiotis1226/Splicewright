@@ -88,6 +88,8 @@ enum FixtureWriter {
         guard writer.canApply(outputSettings: settings, forMediaType: .video) else { return nil }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
+        // Camera files use a timescale that represents their rate exactly (e.g. 60000 for 59.94).
+        input.mediaTimeScale = spec.frameDuration.timescale
         let pixelFormat = spec.tenBit ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
                                       : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [

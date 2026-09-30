@@ -42,7 +42,9 @@ final class MediaProberTests: XCTestCase {
         XCTAssertEqual(video.chroma, .yuv420)
         XCTAssertEqual(video.color, .rec2100HLG)
         XCTAssertEqual(video.dynamicRange, .hlg)
-        XCTAssertEqual(MediaSupport.warnings(for: info), [], "nominal fps \(video.nominalFPS)")
+        // VideoToolbox adds Dolby Vision 8.4 metadata to HLG HEVC, as iPhones do.
+        let warnings = MediaSupport.warnings(for: info).filter { $0 != .dolbyVisionReadAsHLG }
+        XCTAssertEqual(warnings, [], "nominal fps \(video.nominalFPS)")
     }
 
     func testHEVCPQ() async throws {

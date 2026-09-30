@@ -63,6 +63,19 @@ public struct FrameRate: Sendable, Hashable, Codable {
         return standard.first { $0.frameDuration == duration }
     }
 
+    /// Chooses a track's frame rate from its measured nominal rate and its minimum frame
+    /// duration. The duration is exact but can be quantized: a 600-tick timescale can't
+    /// represent 29.97 fps, so such a file reports 1/30 s. It is trusted when it names an
+    /// NTSC rate (only a fine timescale can) or agrees with the nominal rate.
+    public static func resolve(nominalFPS: Double, minFrameDuration value: Int64, timescale: Int32) -> FrameRate? {
+        let nominal = nearestStandard(to: nominalFPS)
+        if let exact = standard(matchingFrameDuration: value, timescale: timescale),
+           exact.denominator == 1001 || exact == nominal {
+            return exact
+        }
+        return nominal ?? approximating(nominalFPS)
+    }
+
     /// A rational approximation for non-standard rates, in thousandths of a frame.
     public static func approximating(_ fps: Double) -> FrameRate? {
         if let standard = nearestStandard(to: fps) { return standard }
