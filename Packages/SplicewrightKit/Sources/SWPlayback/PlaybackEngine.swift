@@ -1,0 +1,203 @@
+import AVFoundation
+import Combine
+import SWCore
+import SWMedia
+
+/// Plays a sequence in the Program monitor. Edits trigger a debounced rebuild of the
+/// composition; the playhead and play state survive rebuilds.
+@MainActor
+public final class PlaybackEngine: ObservableObject {
+    public let player = AVPlayer()
+
+    @Published public private(set) var currentFrame: Int64 = 0
+    @Published public private(set) var durationFrames: Int64 = 0
+    @Published public private(set) var rate: Float = 0
+    @Published public private(set) var droppedFrames = 0
+    @Published public private(set) var isBuilding = false
+    /// Approximate left/right peak levels (0...1) from cached waveforms, for the meters.
+    @Published public private(set) var meterLevels: [Float] = [0, 0]
+    @Published public var renderScale: Double = 1 {
+        didSet { if renderScale != oldValue { scheduleRebuild(immediately: true) } }
+    }
+
+    public private(set) var frameRate: FrameRate = .fps30
+    private var sequence: EditSequence?
+    private var project = Project()
+    private let cache = MediaAssetCache()
+    private var buildTask: Task<Void, Never>?
+    private var timeObserver: Any?
+    private var rateObservation: AnyCancellable?
+    private var waveforms: [UUID: WaveformPeaks] = [:]
+    private var pendingSeekFrame: Int64?
+    private var tick = 0
+
+    public init() {
+        player.actionAtItemEnd = .pause
+        rateObservation = player.publisher(for: \.rate)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] rate in
+                self?.rate = rate
+                if rate == 0 { self?.meterLevels = [0, 0] }
+            }
+    }
+
+    public var isPlaying: Bool { rate != 0 }
+
+    // MARK: - Sequence updates
+
+    /// Call whenever the project changes. Rebuilds only if something that affects the
+    /// rendered result changed.
+    public func update(sequence newSequence: EditSequence?, project newProject: Project) {
+        let previous = sequence
+        let sequenceChanged = previous != newSequence
+        let mediaChanged = newProject.media != project.media
+        project = newProject
+        sequence = newSequence
+        guard sequenceChanged || mediaChanged else { return }
+        if previous?.id != newSequence?.id {
+            currentFrame = 0
+            pendingSeekFrame = 0
+        }
+        frameRate = newSequence?.rate ?? .fps30
+        // Known from the model right away, so seeks made before the rebuild lands clamp correctly.
+        durationFrames = max(newSequence?.durationFrames ?? 0, newSequence == nil ? 0 : 1)
+        loadWaveforms()
+        scheduleRebuild(immediately: previous?.id != newSequence?.id)
+    }
+
+    private func scheduleRebuild(immediately: Bool) {
+        buildTask?.cancel()
+        guard let sequence else {
+            player.replaceCurrentItem(with: nil)
+            durationFrames = 0
+            return
+        }
+        let project = self.project
+        let cache = self.cache
+        let builder = CompositionBuilder(renderScale: renderScale)
+        isBuilding = true
+        buildTask = Task { [weak self] in
+            if !immediately { try? await Task.sleep(nanoseconds: 120_000_000) }
+            guard !Task.isCancelled else { return }
+            let output = await builder.build(sequence, project: project, cache: cache)
+            guard !Task.isCancelled, let self else { return }
+            self.install(output)
+        }
+    }
+
+    private func install(_ output: CompositionOutput) {
+        let resumeRate = player.rate
+        let frame = pendingSeekFrame ?? currentFrame
+        pendingSeekFrame = nil
+        let item = AVPlayerItem(asset: output.composition)
+        item.videoComposition = output.videoComposition
+        item.audioMix = output.audioMix
+        item.seekingWaitsForVideoCompositionRendering = true
+        if let timeObserver { player.removeTimeObserver(timeObserver) }
+        player.replaceCurrentItem(with: item)
+        durationFrames = output.durationFrames
+        isBuilding = false
+        installTimeObserver()
+        seek(toFrame: frame)
+        if resumeRate != 0 { player.rate = resumeRate }
+    }
+
+    private func installTimeObserver() {
+        timeObserver = player.addPeriodicTimeObserver(forInterval: frameRate.cmFrameDuration, queue: .main) { [weak self] time in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.currentFrame = RationalTime(time).frameIndex(at: self.frameRate)
+                self.updateMeters()
+                self.tick += 1
+                if self.tick % 30 == 0 {
+                    self.droppedFrames = self.player.currentItem?.accessLog()?.events.last?.numberOfDroppedVideoFrames ?? 0
+                }
+            }
+        }
+    }
+
+    // MARK: - Transport
+
+    public func togglePlay() {
+        if isPlaying {
+            player.pause()
+        } else {
+            if currentFrame >= durationFrames - 1 { seek(toFrame: 0) }
+            player.rate = 1
+        }
+    }
+
+    public func pause() { player.pause() }
+
+    public func shuttleForward() {
+        player.rate = Shuttle.rate(afterForwardFrom: player.rate)
+    }
+
+    public func shuttleReverse() {
+        guard player.currentItem?.canPlayReverse == true else {
+            step(by: -1)
+            return
+        }
+        player.rate = Shuttle.rate(afterReverseFrom: player.rate)
+    }
+
+    public func step(by frames: Int64) {
+        player.pause()
+        seek(toFrame: currentFrame + frames)
+    }
+
+    /// Frame-exact seek, clamped to the sequence.
+    public func seek(toFrame frame: Int64) {
+        let clamped = min(max(frame, 0), max(durationFrames - 1, 0))
+        currentFrame = clamped
+        guard player.currentItem != nil, !isBuilding else {
+            pendingSeekFrame = clamped
+            return
+        }
+        let time = RationalTime(frames: clamped, rate: frameRate).cmTime
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    /// Loose seek for scrubbing: keeps up with the mouse on long-GOP media.
+    public func scrub(toFrame frame: Int64) {
+        let clamped = min(max(frame, 0), max(durationFrames - 1, 0))
+        currentFrame = clamped
+        let time = RationalTime(frames: clamped, rate: frameRate).cmTime
+        let tolerance = frameRate.cmFrameDuration
+        player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
+    }
+
+    // MARK: - Meters
+
+    private func loadWaveforms() {
+        guard let sequence else { return }
+        let ids = Set(sequence.audioTracks.flatMap { $0.clips.map(\.mediaID) }).subtracting(waveforms.keys)
+        for id in ids {
+            guard let item = project.item(id) else { continue }
+            let url = item.url
+            Task { [weak self] in
+                if let peaks = await WaveformProvider.shared.peaks(for: url) { self?.waveforms[id] = peaks }
+            }
+        }
+    }
+
+    private func updateMeters() {
+        guard isPlaying, let sequence else { return }
+        let audible = RenderPlan.audibleTracks(in: sequence)
+        var levels: [Float] = [0, 0]
+        let frameSeconds = frameRate.frameDuration.seconds
+        for (index, track) in sequence.audioTracks.enumerated() where audible[index] {
+            guard let clip = track.clip(at: currentFrame), clip.isEnabled, let peaks = waveforms[clip.mediaID] else {
+                continue
+            }
+            let source = clip.sourceTime(atSequenceFrame: currentFrame, rate: frameRate).seconds
+            let gain = Float(RenderPlan.linearGain(dB: clip.gainDB))
+            for channel in 0..<2 {
+                let sourceChannel = min(channel, peaks.channels.count - 1)
+                let peak = peaks.channelPeak(sourceChannel, from: source, to: source + frameSeconds) * gain
+                levels[channel] = max(levels[channel], peak)
+            }
+        }
+        meterLevels = levels
+    }
+}

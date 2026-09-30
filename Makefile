@@ -16,7 +16,7 @@ XCODEBUILD = xcodebuild -project $(PROJECT) -scheme $(SCHEME) -destination 'plat
              -derivedDataPath $(DERIVED) -skipPackagePluginValidation
 
 .DEFAULT_GOAL := help
-.PHONY: help doctor build run test release dmg fixtures lint generate check-project clean
+.PHONY: help doctor build run test smoke release dmg fixtures fixtures-ffmpeg lint generate check-project clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z-]+:.*## / {printf "  make %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -30,8 +30,11 @@ build: ## Build the Debug app
 run: build ## Build and launch the Debug app
 	open "$(DEBUG_APP)"
 
-test: ## Run all unit tests (SWCore, SWMedia)
+test: ## Run all unit tests (SWCore, SWMedia, SWPlayback)
 	swift test --package-path $(PACKAGE)
+
+smoke: build ## Launch the app with generated media and check import, playback and undo
+	scripts/smoke-test.sh
 
 release: ## Build the Release app
 	$(XCODEBUILD) -configuration Release -quiet build
@@ -45,7 +48,10 @@ dmg: release ## Package the Release app as a .dmg
 	hdiutil create -volname Splicewright -srcfolder $(BUILD_DIR)/dmg -ov -format UDZO $(DMG)
 	@echo "Created $(DMG)"
 
-fixtures: ## Generate sample SDR/HDR clips in TestMedia/ (needs ffmpeg)
+fixtures: ## Generate sample SDR/HDR clips in TestMedia/Generated (no extra tools needed)
+	swift run --package-path $(PACKAGE) sw-fixtures TestMedia/Generated
+
+fixtures-ffmpeg: ## Generate 4K SDR/HDR sample clips in TestMedia/ with ffmpeg
 	@scripts/make-fixtures.sh
 
 lint: ## Run SwiftLint (optional; CI runs it)

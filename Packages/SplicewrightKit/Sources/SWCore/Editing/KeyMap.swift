@@ -49,6 +49,19 @@ public enum ShortcutAction: Sendable, Hashable {
     case goToIn
     case goToOut
     case openInSource
+    // Timeline
+    case insertEdit
+    case overwriteEdit
+    case liftEdit
+    case extractEdit
+    case deleteSelection
+    case rippleDelete
+    case previousEditPoint
+    case nextEditPoint
+    case zoomIn
+    case zoomOut
+    case zoomToFit
+    case toggleSnapping
 }
 
 public enum KeyMap {
@@ -67,6 +80,10 @@ public enum KeyMap {
         case .home where mods.isEmpty: return .goToStart
         case .end where mods.isEmpty: return .goToEnd
         case .returnKey where mods.isEmpty: return .openInSource
+        case .upArrow where mods.isEmpty: return .previousEditPoint
+        case .downArrow where mods.isEmpty: return .nextEditPoint
+        case .delete where mods.isEmpty: return .deleteSelection
+        case .delete where mods == .shift || mods == .option: return .rippleDelete
         case .character(let char):
             return characterAction(char, mods)
         default:
@@ -74,26 +91,42 @@ public enum KeyMap {
         }
     }
 
+    private struct Chord: Hashable {
+        var character: Character
+        var modifiers: KeyInput.Modifiers
+
+        init(_ character: Character, _ modifiers: KeyInput.Modifiers = []) {
+            self.character = character
+            self.modifiers = modifiers
+        }
+    }
+
+    private static let characterBindings: [Chord: ShortcutAction] = [
+        Chord("j"): .shuttleReverse,
+        Chord("k"): .shuttleStop,
+        Chord("l"): .shuttleForward,
+        Chord("i"): .markIn,
+        Chord("o"): .markOut,
+        Chord("i", .shift): .goToIn,
+        Chord("o", .shift): .goToOut,
+        Chord("i", .option): .clearIn,
+        Chord("o", .option): .clearOut,
+        Chord("x", .option): .clearInAndOut,
+        Chord(","): .insertEdit,
+        Chord("."): .overwriteEdit,
+        Chord(";"): .liftEdit,
+        Chord("'"): .extractEdit,
+        Chord("="): .zoomIn,
+        Chord("+", .shift): .zoomIn,
+        Chord("-"): .zoomOut,
+        Chord("\\"): .zoomToFit,
+        Chord("s"): .toggleSnapping,
+    ]
+
     private static func characterAction(_ char: Character, _ mods: KeyInput.Modifiers) -> ShortcutAction? {
-        switch (char, mods) {
-        case ("j", []): return .shuttleReverse
-        case ("k", []): return .shuttleStop
-        case ("l", []): return .shuttleForward
-        case ("i", []): return .markIn
-        case ("o", []): return .markOut
-        case ("i", .shift): return .goToIn
-        case ("o", .shift): return .goToOut
-        case ("i", .option): return .clearIn
-        case ("o", .option): return .clearOut
-        case ("x", .option): return .clearInAndOut
-        default:
-            break
-        }
+        if let action = characterBindings[Chord(char, mods)] { return action }
         guard mods.isEmpty else { return nil }
-        if let tool = EditTool.allCases.first(where: { $0.shortcut == char }) {
-            return .selectTool(tool)
-        }
-        return nil
+        return EditTool.allCases.first { $0.shortcut == char }.map { .selectTool($0) }
     }
 }
 

@@ -103,6 +103,7 @@ struct ProjectPanel: View {
 private struct BinList: View {
     @ObservedObject var workspace: WorkspaceController
     @State private var draftName = ""
+    @State private var renamingSequenceID: UUID?
     @FocusState private var renameFocused: Bool
 
     var body: some View {
@@ -117,6 +118,13 @@ private struct BinList: View {
             .dropDestination(for: String.self) { ids, _ in moveDropped(ids, to: nil) }
             ForEach(workspace.project.bins) { bin in
                 binRow(bin)
+            }
+            if !workspace.project.sequences.isEmpty {
+                Section("Sequences") {
+                    ForEach(workspace.project.sequences) { sequence in
+                        sequenceRow(sequence)
+                    }
+                }
             }
         }
         .listStyle(.sidebar)
@@ -146,6 +154,36 @@ private struct BinList: View {
                 Button("Delete Bin") { workspace.deleteBin(bin.id) }
             }
             .dropDestination(for: String.self) { ids, _ in moveDropped(ids, to: bin.id) }
+        }
+    }
+
+    @ViewBuilder
+    private func sequenceRow(_ sequence: EditSequence) -> some View {
+        if renamingSequenceID == sequence.id {
+            TextField("Sequence name", text: $draftName)
+                .textFieldStyle(.plain)
+                .focused($renameFocused)
+                .onAppear {
+                    draftName = sequence.name
+                    renameFocused = true
+                }
+                .onSubmit {
+                    workspace.renameSequence(sequence.id, to: draftName)
+                    renamingSequenceID = nil
+                }
+                .onExitCommand { renamingSequenceID = nil }
+        } else {
+            row(title: sequence.name, systemImage: "film.stack", isSelected: workspace.activeSequenceID == sequence.id) {
+                workspace.openSequence(sequence.id)
+            }
+            .help(sequence.settings.summary)
+            .contextMenu {
+                Button("Open in Timeline") { workspace.openSequence(sequence.id) }
+                Button("Sequence Settings…") { workspace.sequenceSheet = .edit(sequence.id) }
+                Button("Rename") { renamingSequenceID = sequence.id }
+                Divider()
+                Button("Delete Sequence") { workspace.deleteSequence(sequence.id) }
+            }
         }
     }
 
@@ -338,6 +376,7 @@ private struct MediaContextMenu: View {
     var body: some View {
         if ids.count == 1, let id = ids.first {
             Button("Open in Source Monitor") { workspace.openInSource(id) }
+            Button("New Sequence from Clip") { workspace.newSequence(fromClip: id) }
         }
         Menu("Move to Bin") {
             Button("Project Root") { workspace.moveMedia(ids, toBin: nil) }

@@ -20,10 +20,18 @@ let appleFrameworkSettings: [SwiftSetting] = [.swiftLanguageMode(.v5)]
 
 targets += [
     .target(name: "SWMedia", dependencies: ["SWCore"], swiftSettings: appleFrameworkSettings),
-    .target(name: "SWUI", dependencies: ["SWCore", "SWMedia"], swiftSettings: appleFrameworkSettings),
-    .testTarget(name: "SWMediaTests", dependencies: ["SWMedia"], swiftSettings: appleFrameworkSettings),
+    .target(name: "SWPlayback", dependencies: ["SWCore", "SWMedia"], swiftSettings: appleFrameworkSettings),
+    .target(name: "SWUI", dependencies: ["SWCore", "SWMedia", "SWPlayback"], swiftSettings: appleFrameworkSettings),
+    // Synthesizes test clips with AVAssetWriter; used only by the test targets.
+    .target(name: "SWTestSupport", path: "Tests/SWTestSupport", swiftSettings: appleFrameworkSettings),
+    .testTarget(name: "SWMediaTests", dependencies: ["SWMedia", "SWTestSupport"], swiftSettings: appleFrameworkSettings),
+    .testTarget(name: "SWPlaybackTests", dependencies: ["SWPlayback", "SWMedia", "SWTestSupport"],
+                swiftSettings: appleFrameworkSettings),
+    // `make fixtures` / smoke test: writes sample clips without needing ffmpeg.
+    .executableTarget(name: "sw-fixtures", dependencies: ["SWTestSupport"], path: "Tools/sw-fixtures",
+                      swiftSettings: appleFrameworkSettings),
 ]
-libraryTargets += ["SWMedia", "SWUI"]
+libraryTargets += ["SWMedia", "SWPlayback", "SWUI"]
 #endif
 
 let package = Package(

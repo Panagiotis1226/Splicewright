@@ -81,6 +81,13 @@ struct SourceMonitorPanel: View {
             }
             transportButton("Go to Out (⇧O)", systemImage: "arrow.right.to.line") { workspace.handle(.goToOut) }
             transportButton("Clear In and Out (⌥X)", systemImage: "xmark.circle") { workspace.handle(.clearInAndOut) }
+            Divider().frame(height: 14)
+            transportButton("Insert (,)", systemImage: "arrow.down.to.line.compact") {
+                workspace.editFromSource(overwrite: false)
+            }
+            transportButton("Overwrite (.)", systemImage: "square.and.arrow.down.on.square") {
+                workspace.editFromSource(overwrite: true)
+            }
         }
         .font(.system(size: 13))
         .foregroundStyle(Theme.textPrimary)

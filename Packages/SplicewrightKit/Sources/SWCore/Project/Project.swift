@@ -5,16 +5,19 @@ import Foundation
 /// `Project` is a value type: undo is implemented by keeping previous values,
 /// and every mutation below is a pure function that can be unit-tested.
 public struct Project: Sendable, Hashable, Codable {
-    public static let currentSchemaVersion = 1
+    /// 2: adds `sequences`. Version 1 files load unchanged.
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var bins: [Bin]
     public var media: [MediaItem]
+    public var sequences: [EditSequence]
 
-    public init(bins: [Bin] = [], media: [MediaItem] = []) {
+    public init(bins: [Bin] = [], media: [MediaItem] = [], sequences: [EditSequence] = []) {
         self.schemaVersion = Self.currentSchemaVersion
         self.bins = bins
         self.media = media
+        self.sequences = sequences
     }
 
     public init(from decoder: Decoder) throws {
@@ -22,6 +25,8 @@ public struct Project: Sendable, Hashable, Codable {
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         bins = try container.decodeIfPresent([Bin].self, forKey: .bins) ?? []
         media = try container.decodeIfPresent([MediaItem].self, forKey: .media) ?? []
+        sequences = try container.decodeIfPresent([EditSequence].self, forKey: .sequences) ?? []
+        schemaVersion = Self.currentSchemaVersion
     }
 
     // MARK: - Lookup
@@ -91,8 +96,59 @@ public struct Project: Sendable, Hashable, Codable {
         return added
     }
 
+    /// Removes media and every timeline clip that uses it.
     public mutating func removeMedia(_ ids: Set<UUID>) {
         media.removeAll { ids.contains($0.id) }
+        for index in sequences.indices {
+            sequences[index].updateAllTracks { track in track.clips.removeAll { ids.contains($0.mediaID) } }
+        }
+    }
+
+    /// Clips across all sequences that use `mediaID`.
+    public func clipCount(usingMedia mediaID: UUID) -> Int {
+        sequences.reduce(0) { total, sequence in
+            total + sequence.allTracks.reduce(0) { $0 + $1.clips.filter { $0.mediaID == mediaID }.count }
+        }
+    }
+
+    /// Source durations for trim/slip bounds.
+    public var mediaDurations: MediaDurations {
+        Dictionary(uniqueKeysWithValues: media.map { ($0.id, $0.info.duration) })
+    }
+
+    // MARK: - Sequences
+
+    public func sequence(_ id: UUID) -> EditSequence? {
+        sequences.first { $0.id == id }
+    }
+
+    @discardableResult
+    public mutating func addSequence(named name: String = "Sequence", settings: SequenceSettings) -> EditSequence {
+        let existing = Set(sequences.map(\.name))
+        var candidate = name
+        var suffix = 2
+        while existing.contains(candidate) {
+            candidate = "\(name) \(suffix)"
+            suffix += 1
+        }
+        let sequence = EditSequence(name: candidate, settings: settings)
+        sequences.append(sequence)
+        return sequence
+    }
+
+    public mutating func updateSequence(_ id: UUID, _ change: (inout EditSequence) -> Void) {
+        guard let index = sequences.firstIndex(where: { $0.id == id }) else { return }
+        change(&sequences[index])
+    }
+
+    public mutating func deleteSequence(_ id: UUID) {
+        sequences.removeAll { $0.id == id }
+    }
+
+    public mutating func renameSequence(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        updateSequence(id) { $0.name = trimmed }
     }
 
     public mutating func moveMedia(_ ids: Set<UUID>, toBin binID: UUID?) {

@@ -126,47 +126,10 @@ public struct MediaProber: Sendable {
         let transfer = extensionValue(description, kCMFormatDescriptionExtension_TransferFunction) as? String
         let matrix = extensionValue(description, kCMFormatDescriptionExtension_YCbCrMatrix) as? String
         return ColorDescription(
-            primaries: mapPrimaries(primaries),
-            transfer: mapTransfer(transfer),
-            matrix: mapMatrix(matrix)
+            primaries: ColorTags.primaries(primaries),
+            transfer: ColorTags.transfer(transfer),
+            matrix: ColorTags.matrix(matrix)
         )
-    }
-
-    // Keyed by the CoreVideo constants rather than their string values, which are an SDK detail.
-    static let primariesByTag: [String: ColorPrimaries] = [
-        kCVImageBufferColorPrimaries_ITU_R_709_2 as String: .bt709,
-        kCVImageBufferColorPrimaries_ITU_R_2020 as String: .bt2020,
-        kCVImageBufferColorPrimaries_P3_D65 as String: .displayP3,
-        kCVImageBufferColorPrimaries_DCI_P3 as String: .dciP3,
-        kCVImageBufferColorPrimaries_SMPTE_C as String: .bt601NTSC,
-        kCVImageBufferColorPrimaries_EBU_3213 as String: .bt601PAL,
-    ]
-
-    static let transferByTag: [String: TransferFunction] = [
-        kCVImageBufferTransferFunction_ITU_R_709_2 as String: .bt709,
-        kCVImageBufferTransferFunction_ITU_R_2020 as String: .bt2020,
-        kCVImageBufferTransferFunction_ITU_R_2100_HLG as String: .hlg,
-        kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ as String: .pq,
-        kCVImageBufferTransferFunction_sRGB as String: .sRGB,
-        kCVImageBufferTransferFunction_Linear as String: .linear,
-    ]
-
-    static let matrixByTag: [String: YCbCrMatrix] = [
-        kCVImageBufferYCbCrMatrix_ITU_R_709_2 as String: .bt709,
-        kCVImageBufferYCbCrMatrix_ITU_R_601_4 as String: .bt601,
-        kCVImageBufferYCbCrMatrix_ITU_R_2020 as String: .bt2020,
-    ]
-
-    static func mapPrimaries(_ value: String?) -> ColorPrimaries {
-        value.flatMap { primariesByTag[$0] } ?? .unknown
-    }
-
-    static func mapTransfer(_ value: String?) -> TransferFunction {
-        value.flatMap { transferByTag[$0] } ?? .unknown
-    }
-
-    static func mapMatrix(_ value: String?) -> YCbCrMatrix {
-        value.flatMap { matrixByTag[$0] } ?? .unknown
     }
 
     /// Decoder configuration is authoritative for H.264/HEVC. ProRes depth is fixed by the

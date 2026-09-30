@@ -37,8 +37,8 @@ public struct WorkspaceView: View {
                 }
                 .frame(minWidth: 360, idealWidth: 640)
 
-                PanelContainer(.program, title: "Program: (no sequence)", workspace: workspace) {
-                    ProgramMonitorPanel()
+                PanelContainer(.program, title: programTitle, workspace: workspace) {
+                    ProgramMonitorPanel(workspace: workspace)
                 }
                 .frame(minWidth: 360, idealWidth: 640)
             }
@@ -53,9 +53,9 @@ public struct WorkspaceView: View {
                 HStack(spacing: 0) {
                     ToolsPanel(workspace: workspace)
                     PanelContainer(.timeline, title: "Timeline", workspace: workspace) {
-                        TimelinePanel()
+                        TimelinePanel(workspace: workspace)
                     }
-                    AudioMetersPanel()
+                    AudioMetersPanel(engine: workspace.program)
                 }
                 .frame(minWidth: 480)
             }
@@ -64,6 +64,10 @@ public struct WorkspaceView: View {
         .background(Theme.windowBackground)
         .preferredColorScheme(.dark)
         .background(KeyEventMonitor { workspace.handle(keyInput: $0) })
+        .background(WindowAccessor { window in
+            workspace.window = window
+            SmokeTestDriver.startIfRequested(workspace: workspace)
+        })
         .focusedSceneObject(workspace)
         .onAppear { workspace.attach(document: document, undoManager: undoManager) }
         .onChange(of: undoManager) { _, newValue in workspace.undoManager = newValue }
@@ -77,6 +81,9 @@ public struct WorkspaceView: View {
         ) { result in
             if case .success(let urls) = result { workspace.importFiles(urls) }
         }
+        .sheet(item: $workspace.sequenceSheet) { request in
+            SequenceSettingsSheet(workspace: workspace, request: request)
+        }
         .alert(item: $workspace.importReport) { report in
             Alert(
                 title: Text("Some files weren't imported"),
@@ -84,6 +91,10 @@ public struct WorkspaceView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+    }
+
+    private var programTitle: String {
+        workspace.activeSequence.map { "Program: \($0.name)" } ?? "Program: (no sequence)"
     }
 
     private var sourceTitle: String {

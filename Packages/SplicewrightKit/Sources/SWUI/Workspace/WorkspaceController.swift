@@ -3,6 +3,7 @@ import Combine
 import SwiftUI
 import SWCore
 import SWMedia
+import SWPlayback
 
 /// The panels of the Premiere-style workspace. The active panel receives transport shortcuts.
 public enum PanelID: String, Sendable {
@@ -31,7 +32,16 @@ public final class WorkspaceController: ObservableObject {
     /// the workspace doesn't re-render on every playback frame.
     @Published public private(set) var sourceClipName: String?
 
+    /// The sequence open in the Timeline and Program monitor.
+    @Published public var activeSequenceID: UUID?
+    /// Non-nil while the New Sequence / Sequence Settings sheet is shown.
+    @Published public var sequenceSheet: SequenceSheetRequest?
+
     public let sourceMonitor = SourceMonitorModel()
+    public let timeline = TimelineState()
+    public let program = PlaybackEngine()
+    /// The window hosting this workspace (set by the view; used by smoke tests).
+    public weak var window: NSWindow?
 
     public private(set) weak var document: ProjectDocument?
     public var undoManager: UndoManager?
@@ -50,6 +60,27 @@ public final class WorkspaceController: ObservableObject {
         document.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        // `$project` publishes the new value; keep playback and selection in step with it.
+        document.$project
+            .receive(on: RunLoop.main)
+            .sink { [weak self] project in self?.projectDidChange(project) }
+            .store(in: &cancellables)
+        if activeSequenceID == nil { activeSequenceID = document.project.sequences.first?.id }
+        projectDidChange(document.project)
+    }
+
+    func projectDidChange(_ project: Project) {
+        if let id = activeSequenceID, project.sequence(id) == nil {
+            activeSequenceID = project.sequences.first?.id
+        }
+        let sequence = activeSequenceID.flatMap { project.sequence($0) }
+        if let sequence {
+            let existing = Set(sequence.allTracks.flatMap { $0.clips.map(\.id) })
+            if !timeline.selection.isSubset(of: existing) { timeline.selection.formIntersection(existing) }
+        } else {
+            timeline.selection = []
+        }
+        program.update(sequence: sequence, project: project)
     }
 
     public var project: Project { document?.project ?? Project() }
@@ -187,8 +218,12 @@ public final class WorkspaceController: ObservableObject {
             openInSource(id)
             return true
         }
-        // Transport keys drive the Source monitor from the Source and Project panels.
-        // The Program monitor gets its own transport with the playback engine (M3).
+        if handleEditingShortcut(action) { return true }
+        // The Timeline and Program monitor share the sequence's transport; the Source and
+        // Project panels drive the Source monitor.
+        if activePanel == .timeline || activePanel == .program {
+            return handleSequenceTransport(action)
+        }
         guard activePanel == .source || activePanel == .project, sourceMonitor.mediaID != nil else { return false }
         return handleTransport(action) || handleMarks(action)
     }

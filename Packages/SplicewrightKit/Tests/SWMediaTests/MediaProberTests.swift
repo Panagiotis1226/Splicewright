@@ -1,4 +1,5 @@
 import AVFoundation
+import SWTestSupport
 import XCTest
 @testable import SWCore
 @testable import SWMedia

@@ -143,6 +143,22 @@ struct KeyMapTests {
         #expect(KeyMap.action(for: .character("v")) == .selectTool(.selection))
     }
 
+    @Test func timelineShortcuts() {
+        #expect(KeyMap.action(for: .character(",")) == .insertEdit)
+        #expect(KeyMap.action(for: .character(".")) == .overwriteEdit)
+        #expect(KeyMap.action(for: .character(";")) == .liftEdit)
+        #expect(KeyMap.action(for: .character("'")) == .extractEdit)
+        #expect(KeyMap.action(for: KeyInput(.delete)) == .deleteSelection)
+        #expect(KeyMap.action(for: KeyInput(.delete, .shift)) == .rippleDelete)
+        #expect(KeyMap.action(for: KeyInput(.delete, .option)) == .rippleDelete)
+        #expect(KeyMap.action(for: KeyInput(.upArrow)) == .previousEditPoint)
+        #expect(KeyMap.action(for: KeyInput(.downArrow)) == .nextEditPoint)
+        #expect(KeyMap.action(for: .character("=")) == .zoomIn)
+        #expect(KeyMap.action(for: .character("-")) == .zoomOut)
+        #expect(KeyMap.action(for: .character("\\")) == .zoomToFit)
+        #expect(KeyMap.action(for: .character("s")) == .toggleSnapping)
+    }
+
     @Test func commandCombosGoToMenus() {
         #expect(KeyMap.action(for: .character("i", .command)) == nil)
         #expect(KeyMap.action(for: .character("c", .control)) == nil)

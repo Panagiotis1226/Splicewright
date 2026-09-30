@@ -25,15 +25,19 @@ public struct WaveformPeaks: Sendable, Hashable, Codable {
 
     /// Peak (0...1) across all channels for the buckets covering `[start, end)` seconds.
     public func peak(from start: Double, to end: Double) -> Float {
-        guard bucketCount > 0, end > start else { return 0 }
+        channels.indices.map { channelPeak($0, from: start, to: end) }.max() ?? 0
+    }
+
+    /// Peak (0...1) of one channel for the buckets covering `[start, end)` seconds.
+    public func channelPeak(_ channel: Int, from start: Double, to end: Double) -> Float {
+        guard channels.indices.contains(channel), bucketCount > 0, end > start else { return 0 }
         let first = max(0, Int(start * bucketsPerSecond))
         let last = min(bucketCount, max(first + 1, Int((end * bucketsPerSecond).rounded(.up))))
         guard first < last else { return 0 }
+        let data = channels[channel]
         var peak: UInt8 = 0
-        for channel in channels {
-            for index in first..<last where channel[channel.startIndex + index] > peak {
-                peak = channel[channel.startIndex + index]
-            }
+        for index in first..<last where data[data.startIndex + index] > peak {
+            peak = data[data.startIndex + index]
         }
         return Float(peak) / 255
     }

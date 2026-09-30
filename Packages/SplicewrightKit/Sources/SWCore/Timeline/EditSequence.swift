@@ -1,0 +1,361 @@
+import Foundation
+
+/// A half-open range of sequence frames: `[start, end)`.
+public struct FrameRange: Sendable, Hashable, Codable {
+    public var start: Int64
+    public var end: Int64
+
+    public init(start: Int64, end: Int64) {
+        self.start = start
+        self.end = end
+    }
+
+    public init(start: Int64, length: Int64) {
+        self.init(start: start, end: start + length)
+    }
+
+    public var length: Int64 { end - start }
+    public var isEmpty: Bool { end <= start }
+
+    public func contains(_ frame: Int64) -> Bool { frame >= start && frame < end }
+
+    public func overlaps(_ other: FrameRange) -> Bool {
+        start < other.end && other.start < end
+    }
+}
+
+/// The working color space of a sequence. Media in other spaces is converted on render.
+public enum SequenceColorSpace: String, Sendable, Hashable, Codable, CaseIterable, Identifiable {
+    case rec709
+    case rec2100HLG
+    case rec2100PQ
+
+    public var id: String { rawValue }
+
+    public var color: ColorDescription {
+        switch self {
+        case .rec709: return .rec709
+        case .rec2100HLG: return .rec2100HLG
+        case .rec2100PQ: return .rec2100PQ
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .rec709: return "Rec.709 (SDR)"
+        case .rec2100HLG: return "Rec.2100 HLG (HDR)"
+        case .rec2100PQ: return "Rec.2100 PQ (HDR)"
+        }
+    }
+
+    public var isHDR: Bool { self != .rec709 }
+}
+
+public struct SequenceSettings: Sendable, Hashable, Codable {
+    public var width: Int
+    public var height: Int
+    public var frameRate: FrameRate
+    public var colorSpace: SequenceColorSpace
+    public var audioSampleRate: Int
+
+    public init(width: Int, height: Int, frameRate: FrameRate, colorSpace: SequenceColorSpace,
+                audioSampleRate: Int = 48_000) {
+        self.width = width
+        self.height = height
+        self.frameRate = frameRate
+        self.colorSpace = colorSpace
+        self.audioSampleRate = audioSampleRate
+    }
+
+    public static let uhd4K2997 = SequenceSettings(width: 3840, height: 2160, frameRate: .fps29_97, colorSpace: .rec709)
+
+    public struct Resolution: Sendable, Hashable, Identifiable {
+        public var name: String
+        public var width: Int
+        public var height: Int
+        public var id: String { name }
+    }
+
+    public static let resolutions: [Resolution] = [
+        Resolution(name: "UHD 4K (3840×2160)", width: 3840, height: 2160),
+        Resolution(name: "DCI 4K (4096×2160)", width: 4096, height: 2160),
+        Resolution(name: "1080p (1920×1080)", width: 1920, height: 1080),
+        Resolution(name: "Vertical 4K (2160×3840)", width: 2160, height: 3840),
+        Resolution(name: "Vertical 1080p (1080×1920)", width: 1080, height: 1920),
+    ]
+
+    /// Settings that match a clip, like Premiere's "New Sequence from Clip".
+    public static func matching(_ info: MediaInfo) -> SequenceSettings {
+        guard let video = info.video else { return .uhd4K2997 }
+        let colorSpace: SequenceColorSpace
+        switch video.dynamicRange {
+        case .sdr: colorSpace = .rec709
+        case .hlg: colorSpace = .rec2100HLG
+        case .pq: colorSpace = .rec2100PQ
+        }
+        let rate = video.frameRate.flatMap { rate in FrameRate.standard.contains(rate) ? rate : nil }
+            ?? FrameRate.nearestStandard(to: video.nominalFPS, tolerance: 0.05) ?? .fps29_97
+        return SequenceSettings(width: max(2, video.width), height: max(2, video.height),
+                                frameRate: rate, colorSpace: colorSpace)
+    }
+
+    public var summary: String {
+        "\(width)×\(height) · \(frameRate.displayName) fps · \(colorSpace.displayName)"
+    }
+}
+
+public enum TrackKind: String, Sendable, Hashable, Codable {
+    case video, audio
+}
+
+/// A clip on a timeline track. Positions are in sequence frames; the source position is
+/// media time, so media at any frame rate plays back in real time.
+public struct Clip: Sendable, Hashable, Codable, Identifiable {
+    public var id: UUID
+    public var mediaID: UUID
+    public var name: String
+    public var start: Int64
+    public var duration: Int64
+    /// Media time of the clip's first frame.
+    public var sourceStart: RationalTime
+    /// Clips sharing a link ID (a clip's video and audio) are selected and edited together.
+    public var linkID: UUID?
+    public var isEnabled: Bool
+    /// Video opacity, 0...1.
+    public var opacity: Double
+    /// Audio clip gain in dB.
+    public var gainDB: Double
+
+    public init(id: UUID = UUID(), mediaID: UUID, name: String, start: Int64, duration: Int64,
+                sourceStart: RationalTime, linkID: UUID? = nil, isEnabled: Bool = true,
+                opacity: Double = 1, gainDB: Double = 0) {
+        self.id = id
+        self.mediaID = mediaID
+        self.name = name
+        self.start = start
+        self.duration = duration
+        self.sourceStart = sourceStart
+        self.linkID = linkID
+        self.isEnabled = isEnabled
+        self.opacity = opacity
+        self.gainDB = gainDB
+    }
+
+    public var end: Int64 { start + duration }
+    public var range: FrameRange { FrameRange(start: start, end: end) }
+
+    /// Source media time shown at sequence frame `frame`.
+    public func sourceTime(atSequenceFrame frame: Int64, rate: FrameRate) -> RationalTime {
+        sourceStart + RationalTime(frames: frame - start, rate: rate)
+    }
+}
+
+public struct Track: Sendable, Hashable, Codable, Identifiable {
+    public var id: UUID
+    public var kind: TrackKind
+    /// Sorted by start; never overlapping.
+    public var clips: [Clip]
+    public var isLocked: Bool
+    /// Sync-locked tracks follow ripple edits made on other tracks.
+    public var isSyncLocked: Bool
+    /// Eye (video) or the inverse of Mute (audio).
+    public var isOutputEnabled: Bool
+    public var isSolo: Bool
+    /// Source patching: Insert/Overwrite from the Source monitor land on targeted tracks.
+    public var isTargeted: Bool
+
+    public init(id: UUID = UUID(), kind: TrackKind, clips: [Clip] = [], isLocked: Bool = false,
+                isSyncLocked: Bool = true, isOutputEnabled: Bool = true, isSolo: Bool = false,
+                isTargeted: Bool = false) {
+        self.id = id
+        self.kind = kind
+        self.clips = clips
+        self.isLocked = isLocked
+        self.isSyncLocked = isSyncLocked
+        self.isOutputEnabled = isOutputEnabled
+        self.isSolo = isSolo
+        self.isTargeted = isTargeted
+    }
+
+    public var end: Int64 { clips.last?.end ?? 0 }
+
+    public func clip(at frame: Int64) -> Clip? {
+        clips.first { $0.range.contains(frame) }
+    }
+
+    public func isEmpty(in range: FrameRange) -> Bool {
+        !clips.contains { $0.range.overlaps(range) }
+    }
+}
+
+/// In and out points on a sequence, in frames. The out point is inclusive, as in Premiere.
+public struct SequenceMarks: Sendable, Hashable, Codable {
+    public var inFrame: Int64?
+    public var outFrame: Int64?
+
+    public init(inFrame: Int64? = nil, outFrame: Int64? = nil) {
+        self.inFrame = inFrame
+        self.outFrame = outFrame
+    }
+
+    /// The marked range, or nil unless both points are set.
+    public var range: FrameRange? {
+        guard let inFrame, let outFrame, outFrame >= inFrame else { return nil }
+        return FrameRange(start: inFrame, end: outFrame + 1)
+    }
+}
+
+/// A Premiere-style sequence: stacked video tracks (V1 at the bottom) over audio tracks.
+public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
+    public var id: UUID
+    public var name: String
+    public var settings: SequenceSettings
+    /// Index 0 is V1, the bottom layer.
+    public var videoTracks: [Track]
+    /// Index 0 is A1.
+    public var audioTracks: [Track]
+    public var marks: SequenceMarks
+
+    public init(id: UUID = UUID(), name: String, settings: SequenceSettings,
+                videoTrackCount: Int = 3, audioTrackCount: Int = 3) {
+        self.id = id
+        self.name = name
+        self.settings = settings
+        videoTracks = (0..<max(1, videoTrackCount)).map { Track(kind: .video, isTargeted: $0 == 0) }
+        audioTracks = (0..<max(1, audioTrackCount)).map { Track(kind: .audio, isTargeted: $0 == 0) }
+        marks = SequenceMarks()
+    }
+
+    public var rate: FrameRate { settings.frameRate }
+
+    public var allTracks: [Track] { videoTracks + audioTracks }
+
+    /// Frame just after the last clip.
+    public var durationFrames: Int64 { allTracks.map(\.end).max() ?? 0 }
+
+    public func track(_ id: UUID) -> Track? {
+        videoTracks.first { $0.id == id } ?? audioTracks.first { $0.id == id }
+    }
+
+    public func trackName(_ id: UUID) -> String {
+        if let index = videoTracks.firstIndex(where: { $0.id == id }) { return "V\(index + 1)" }
+        if let index = audioTracks.firstIndex(where: { $0.id == id }) { return "A\(index + 1)" }
+        return "?"
+    }
+
+    public func clip(_ id: UUID) -> Clip? {
+        for track in allTracks {
+            if let clip = track.clips.first(where: { $0.id == id }) { return clip }
+        }
+        return nil
+    }
+
+    public func trackID(containing clipID: UUID) -> UUID? {
+        allTracks.first { track in track.clips.contains { $0.id == clipID } }?.id
+    }
+
+    /// `ids` plus every clip linked to them.
+    public func expandingLinks(_ ids: Set<UUID>) -> Set<UUID> {
+        let links = Set(ids.compactMap { clip($0)?.linkID })
+        guard !links.isEmpty else { return ids }
+        var result = ids
+        for track in allTracks {
+            for clip in track.clips where clip.linkID.map(links.contains) == true {
+                result.insert(clip.id)
+            }
+        }
+        return result
+    }
+
+    /// Sorted, unique clip boundaries across all tracks (for up/down arrow navigation).
+    public var editPoints: [Int64] {
+        var points = Set<Int64>([0])
+        for track in allTracks {
+            for clip in track.clips {
+                points.insert(clip.start)
+                points.insert(clip.end)
+            }
+        }
+        return points.sorted()
+    }
+
+    public func nextEditPoint(after frame: Int64) -> Int64? {
+        editPoints.first { $0 > frame }
+    }
+
+    public func previousEditPoint(before frame: Int64) -> Int64? {
+        editPoints.last { $0 < frame }
+    }
+
+    // MARK: - Tracks
+
+    /// Adds a track above the existing ones of that kind.
+    public mutating func addTrack(_ kind: TrackKind) {
+        switch kind {
+        case .video: videoTracks.append(Track(kind: .video))
+        case .audio: audioTracks.append(Track(kind: .audio))
+        }
+    }
+
+    /// Removes an empty track. At least one track of each kind is kept.
+    public mutating func removeTrack(_ id: UUID) {
+        guard let track = track(id), track.clips.isEmpty else { return }
+        if track.kind == .video, videoTracks.count > 1 { videoTracks.removeAll { $0.id == id } }
+        if track.kind == .audio, audioTracks.count > 1 { audioTracks.removeAll { $0.id == id } }
+    }
+
+    /// Changes a track's lock/sync/output/solo/target flags (never its clips). Targeting is
+    /// exclusive per kind: it says where Insert/Overwrite from the Source monitor land.
+    public mutating func setTrackFlags(_ id: UUID, _ change: (inout Track) -> Void) {
+        guard let kind = track(id)?.kind else { return }
+        updateTrack(id) { track in
+            let clips = track.clips
+            change(&track)
+            track.clips = clips
+        }
+        if track(id)?.isTargeted == true {
+            updateAllTracks { track in
+                if track.id != id, track.kind == kind { track.isTargeted = false }
+            }
+        }
+    }
+
+    /// Sets clip properties (enabled, opacity, gain) without moving anything.
+    public mutating func updateClipProperties(_ ids: Set<UUID>, _ change: (inout Clip) -> Void) {
+        updateAllTracks { track in
+            for index in track.clips.indices where ids.contains(track.clips[index].id) {
+                let (start, duration, source) = (track.clips[index].start, track.clips[index].duration,
+                                                 track.clips[index].sourceStart)
+                change(&track.clips[index])
+                track.clips[index].start = start
+                track.clips[index].duration = duration
+                track.clips[index].sourceStart = source
+            }
+        }
+    }
+
+    /// Links clips together (or unlinks them when `linked` is false).
+    public mutating func setLinked(_ ids: Set<UUID>, _ linked: Bool) {
+        let link: UUID? = linked ? UUID() : nil
+        updateAllTracks { track in
+            for index in track.clips.indices where ids.contains(track.clips[index].id) {
+                track.clips[index].linkID = link
+            }
+        }
+    }
+
+    // MARK: - Track mutation helpers
+
+    mutating func updateTrack(_ id: UUID, _ change: (inout Track) -> Void) {
+        if let index = videoTracks.firstIndex(where: { $0.id == id }) {
+            change(&videoTracks[index])
+        } else if let index = audioTracks.firstIndex(where: { $0.id == id }) {
+            change(&audioTracks[index])
+        }
+    }
+
+    mutating func updateAllTracks(_ change: (inout Track) -> Void) {
+        for index in videoTracks.indices { change(&videoTracks[index]) }
+        for index in audioTracks.indices { change(&audioTracks[index]) }
+    }
+}
