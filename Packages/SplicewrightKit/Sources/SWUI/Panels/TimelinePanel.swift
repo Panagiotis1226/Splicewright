@@ -73,6 +73,10 @@ struct TimelinePanel: View {
 struct TimelineCanvasView: NSViewRepresentable {
     let workspace: WorkspaceController
 
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: TimelineCanvas, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 400, height: 200))
+    }
+
     func makeNSView(context: Context) -> TimelineCanvas {
         TimelineCanvas(workspace: workspace)
     }

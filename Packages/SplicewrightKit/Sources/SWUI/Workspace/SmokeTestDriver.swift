@@ -25,6 +25,7 @@ enum SmokeTestDriver {
         var programFrameRendered = false
         var windowSnapshot = false
         var undoWorks = false
+        var undoDiagnostics = ""
         var errors: [String] = []
     }
 
@@ -74,7 +75,7 @@ enum SmokeTestDriver {
         report.durationFrames = sequence.durationFrames
         report.clipCount = sequence.allTracks.reduce(0) { $0 + $1.clips.count }
 
-        report.undoWorks = await checkUndo(workspace)
+        (report.undoWorks, report.undoDiagnostics) = await checkUndo(workspace)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)
         if let clip = sequence.videoTracks[0].clips.first { workspace.timeline.selection = [clip.id] }
@@ -97,17 +98,22 @@ enum SmokeTestDriver {
         try? await Task.sleep(nanoseconds: 3_000_000_000)
     }
 
-    /// Undo and redo an edit through the document's undo manager.
-    private static func checkUndo(_ workspace: WorkspaceController) async -> Bool {
-        guard let undoManager = workspace.undoManager, let before = workspace.activeSequence else { return false }
+    /// Makes an edit, then sends Edit ▸ Undo through the responder chain, as ⌘Z does.
+    private static func checkUndo(_ workspace: WorkspaceController) async -> (Bool, String) {
+        guard let before = workspace.activeSequence else { return (false, "no sequence") }
+        workspace.window?.makeKeyAndOrderFront(nil)
         workspace.addTrack(.video)
         let added = workspace.activeSequence?.videoTracks.count == before.videoTracks.count + 1
         // Let the run loop close the automatic undo group before undoing.
         try? await Task.sleep(nanoseconds: 300_000_000)
-        guard undoManager.canUndo, undoManager.groupingLevel == 0 else { return false }
-        undoManager.undo()
+        let manager = workspace.undoManager
+        var diagnostics = "added=\(added) env=\(manager != nil) canUndo=\(manager?.canUndo ?? false) "
+            + "level=\(manager?.groupingLevel ?? -1) windowUndo=\(workspace.window?.undoManager === manager)"
+        let sent = NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+        try? await Task.sleep(nanoseconds: 200_000_000)
         let undone = workspace.activeSequence?.videoTracks.count == before.videoTracks.count
-        return added && undone
+        diagnostics += " sent=\(sent) undone=\(undone)"
+        return (added && undone, diagnostics)
     }
 
     private static func saveProgramFrame(_ workspace: WorkspaceController, to url: URL,

@@ -116,8 +116,18 @@ struct SourceMonitorPanel: View {
 struct PlayerSurface: NSViewRepresentable {
     let player: AVPlayer
 
+    /// AVPlayerView reports the video's natural size as its intrinsic size, which would make
+    /// SwiftUI grow the monitor row over the panels below. Take whatever space is offered.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: AVPlayerView, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 320, height: 180))
+    }
+
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
+        for orientation in [NSLayoutConstraint.Orientation.horizontal, .vertical] {
+            view.setContentHuggingPriority(.defaultLow, for: orientation)
+            view.setContentCompressionResistancePriority(.defaultLow, for: orientation)
+        }
         view.controlsStyle = .none
         view.videoGravity = .resizeAspect
         view.showsFrameSteppingButtons = false
