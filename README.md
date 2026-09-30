@@ -2,14 +2,16 @@
 
 A native macOS video editor for Apple silicon, laid out like Premiere Pro. It handles SDR (Rec.709) and HDR (HLG, PQ) footage in H.264, HEVC and ProRes, in `.mov` and `.mp4`, up to 4K60.
 
-Status: **M3**. You can:
+Status: **M5**. You can:
 
 - import media into bins and check its format details
 - mark In/Out in the Source monitor
 - edit on a multi-track timeline, with Insert/Overwrite, ripple and rolling trims, slip, slide, razor and ripple delete
-- play the sequence in the Program monitor through a Metal compositor that handles SDR and HDR (HLG/PQ)
+- play the sequence in the Program monitor through a Metal compositor that handles SDR and HDR (HLG/PQ), with an optional clipping overlay
+- override how a clip's color is read (right-click ▸ Interpret Footage)
+- export to H.264, HEVC, HEVC 10-bit HLG/PQ or ProRes 422 HQ, and tone-map HDR sequences to SDR deliverables
 
-Export is next (M5). See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
+Transitions and titles are next (M6). See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
 
 ## Quick start
 
@@ -35,6 +37,7 @@ When the app opens, choose **New Document**, then:
    - Press `,` to Insert or `.` to Overwrite at the playhead on the targeted tracks (the blue track names).
    - Drag clips on the timeline to move them, and drag clip edges to trim.
 4. **Play:** press Space or J/K/L with the Timeline or Program monitor active.
+5. **Export:** choose **File ▸ Export ▸ Media…** (⌘M), pick a preset, and choose Entire Sequence or In to Out.
 
 ### Make targets
 
@@ -89,6 +92,7 @@ These follow Premiere Pro's defaults.
 | S | Toggle snapping |
 | V A B N R C Y U P H Z T | Tools (Selection, Track Select, Ripple, Rolling, Rate Stretch, Razor, Slip, Slide, Pen, Hand, Zoom, Type) |
 | ⌘I | Import |
+| ⌘M | Export media |
 | ⌘B | New bin |
 
 Transport keys apply to the active panel, which is outlined in blue. Click a panel to activate it: the Source and Project panels drive the Source monitor, and the Timeline and Program panels drive the sequence.
@@ -126,9 +130,9 @@ docs/PLAN.md                 Architecture and milestones
 
 ## Format support (v1 target)
 
-| | Import | Export (M5) |
+| | Import | Export |
 |---|---|---|
 | H.264 | 8-bit SDR up to 4K60 | SDR Rec.709 |
 | HEVC | 8/10-bit SDR, HLG, PQ; iPhone Dolby Vision is read as HLG | Main (SDR), Main10 (HLG, PQ) |
-| ProRes | 422 Proxy/LT/422/HQ, 4444 | 422 family |
+| ProRes | 422 Proxy/LT/422/HQ, 4444 | 422 HQ (in the sequence color space) |
 | Containers | .mov, .mp4, .m4v; audio .wav .aif .caf .m4a .mp3 | .mov, .mp4 |
