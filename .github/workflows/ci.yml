@@ -22,9 +22,21 @@ jobs:
   lint:
     name: SwiftLint
     runs-on: ubuntu-latest
-    container: ghcr.io/realm/swiftlint:0.65.1
+    env:
+      SWIFTLINT_VERSION: 0.65.1
     steps:
       - uses: actions/checkout@v5
+      # The release binary plus the runner's preinstalled Swift toolchain (for sourcekitd);
+      # no container pull, so a ghcr.io outage can't fail the job.
+      - name: Install SwiftLint
+        run: |
+          curl -fsSL --retry 4 -o /tmp/swiftlint.zip \
+            "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/swiftlint_linux_amd64.zip"
+          unzip -q /tmp/swiftlint.zip -d /tmp/swiftlint
+          lib=$(find /usr/share/swift /usr/lib /opt -name libsourcekitdInProc.so -print -quit 2>/dev/null || true)
+          if [ -z "$lib" ]; then echo "::error::libsourcekitdInProc.so not found on runner"; exit 1; fi
+          echo "LINUX_SOURCEKIT_LIB_PATH=$(dirname "$lib")" >> "$GITHUB_ENV"
+          echo "/tmp/swiftlint" >> "$GITHUB_PATH"
       - run: swiftlint lint --strict --reporter github-actions-logging
 
   macos:
