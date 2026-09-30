@@ -42,7 +42,7 @@ final class MediaProberTests: XCTestCase {
         XCTAssertEqual(video.chroma, .yuv420)
         XCTAssertEqual(video.color, .rec2100HLG)
         XCTAssertEqual(video.dynamicRange, .hlg)
-        XCTAssertTrue(MediaSupport.warnings(for: info).isEmpty)
+        XCTAssertEqual(MediaSupport.warnings(for: info), [], "nominal fps \(video.nominalFPS)")
     }
 
     func testHEVCPQ() async throws {

@@ -64,7 +64,12 @@ public struct MediaProber: Sendable {
         let normalizedRotation = (rotation % 360 + 360) % 360
 
         let nominalFPS = Double(nominalFrameRate)
-        let minDuration = minFrameDuration.isValid && minFrameDuration.isNumeric ? minFrameDuration.seconds : 0
+        let hasMinDuration = minFrameDuration.isValid && minFrameDuration.isNumeric
+        let minDuration = hasMinDuration ? minFrameDuration.seconds : 0
+        let isVariable = FrameRateAnalysis.isVariable(nominalFPS: nominalFPS, minFrameDurationSeconds: minDuration)
+        let exactRate = hasMinDuration && !isVariable
+            ? FrameRate.standard(matchingFrameDuration: minFrameDuration.value, timescale: minFrameDuration.timescale)
+            : nil
 
         let atoms = description.flatMap(Self.sampleDescriptionAtoms) ?? [:]
         let decoderConfig: DecoderConfiguration?
@@ -84,10 +89,10 @@ public struct MediaProber: Sendable {
             width: Int(abs(displayRect.width).rounded()),
             height: Int(abs(displayRect.height).rounded()),
             rotationDegrees: normalizedRotation,
-            frameRate: FrameRate.approximating(nominalFPS),
-            nominalFPS: nominalFPS,
-            isVariableFrameRate: FrameRateAnalysis.isVariable(nominalFPS: nominalFPS, minFrameDurationSeconds: minDuration),
-            bitDepth: decoderConfig?.bitDepth ?? explicitDepth ?? Self.impliedBitDepth(codec: codec, color: color),
+            frameRate: exactRate ?? FrameRate.approximating(nominalFPS),
+            nominalFPS: exactRate?.framesPerSecond ?? nominalFPS,
+            isVariableFrameRate: isVariable,
+            bitDepth: Self.bitDepth(decoderConfig: decoderConfig, explicit: explicitDepth, codec: codec, color: color),
             chroma: decoderConfig?.chroma ?? Self.impliedChroma(codec: codec),
             color: color,
             hasDolbyVisionMetadata: atoms["dvcC"] != nil || atoms["dvvC"] != nil || codec == .dolbyVisionHEVC
@@ -161,6 +166,15 @@ public struct MediaProber: Sendable {
 
     static func mapMatrix(_ value: String?) -> YCbCrMatrix {
         value.flatMap { matrixByTag[$0] } ?? .unknown
+    }
+
+    /// Decoder configuration is authoritative for H.264/HEVC. ProRes depth is fixed by the
+    /// codec (the BitsPerComponent extension can report the decoder's working precision).
+    static func bitDepth(decoderConfig: DecoderConfiguration?, explicit: Int?, codec: VideoCodec,
+                         color: ColorDescription) -> Int? {
+        if let depth = decoderConfig?.bitDepth { return depth }
+        if codec.family == .proRes { return impliedBitDepth(codec: codec, color: color) }
+        return explicit ?? impliedBitDepth(codec: codec, color: color)
     }
 
     static func impliedBitDepth(codec: VideoCodec, color: ColorDescription) -> Int? {

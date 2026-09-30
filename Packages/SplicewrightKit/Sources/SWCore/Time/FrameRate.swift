@@ -54,6 +54,15 @@ public struct FrameRate: Sendable, Hashable, Codable {
         return best
     }
 
+    /// The standard rate whose frame lasts exactly `value / timescale` seconds, if any.
+    /// A track's minimum frame duration is exact, whereas its nominal rate is an
+    /// average that can be off noticeably for short clips.
+    public static func standard(matchingFrameDuration value: Int64, timescale: Int32) -> FrameRate? {
+        guard value > 0, timescale > 0 else { return nil }
+        let duration = RationalTime(value: value, timescale: timescale)
+        return standard.first { $0.frameDuration == duration }
+    }
+
     /// A rational approximation for non-standard rates, in thousandths of a frame.
     public static func approximating(_ fps: Double) -> FrameRate? {
         if let standard = nearestStandard(to: fps) { return standard }

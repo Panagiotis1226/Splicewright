@@ -62,6 +62,14 @@ struct FrameRateTests {
         #expect(FrameRate.approximating(0) == nil)
     }
 
+    @Test func exactFrameDurations() {
+        #expect(FrameRate.standard(matchingFrameDuration: 1001, timescale: 60000) == .fps59_94)
+        #expect(FrameRate.standard(matchingFrameDuration: 2002, timescale: 120_000) == .fps59_94)
+        #expect(FrameRate.standard(matchingFrameDuration: 20, timescale: 600) == .fps30)
+        #expect(FrameRate.standard(matchingFrameDuration: 1, timescale: 120) == nil)
+        #expect(FrameRate.standard(matchingFrameDuration: 0, timescale: 600) == nil)
+    }
+
     @Test func displayNames() {
         #expect(FrameRate.fps29_97.displayName == "29.97")
         #expect(FrameRate.fps59_94.displayName == "59.94")
