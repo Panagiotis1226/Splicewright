@@ -3,6 +3,7 @@ import Combine
 import SwiftUI
 import SWCore
 import SWMedia
+import SWPlayback
 
 /// The timeline surface: an AppKit view drawn with Core Graphics. Clips, headers and the
 /// ruler redraw when the document or view state changes; the playhead is a separate layer

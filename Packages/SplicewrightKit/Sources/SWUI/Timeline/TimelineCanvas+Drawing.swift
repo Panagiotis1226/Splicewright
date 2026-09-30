@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import SWCore
+import SWPlayback
+import SWMedia
 
 extension TimelineCanvas {
     override func draw(_ dirtyRect: NSRect) {
@@ -79,7 +81,7 @@ extension TimelineCanvas {
     private func drawClip(_ clip: Clip, in row: TimelineLayout.Row, track: Track) {
         let rect = clipRect(clip, in: row)
         let item = workspace.project.item(clip.mediaID)
-        let online = item.map(MediaLocator.isOnline) ?? false
+        let online = item.map { MediaLocator.isOnline($0) } ?? false
         let selected = timeline.selection.contains(clip.id)
         var base = row.kind == .video ? NSColor(Theme.videoTrack) : NSColor(Theme.audioTrack)
         if !online { base = NSColor(Theme.offline) }

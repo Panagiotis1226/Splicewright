@@ -1,5 +1,6 @@
 import AppKit
 import SWCore
+import SWPlayback
 
 /// Mouse handling. Drags edit a copy of the sequence (`timeline.preview`) and commit it as
 /// one undoable edit on mouse-up.

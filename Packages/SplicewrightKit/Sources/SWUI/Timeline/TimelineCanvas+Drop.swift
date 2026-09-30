@@ -1,5 +1,6 @@
 import AppKit
 import SWCore
+import SWPlayback
 
 /// Drops from the Project panel and the timeline's context menus.
 extension TimelineCanvas {

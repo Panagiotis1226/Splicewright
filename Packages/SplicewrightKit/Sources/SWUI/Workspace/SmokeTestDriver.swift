@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import SWCore
 import SWMedia
+import SWPlayback
 
 /// Drives the real app end to end for CI (`scripts/smoke-test.sh`): imports media, builds a
 /// sequence, plays it, then writes a window snapshot, a Program-monitor frame and a JSON

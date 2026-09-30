@@ -41,14 +41,14 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
     private var cancelGeneration = 0
     private let stateLock = NSLock()
 
-    var sourcePixelBufferAttributes: [String: Any]? {
+    var sourcePixelBufferAttributes: [String: any Sendable]? {
         [
             kCVPixelBufferPixelFormatTypeKey as String: PlanarFormat.accepted.map { NSNumber(value: $0) },
             kCVPixelBufferMetalCompatibilityKey as String: true,
         ]
     }
 
-    var requiredPixelBufferAttributesForRenderContext: [String: Any] {
+    var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
         [
             kCVPixelBufferPixelFormatTypeKey as String: NSNumber(value: kCVPixelFormatType_64RGBAHalf),
             kCVPixelBufferMetalCompatibilityKey as String: true,

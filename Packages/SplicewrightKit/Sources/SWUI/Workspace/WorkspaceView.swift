@@ -1,6 +1,7 @@
 import SwiftUI
 import SWCore
 import SWMedia
+import SWPlayback
 import UniformTypeIdentifiers
 
 /// The editing workspace, laid out like Premiere Pro's Editing workspace:

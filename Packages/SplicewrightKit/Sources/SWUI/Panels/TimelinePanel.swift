@@ -1,5 +1,6 @@
 import SwiftUI
 import SWCore
+import SWPlayback
 
 /// Timeline panel: sequence picker and tools on top, the AppKit timeline canvas below.
 struct TimelinePanel: View {
