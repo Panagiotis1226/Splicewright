@@ -67,6 +67,13 @@ Implementation notes (M0–M1):
 - Xcode 16+ is required because the committed project uses project format 77.
 - The Source monitor uses `AVPlayerView`, which handles HDR/EDR presentation itself. The Metal EDR view described in design choice 4 applies to the Program monitor (M3/M4).
 
+Implementation notes (M2–M3):
+- **Undo.** Timeline edits are pure `mutating` functions on `EditSequence`, including insert, overwrite, lift, extract, ripple delete, move, trim, ripple trim, roll, slip, slide and razor. Drags edit a preview copy and commit it as a single undoable change.
+- **Sync lock.** Ripple edits also apply to sync-locked tracks. On those tracks, clips that span an insert point are split, and extracted ranges are removed as well, so the tracks stay in sync.
+- **Program monitor.** It uses `AVPlayerView` with the custom Metal compositor. AVKit presents HDR output on EDR displays, so the dedicated CAMetalLayer monitor is deferred until it's needed (e.g. for scopes).
+- **Audio meters.** They currently read cached waveform peaks at the playhead, which is an approximation. True post-mix metering needs an audio tap and is planned for later.
+- **Smoke test.** `scripts/smoke-test.sh` launches the real app in CI. It imports generated media, builds a sequence, plays it and checks undo. It saves a window snapshot and a screenshot.
+
 ## Premiere-style layout (v1)
 A fixed four-quadrant layout built from resizable `NSSplitView` panes. Drag-to-dock workspaces are deferred.
 - **Top-left:** Source Monitor, with tabs for Effect Controls and Effects (transitions, titles).

@@ -2,7 +2,14 @@
 
 A native macOS video editor for Apple silicon, laid out like Premiere Pro. It handles SDR (Rec.709) and HDR (HLG, PQ) footage in H.264, HEVC and ProRes, in `.mov` and `.mp4`, up to 4K60.
 
-Status: **M1**. The workspace is in place. You can import media into bins, inspect format details, and play clips in the Source monitor with In/Out marks and JKL shuttle. Timeline editing is next (M2). See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
+Status: **M3**. You can:
+
+- import media into bins and check its format details
+- mark In/Out in the Source monitor
+- edit on a multi-track timeline, with Insert/Overwrite, ripple and rolling trims, slip, slide, razor and ripple delete
+- play the sequence in the Program monitor through a Metal compositor that handles SDR and HDR (HLG/PQ)
+
+Export is next (M5). See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
 
 ## Quick start
 
@@ -19,7 +26,15 @@ make doctor   # checks macOS / Xcode and explains anything missing
 make run      # builds the Debug app and launches it
 ```
 
-When the app opens, choose **New Document**, then import media. You can press ⌘I, drag files or folders onto the Project panel, or click Import. Double-click a clip to open it in the Source monitor.
+When the app opens, choose **New Document**, then:
+
+1. **Import media:** press ⌘I, click Import, or drag files or folders onto the Project panel. Run `make fixtures` for sample clips; they're written to `TestMedia/Generated`.
+2. **Start a sequence:** drag a clip onto the Timeline. This creates a sequence matching the clip's size, frame rate and SDR/HDR color space. You can also choose **Sequence ▸ New Sequence…** (⌥⌘N) or right-click a clip ▸ **New Sequence from Clip**.
+3. **Edit:**
+   - Double-click a clip to open it in the Source monitor and mark I/O.
+   - Press `,` to Insert or `.` to Overwrite at the playhead on the targeted tracks (the blue track names).
+   - Drag clips on the timeline to move them, and drag clip edges to trim.
+4. **Play:** press Space or J/K/L with the Timeline or Program monitor active.
 
 ### Make targets
 
@@ -28,9 +43,11 @@ When the app opens, choose **New Document**, then import media. You can press �
 | `make run` | Build Debug and launch |
 | `make build` | Build Debug |
 | `make test` | Run all unit tests (`swift test`) |
+| `make smoke` | Launch the app with generated media and check import, playback, rendering and undo |
 | `make release` | Build the Release app |
 | `make dmg` | Package the Release app as `build/Splicewright.dmg` |
-| `make fixtures` | Generate sample SDR/HDR clips in `TestMedia/` (needs `ffmpeg`) |
+| `make fixtures` | Generate sample SDR/HDR clips in `TestMedia/Generated` (no extra tools needed) |
+| `make fixtures-ffmpeg` | Generate 4K SDR/HDR clips with `ffmpeg` |
 | `make doctor` | Check build prerequisites |
 | `make generate` | Regenerate the Xcode project from `project.yml` (maintainers) |
 
@@ -58,11 +75,27 @@ These follow Premiere Pro's defaults.
 | ⌥I / ⌥O / ⌥X | Clear In / Out / both |
 | Home / End | Go to start / end |
 | Return | Open the selected clip in the Source monitor |
+| `,` / `.` | Insert / Overwrite the Source clip at the playhead |
+| `;` / `'` | Lift / Extract the sequence In–Out range |
+| ↑ / ↓ | Previous / next edit point |
+| Delete / ⇧Delete (or ⌥Delete) | Delete / ripple delete selected clips |
+| ⌘K / ⇧⌘K | Add edit on targeted tracks / all tracks |
+| = / - / \\ | Zoom timeline in / out / to fit |
+| S | Toggle snapping |
 | V A B N R C Y U P H Z T | Tools (Selection, Track Select, Ripple, Rolling, Rate Stretch, Razor, Slip, Slide, Pen, Hand, Zoom, Type) |
 | ⌘I | Import |
 | ⌘B | New bin |
 
-Transport keys apply to the active panel, which is outlined in blue. Click a panel to activate it.
+Transport keys apply to the active panel, which is outlined in blue. Click a panel to activate it: the Source and Project panels drive the Source monitor, and the Timeline and Program panels drive the sequence.
+
+On the timeline:
+
+- **Selection tool (V):** drag clip edges to trim, or drag a clip to move it (it overwrites where it lands). Hold ⌘ while dropping from the Project panel to insert instead.
+- **Ripple Edit (B):** trim a clip edge and ripple everything after it.
+- **Rolling Edit (N):** move the cut point between two clips.
+- **Slip (Y) and Slide (U):** drag a clip.
+- **Razor (C):** click to cut. Hold ⌥ to cut only that track.
+- **Track headers:** toggle source targeting, lock, sync lock, and eye/mute/solo. Right-click a header to add or delete tracks.
 
 ## Project layout
 
@@ -70,10 +103,16 @@ Transport keys apply to the active panel, which is outlined in blue. Click a pan
 App/                         App entry point and Info.plist
 Packages/SplicewrightKit/
   Sources/SWCore/            Pure Swift model: time, timecode, media metadata, project, key map
+  Sources/SWCore/Timeline/   Sequences, tracks, clips and every edit operation (pure, tested)
   Sources/SWMedia/           AVFoundation: probing, import, thumbnails, waveforms
-  Sources/SWUI/              SwiftUI/AppKit workspace and panels
+  Sources/SWPlayback/        Composition builder, Metal compositor (SDR/HLG/PQ), playback engine
+  Sources/SWUI/              SwiftUI/AppKit workspace, timeline canvas, panels
   Tests/SWCoreTests/         Swift Testing; also runs on Linux
-  Tests/SWMediaTests/        XCTest; synthesizes its own clips with AVAssetWriter
+  Tests/SWMediaTests/        XCTest: probing, import, waveforms, thumbnails
+  Tests/SWPlaybackTests/     XCTest: renders frames through the compositor and checks pixels
+  Tests/SWTestSupport/       Synthesizes test clips with AVAssetWriter
+  Tools/sw-fixtures/         Writes sample clips (make fixtures, smoke test)
+scripts/smoke-test.sh        Drives the real app end to end (CI runs it)
 project.yml                  XcodeGen spec (the generated .xcodeproj is committed)
 docs/PLAN.md                 Architecture and milestones
 ```
