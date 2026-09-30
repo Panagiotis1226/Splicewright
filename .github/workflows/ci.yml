@@ -45,6 +45,17 @@ jobs:
         run: make test
       - name: App smoke test
         run: make smoke
+      - name: Package .dmg
+        run: |
+          make dmg
+          codesign -dv --verbose=2 build/DerivedData/Build/Products/Release/Splicewright.app
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Upload .dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: Splicewright-${{ env.SHORT_SHA }}
+          path: build/Splicewright.dmg
+          if-no-files-found: error
       - name: Upload smoke-test output
         if: always()
         uses: actions/upload-artifact@v4

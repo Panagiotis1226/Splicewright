@@ -1,7 +1,9 @@
 name: Release
 
 # Pushing a tag like v0.1.0 builds the app and attaches a .dmg to a GitHub Release.
-# The build is ad-hoc signed: macOS asks for right-click → Open on first launch.
+# The build is ad-hoc signed, not notarized: users allow it once in System Settings ▸
+# Privacy & Security (see .github/release-notes.md). Tags with a "-" (v0.3.0-alpha) are
+# published as pre-releases.
 # Developer ID signing + notarization is added in M8 (needs an Apple Developer account).
 on:
   push:
@@ -17,8 +19,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build .dmg
-        run: make dmg
+        run: |
+          make dmg
+          codesign -dv --verbose=2 build/DerivedData/Build/Products/Release/Splicewright.app
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/Splicewright.dmg --title "Splicewright $GITHUB_REF_NAME" --generate-notes
+        run: |
+          prerelease=()
+          [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" build/Splicewright.dmg "${prerelease[@]}" \
+            --title "Splicewright $GITHUB_REF_NAME" --notes-file .github/release-notes.md --generate-notes

@@ -53,7 +53,12 @@ When the app opens, choose **New Document**, then:
 
 ### Prebuilt app
 
-Pushing a `v*` tag makes CI attach a `.dmg` to a GitHub Release. These builds are ad-hoc signed and not notarized yet, so the first time you open the app, right-click it and choose **Open**. Notarized builds need a paid Apple Developer account and are planned for M8.
+You don't need Xcode to try Splicewright. Download `Splicewright.dmg` from the [Releases page](https://github.com/Panagiotis1226/Splicewright/releases). It's an Apple silicon build for macOS 15 or later. Every green CI run also attaches a `Splicewright-<commit>` `.dmg` artifact; you need to be signed in to GitHub to download it.
+
+1. Open the `.dmg` and drag Splicewright to Applications.
+2. The build isn't notarized yet, so macOS blocks the first launch. Open the app once, then go to **System Settings ▸ Privacy & Security** and click **Open Anyway**. Alternatively, run `xattr -dr com.apple.quarantine /Applications/Splicewright.app`.
+
+Notarized builds need a paid Apple Developer account and are planned for M8. Maintainers publish a release by pushing a `v*` tag. Tags with a `-`, such as `v0.3.0-alpha`, are published as pre-releases.
 
 ### Troubleshooting
 
