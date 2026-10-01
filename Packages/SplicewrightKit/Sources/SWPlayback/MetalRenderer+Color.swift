@@ -130,7 +130,7 @@ final class ColorResources: @unchecked Sendable {
         return texture
     }
 
-    /// A 256 × 3 table of the curves (rows: red, green, blue, each through the master curve).
+    /// A 256 × 3 table of the curves (rows: red, green, blue, each through the RGB curve).
     func curvesTexture(_ value: ColorCurves) -> MTLTexture? {
         lock.lock()
         defer { lock.unlock() }

@@ -121,7 +121,7 @@ final class ColorRenderTests: XCTestCase {
         var (sequence, id) = try await greySequence()
         let before = try await rgb(sequence)
         var curves = ColorCurves()
-        curves[.master] = [.init(0, 0), .init(0.5, 0.7), .init(1, 1)]
+        curves[.rgb] = [.init(0, 0), .init(0.5, 0.7), .init(1, 1)]
         try set(.colorCorrection, [:], on: id, in: &sequence) { $0.curves = curves }
         let lifted = try await rgb(sequence)
         XCTAssertGreaterThan(lifted[1], before[1] + 25)
