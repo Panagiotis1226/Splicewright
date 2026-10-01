@@ -32,6 +32,8 @@ final class EffectRenderTests: XCTestCase {
         }
         let result = await MediaImporter().importMedia(from: [url], into: nil, existingPaths: [])
         let item = try XCTUnwrap(result.items.first)
+        // The project keeps one item per file, so a second clip of the same fixture uses the first.
+        if let existing = project.media.first(where: { $0.filePath == item.filePath }) { return existing }
         project.addMedia([item])
         return item
     }
