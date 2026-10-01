@@ -48,6 +48,7 @@ enum SmokeTestDriver {
         var speedChanged = false
         var markerAdded = false
         var chaptersEmbedded = false
+        var chapterDetail = ""
         var errors: [String] = []
     }
 
@@ -256,8 +257,7 @@ enum SmokeTestDriver {
             // Frames 10-39 export; the caption (15-36) starts 5 frames in.
             report.captionFileWritten = written.contains("00:00:00,167 --> ") && written.contains("Smoke test caption")
         }
-        let groups = try? await AVURLAsset(url: url).loadChapterMetadataGroups(bestMatchingPreferredLanguages: ["en"])
-        report.chaptersEmbedded = groups?.first?.items.isEmpty == false
+        (report.chaptersEmbedded, report.chapterDetail) = await chapters(in: url)
         do {
             let info = try await MediaProber().probe(url)
             report.exportSucceeded = true
@@ -268,6 +268,22 @@ enum SmokeTestDriver {
         } catch {
             report.errors.append("Probing export: \(error.localizedDescription)")
         }
+    }
+
+    /// Whether the export has a chapter list, and what its tracks are if it doesn't.
+    private static func chapters(in url: URL) async -> (Bool, String) {
+        let asset = AVURLAsset(url: url)
+        let locales = (try? await asset.load(.availableChapterLocales)) ?? []
+        let languages = locales.map(\.identifier) + Locale.preferredLanguages + ["en"]
+        let groups = (try? await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: languages)) ?? []
+        if groups.first?.items.isEmpty == false { return (true, "") }
+        var detail = "locales=\(locales.map(\.identifier)) groups=\(groups.count)"
+        for track in (try? await asset.load(.tracks)) ?? [] {
+            let associations = (try? await track.load(.availableTrackAssociationTypes)) ?? []
+            detail += " | \(track.trackID):\(track.mediaType.rawValue) assoc=\(associations.map(\.rawValue))"
+        }
+        let log = AppLog.shared.lines().filter { $0.contains("chapter") }.suffix(3)
+        return (false, detail + " log=\(Array(log))")
     }
 
     /// Makes an edit, then sends Edit ▸ Undo through the responder chain, as ⌘Z does.

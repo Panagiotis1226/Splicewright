@@ -83,5 +83,7 @@ checks = {
 }
 for name, ok in checks.items():
     print(("PASS " if ok else "FAIL ") + name)
+if not r.get("chaptersEmbedded"):
+    print("     chapters: " + str(r.get("chapterDetail")))
 sys.exit(0 if all(checks.values()) else 1)
 PY

@@ -137,9 +137,8 @@ final class ExportWorker: @unchecked Sendable {
     private let videoInput: AVAssetWriterInput
     private let audioOutput: AVAssetReaderAudioMixOutput?
     private let audioInput: AVAssetWriterInput?
-    /// Chapter marks: a metadata track the video track points to as its chapter list.
-    private let chapterAdaptor: AVAssetWriterInputMetadataAdaptor?
-    private let chapterGroups: [AVTimedMetadataGroup]
+    /// Chapter marks: a text track the video track points to as its chapter list.
+    private let chapterTrack: ChapterTrack?
     private let range: CMTimeRange
     private let lock = NSLock()
     private var cancelled = false
@@ -194,39 +193,7 @@ final class ExportWorker: @unchecked Sendable {
         } else {
             audioInput = nil
         }
-        (chapterAdaptor, chapterGroups) = Self.makeChapters(chapters, range: range, writer: writer, video: videoInput)
-    }
-
-    /// A QuickTime chapter track: one timed text sample per chapter, until the next one.
-    private static func makeChapters(_ chapters: [Chapters.Chapter], range: CMTimeRange, writer: AVAssetWriter,
-                                     video: AVAssetWriterInput) -> (AVAssetWriterInputMetadataAdaptor?, [AVTimedMetadataGroup]) {
-        guard !chapters.isEmpty else { return (nil, []) }
-        let specification = [
-            kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier as String:
-                AVMetadataIdentifier.quickTimeUserDataChapter.rawValue,
-            kCMMetadataFormatDescriptionMetadataSpecificationKey_DataType as String: kCMMetadataBaseDataType_UTF8 as String,
-        ]
-        var description: CMFormatDescription?
-        CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
-            allocator: nil, metadataType: kCMMetadataFormatType_Boxed, metadataSpecifications: [specification] as CFArray,
-            formatDescriptionOut: &description)
-        let input = AVAssetWriterInput(mediaType: .metadata, outputSettings: nil, sourceFormatHint: description)
-        input.expectsMediaDataInRealTime = false
-        guard writer.canAdd(input) else { return (nil, []) }
-        writer.add(input)
-        video.addTrackAssociation(withTrackOf: input, type: AVAssetTrack.AssociationType.chapterList.rawValue)
-        let groups = chapters.enumerated().map { index, chapter -> AVTimedMetadataGroup in
-            let start = range.start + CMTime(seconds: chapter.seconds, preferredTimescale: 600)
-            let end = index + 1 < chapters.count
-                ? range.start + CMTime(seconds: chapters[index + 1].seconds, preferredTimescale: 600) : range.end
-            let item = AVMutableMetadataItem()
-            item.identifier = .quickTimeUserDataChapter
-            item.dataType = kCMMetadataBaseDataType_UTF8 as String
-            item.value = chapter.title as NSString
-            let safeEnd = max(end, start + CMTime(value: 1, timescale: 600))
-            return AVTimedMetadataGroup(items: [item], timeRange: CMTimeRange(start: start, end: safeEnd))
-        }
-        return (AVAssetWriterInputMetadataAdaptor(assetWriterInput: input), groups)
+        chapterTrack = ChapterTrack(chapters, range: range, writer: writer, video: videoInput)
     }
 
     struct VideoFormat {
@@ -326,8 +293,8 @@ final class ExportWorker: @unchecked Sendable {
             if let audioOutput, let audioInput {
                 group.addTask { [self] in await pump(audioOutput, into: audioInput, queue: "audio", onSample: nil) }
             }
-            if let chapterAdaptor {
-                group.addTask { [self] in await pumpChapters(into: chapterAdaptor) }
+            if let chapterTrack {
+                group.addTask { [self] in await pumpChapters(chapterTrack) }
             }
         }
 
@@ -347,8 +314,8 @@ final class ExportWorker: @unchecked Sendable {
     }
 
     /// Writes the chapter samples when the writer wants them (it interleaves them with the video).
-    private func pumpChapters(into adaptor: AVAssetWriterInputMetadataAdaptor) async {
-        let input = adaptor.assetWriterInput
+    private func pumpChapters(_ track: ChapterTrack) async {
+        let input = track.input
         let queue = DispatchQueue(label: "com.splicewright.export.chapters")
         let completion = PumpCompletion()
         lock.lock()
@@ -359,7 +326,7 @@ final class ExportWorker: @unchecked Sendable {
             completion.wait(continuation)
             input.requestMediaDataWhenReady(on: queue) { [self] in
                 while !completion.isFinished && input.isReadyForMoreMediaData {
-                    guard !isCancelled, next.index < chapterGroups.count, adaptor.append(chapterGroups[next.index]) else {
+                    guard !isCancelled, next.index < track.samples.count, input.append(track.samples[next.index]) else {
                         input.markAsFinished()
                         completion.finish()
                         return
