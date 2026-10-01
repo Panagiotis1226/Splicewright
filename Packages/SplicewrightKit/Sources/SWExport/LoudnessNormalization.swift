@@ -95,17 +95,28 @@ enum InterleavedAudio {
                                           count: count)
     }
 
+    /// Left and right as separate arrays.
+    private static func split(_ data: UnsafeMutableBufferPointer<Float>) -> [[Float]] {
+        let frames = data.count / 2
+        var left = [Float](repeating: 0, count: frames)
+        var right = [Float](repeating: 0, count: frames)
+        for frame in 0..<frames {
+            left[frame] = data[frame * 2]
+            right[frame] = data[frame * 2 + 1]
+        }
+        return [left, right]
+    }
+
     static func withChannels(of sample: CMSampleBuffer, _ body: ([[Float]]) -> Void) {
         guard let data = samples(of: sample) else { return }
-        let frames = data.count / 2
-        body([(0..<frames).map { data[$0 * 2] }, (0..<frames).map { data[$0 * 2 + 1] }])
+        body(split(data))
     }
 
     static func modifyChannels(of sample: CMSampleBuffer, _ body: (inout [[Float]]) -> Void) {
         guard let data = samples(of: sample) else { return }
-        let frames = data.count / 2
-        var channels = [(0..<frames).map { data[$0 * 2] }, (0..<frames).map { data[$0 * 2 + 1] }]
+        var channels = split(data)
         body(&channels)
+        let frames = data.count / 2
         for frame in 0..<frames {
             data[frame * 2] = channels[0][frame]
             data[frame * 2 + 1] = channels[1][frame]
