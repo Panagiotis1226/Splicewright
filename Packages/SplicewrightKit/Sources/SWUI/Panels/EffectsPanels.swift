@@ -19,54 +19,50 @@ struct EffectsPanel: View {
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
                 .padding(6)
-            List {
-                section("Video Transitions", TransitionKind.video)
-                section("Audio Transitions", TransitionKind.audio)
-                if search.isEmpty || "title".localizedCaseInsensitiveContains(search) {
-                    Section("Graphics") {
-                        Label("Title", systemImage: "textformat")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.textPrimary)
-                            .contentShape(Rectangle())
-                            .draggable(Self.titlePayload)
-                            .onTapGesture(count: 2) { workspace.newTitle() }
+            // A plain scroll view rather than a List: in a List the row's double-click
+            // recognizer swallows the mouse-down, so drags never start.
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    section("Video Transitions", TransitionKind.video)
+                    section("Audio Transitions", TransitionKind.audio)
+                    if search.isEmpty || "title".localizedCaseInsensitiveContains(search) {
+                        header("Graphics")
+                        EffectRow(symbol: "textformat", title: "Title", isDefault: false, payload: Self.titlePayload,
+                                  onDoubleClick: { workspace.newTitle() })
                             .help("Drag onto a video track, or double-click to add a title at the playhead")
                     }
                 }
+                .padding(.horizontal, 6)
+                .padding(.bottom, 6)
             }
-            .scrollContentBackground(.hidden)
-            Text("Drag onto a cut, or double-click to apply at the playhead. Right-click to set the default (⌘D, ⇧⌘D).")
+            Text("Drag onto a clip or cut, or double-click to apply at the playhead. Right-click to set the default "
+                 + "(⌘D, ⇧⌘D).")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(6)
         }
     }
 
+    private func header(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+    }
+
     @ViewBuilder
     private func section(_ title: String, _ kinds: [TransitionKind]) -> some View {
         let matching = kinds.filter { search.isEmpty || $0.displayName.localizedCaseInsensitiveContains(search) }
         if !matching.isEmpty {
-            Section(title) {
-                ForEach(matching) { kind in
-                    HStack {
-                        Image(systemName: Self.symbol(for: kind)).frame(width: 18)
-                        Text(kind.displayName)
-                        Spacer()
-                        if defaults.isDefault(kind) {
-                            Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Theme.accent)
-                                .help("Default transition")
-                        }
-                    }
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.textPrimary)
-                    .contentShape(Rectangle())
-                    .draggable(Self.transitionPrefix + kind.rawValue)
-                    .onTapGesture(count: 2) { apply(kind) }
+            header(title)
+            ForEach(matching) { kind in
+                EffectRow(symbol: Self.symbol(for: kind), title: kind.displayName, isDefault: defaults.isDefault(kind),
+                          payload: Self.transitionPrefix + kind.rawValue, onDoubleClick: { apply(kind) })
                     .contextMenu {
                         Button("Set as Default \(kind.isAudio ? "Audio" : "Video") Transition") { defaults.makeDefault(kind) }
                         Button("Apply at Playhead") { apply(kind) }
                     }
-                }
             }
         }
     }
@@ -90,6 +86,43 @@ struct EffectsPanel: View {
         case .wipeUp: return "arrow.up.square"
         case .constantPower: return "waveform.path"
         case .constantGain: return "waveform"
+        }
+    }
+}
+
+/// One draggable effect. The drag is the outermost modifier and the double-click is a
+/// simultaneous gesture, so neither blocks the other.
+private struct EffectRow: View {
+    let symbol: String
+    let title: String
+    let isDefault: Bool
+    let payload: String
+    let onDoubleClick: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack {
+            Image(systemName: symbol).frame(width: 18)
+            Text(title)
+            Spacer()
+            if isDefault {
+                Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Theme.accent)
+                    .help("Default transition")
+            }
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(Theme.textPrimary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 3).fill(hovering ? Color.white.opacity(0.08) : Color.clear))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .simultaneousGesture(TapGesture(count: 2).onEnded(onDoubleClick))
+        .draggable(payload) {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 11))
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 4).fill(Theme.accent.opacity(0.8)))
         }
     }
 }

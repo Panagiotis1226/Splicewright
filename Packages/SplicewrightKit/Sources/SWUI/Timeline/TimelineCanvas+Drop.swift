@@ -27,7 +27,7 @@ extension TimelineCanvas {
         let point = convert(info.draggingLocation, from: nil)
         guard let row = row(at: point, in: sequence), row.kind == kind.trackKind else { return nil }
         let tolerance = Int64(max(2, (16 / pixelsPerFrame).rounded()))
-        guard let edge = sequence.nearestClipEdge(to: frame(at: point.x), trackID: row.trackID, tolerance: tolerance)
+        guard let edge = sequence.transitionEdge(near: frame(at: point.x), trackID: row.trackID, tolerance: tolerance)
         else { return nil }
         var trial = sequence
         guard let id = trial.addTransition(kind, trackID: row.trackID, at: edge),

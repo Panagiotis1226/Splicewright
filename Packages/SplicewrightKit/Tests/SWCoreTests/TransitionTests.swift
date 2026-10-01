@@ -163,6 +163,19 @@ struct TransitionTests {
         #expect(far.isEmpty)
     }
 
+    @Test func dropEdges() {
+        let f = CutFixture()
+        // A and B meet at 60; A starts at 0 and B ends at 120.
+        #expect(f.sequence.transitionEdge(near: 10, trackID: f.v1, tolerance: 5) == 0, "near A's start")
+        #expect(f.sequence.transitionEdge(near: 40, trackID: f.v1, tolerance: 5) == 60, "middle of A, nearer the cut")
+        #expect(f.sequence.transitionEdge(near: 70, trackID: f.v1, tolerance: 5) == 60, "start of B")
+        #expect(f.sequence.transitionEdge(near: 110, trackID: f.v1, tolerance: 5) == 120, "end of B")
+        #expect(f.sequence.transitionEdge(near: 123, trackID: f.v1, tolerance: 5) == 120, "gap just after B")
+        #expect(f.sequence.transitionEdge(near: 200, trackID: f.v1, tolerance: 5) == nil, "far into the gap")
+        #expect(f.sequence.transitionEdge(near: 30, trackID: f.sequence.videoTracks[1].id, tolerance: 5) == nil,
+                "empty track")
+    }
+
     @Test func schema2TracksLoadWithoutTransitions() throws {
         var f = CutFixture()
         f.sequence.addTransition(.crossDissolve, trackID: f.v1, at: 60)

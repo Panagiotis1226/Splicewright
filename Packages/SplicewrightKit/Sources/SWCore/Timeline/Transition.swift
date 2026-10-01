@@ -231,6 +231,17 @@ public extension EditSequence {
         return edges.filter { abs($0 - frame) <= tolerance }.min { abs($0 - frame) < abs($1 - frame) }
     }
 
+    /// Where a transition dropped at `frame` attaches: over a clip, the nearer of its two edges
+    /// (a cut, if a neighbour meets it there); over a gap, the nearest clip edge within
+    /// `tolerance` frames.
+    func transitionEdge(near frame: Int64, trackID: UUID, tolerance: Int64) -> Int64? {
+        guard let track = track(trackID) else { return nil }
+        if let clip = track.clip(at: frame) {
+            return frame - clip.start <= clip.end - frame ? clip.start : clip.end
+        }
+        return nearestClipEdge(to: frame, trackID: trackID, tolerance: tolerance)
+    }
+
     /// Applies `kind` at the edit point nearest `frame` on each given track (⌘D / ⇧⌘D).
     /// Returns the IDs of the transitions added.
     @discardableResult
