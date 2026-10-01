@@ -47,6 +47,7 @@ struct SpeedTests {
         #expect(timing.isRemapped)
         #expect(abs(timing.sourceOffset(atClipFrame: 15) - 0.5) < 1e-9)
         #expect(abs(timing.sourceOffset(atClipFrame: 50) - timing.sourceOffset(atClipFrame: 31)) < 1e-9, "held")
+        #expect(abs(timing.sourceOffset(atClipFrame: 40) - 1) < 1e-9, "held on the keyframe's frame, a full second in")
         #expect(abs(timing.clipFrame(atSourceOffset: 0.5) - 15) < 1e-6)
 
         // A ramp from 100% to 300% over a second covers 2 s of source in that second.

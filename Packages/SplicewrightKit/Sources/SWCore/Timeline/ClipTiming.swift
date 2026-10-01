@@ -29,21 +29,21 @@ public struct ClipTiming: Sendable, Hashable {
         if speed.isAnimated {
             isReversed = false
             constantSpeed = 1
-            func factor(_ frame: Int64) -> Double {
-                max(0, (speed.value(at: RationalTime(frames: frame, rate: rate)).first ?? 100) / 100)
+            let fps = self.fps
+            func factor(_ frame: Double) -> Double {
+                let time = RationalTime(seconds: frame / fps, timescale: 600_000)
+                return max(0, (speed.value(at: time).first ?? 100) / 100)
             }
             var offsets = [0.0]
             offsets.reserveCapacity(Int(clip.duration) + 1)
-            var previous = factor(0)
-            for frame in 1...max(1, clip.duration) {
-                let next = factor(frame)
-                // Trapezoids: exact for linear keyframes, which change at frame boundaries.
-                offsets.append(offsets[offsets.count - 1] + (previous + next) / 2 / fps)
-                previous = next
+            for frame in 0..<max(1, clip.duration) {
+                // The speed in the middle of each frame: exact for linear ramps, and a Hold
+                // keyframe's step lands on its frame.
+                offsets.append(offsets[offsets.count - 1] + factor(Double(frame) + 0.5) / fps)
             }
             table = offsets
             firstSpeed = factor(0)
-            lastSpeed = previous
+            lastSpeed = factor(Double(clip.duration))
         } else {
             isReversed = clip.isReversed
             constantSpeed = min(max((speed.values.first ?? 100) / 100, Self.constantSpeedRange.lowerBound / 100),
