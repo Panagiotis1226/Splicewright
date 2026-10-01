@@ -41,6 +41,8 @@ public struct WorkspaceLayout: Sendable, Hashable, Codable, Identifiable {
     /// Timeline zoom, in points per frame.
     public var timelineZoom: Double = 3
     public var snapping: Bool = true
+    public var showsVideoKeyframes: Bool = true
+    public var showsAudioKeyframes: Bool = true
     /// Program monitor playback resolution: 1, 0.5 or 0.25.
     public var programResolution: Double = 1
     public var showsClipping: Bool = false
@@ -98,6 +100,8 @@ public struct WorkspaceLayout: Sendable, Hashable, Codable, Identifiable {
         iconSize = try value(.iconSize, defaults.iconSize)
         timelineZoom = try value(.timelineZoom, defaults.timelineZoom)
         snapping = try value(.snapping, defaults.snapping)
+        showsVideoKeyframes = try value(.showsVideoKeyframes, defaults.showsVideoKeyframes)
+        showsAudioKeyframes = try value(.showsAudioKeyframes, defaults.showsAudioKeyframes)
         programResolution = try value(.programResolution, defaults.programResolution)
         showsClipping = try value(.showsClipping, defaults.showsClipping)
         showsSafeMargins = try value(.showsSafeMargins, defaults.showsSafeMargins)

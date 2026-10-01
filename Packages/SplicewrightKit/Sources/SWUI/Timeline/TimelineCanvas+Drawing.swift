@@ -115,8 +115,12 @@ extension TimelineCanvas {
         if let item, row.kind == .audio, let peaks = timeline.waveform(for: item) {
             drawWaveform(peaks, clip: clip, in: rect)
         }
-        drawClipLabel(clip, at: CGPoint(x: textX, y: rect.minY + 2), maxX: rect.maxX - 4, online: online)
-        if let rate = sequence?.rate { drawClipMarkers(clip, in: rect, rate: rate) }
+        drawClipLabel(clip, at: CGPoint(x: textX, y: rect.minY + 2), maxX: rect.maxX - 4, online: online,
+                      marksKeyframes: !showsKeyframes(row.kind))
+        if let rate = sequence?.rate {
+            drawClipMarkers(clip, in: rect, rate: rate)
+            drawKeyframes(clip, in: rect, kind: row.kind, rate: rate)
+        }
         NSGraphicsContext.restoreGraphicsState()
 
         if selected {
@@ -177,11 +181,11 @@ extension TimelineCanvas {
         return false
     }
 
-    private func drawClipLabel(_ clip: Clip, at point: CGPoint, maxX: CGFloat, online: Bool) {
+    private func drawClipLabel(_ clip: Clip, at point: CGPoint, maxX: CGFloat, online: Bool, marksKeyframes: Bool) {
         guard maxX - point.x > 14 else { return }
         var label = online ? clip.name : "\(clip.name) (offline)"
-        // ◆ marks clips with keyframes (Effect Controls shows them).
-        if clip.isAnimated { label = "◆ " + label }
+        // With keyframes hidden on the timeline, ◆ says the clip has some.
+        if marksKeyframes && clip.isAnimated { label = "◆ " + label }
         // fx marks clips with video effects, as in Premiere.
         if !clip.effects.isEmpty { label = "fx " + label }
         if clip.opacity < 1 && !clip.motion.opacity.isAnimated { label += "  \(Int((clip.opacity * 100).rounded()))%" }

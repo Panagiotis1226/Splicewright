@@ -18,6 +18,11 @@ public final class TimelineState: ObservableObject {
     @Published public var scrollX: CGFloat = 0
     @Published public var scrollY: CGFloat = 0
     @Published public var isSnapping = true
+    /// Keyframes and the Opacity/Volume line on clips (Premiere's Timeline Display Settings).
+    @Published public var showsVideoKeyframes = true
+    @Published public var showsAudioKeyframes = true
+    /// Keyframes selected on the timeline (Delete removes them).
+    @Published public var selectedKeyframes: Set<UUID> = []
     /// The sequence being dragged; drawn instead of the document's sequence.
     @Published public var preview: EditSequence?
     /// Where the current drag snapped, for the snap line.

@@ -83,6 +83,7 @@ checks = {
     "mixer fader set": r.get("mixerApplied"),
     "export loudness normalized": "-14.0 LUFS" in r.get("loudnessNormalized", ""),
     "timeline exported and imported": r.get("timelineRoundTrip") == "ok",
+    "keyframes at their frames on the timeline": r.get("timelineKeyframes") == "ok",
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

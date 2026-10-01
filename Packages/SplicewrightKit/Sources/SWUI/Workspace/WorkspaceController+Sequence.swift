@@ -317,6 +317,8 @@ extension WorkspaceController {
             liftOrExtract(extract: false)
         case .extractEdit:
             liftOrExtract(extract: true)
+        case .deleteSelection where activePanel == .timeline && !timeline.selectedKeyframes.isEmpty:
+            deleteSelectedTimelineKeyframes()
         case .deleteSelection where activePanel == .timeline && timeline.selectedTransition != nil:
             if let id = timeline.selectedTransition { deleteTransition(id) }
         case .deleteSelection where activePanel == .timeline:

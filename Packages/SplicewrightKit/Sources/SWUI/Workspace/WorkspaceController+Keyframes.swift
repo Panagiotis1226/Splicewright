@@ -85,10 +85,7 @@ extension WorkspaceController {
     }
 
     /// Every keyframeable number of a clip: its properties and its effects' parameters.
-    func allRefs(of clip: Clip) -> [PropertyRef] {
-        ClipProperty.allCases.map { PropertyRef.clip($0) }
-            + clip.effects.flatMap { effect in effect.kind.parameters.map { PropertyRef.effect(effect.id, $0.key) } }
-    }
+    func allRefs(of clip: Clip) -> [PropertyRef] { clip.allRefs }
 
     /// Moves the playhead to the previous or next keyframe of `ref` (of everything if nil).
     func goToKeyframe(next: Bool, _ ref: PropertyRef?, of clip: Clip) {
@@ -161,6 +158,21 @@ extension WorkspaceController {
             }
         }
         if live { liveEdit(change) } else { editSequence("Keyframe Handle") { sequence, _ in change(&sequence) } }
+    }
+
+    /// Delete with keyframes selected on the timeline: removes them from whichever clip has them.
+    func deleteSelectedTimelineKeyframes() {
+        let ids = timeline.selectedKeyframes
+        guard let sequence = activeSequence, !ids.isEmpty else { return }
+        editSequence(ids.count == 1 ? "Delete Keyframe" : "Delete Keyframes") { edited, _ in
+            for clip in sequence.allTracks.flatMap(\.clips) {
+                for property in [ClipProperty.opacity, .volume]
+                where clip.property(property).keyframes.contains(where: { ids.contains($0.id) }) {
+                    edited.updateProperty(property, of: clip.id) { animated in ids.forEach { animated.remove($0) } }
+                }
+            }
+        }
+        timeline.selectedKeyframes = []
     }
 
     func resetValue(_ ref: PropertyRef, of clipID: UUID, actionName: String) {

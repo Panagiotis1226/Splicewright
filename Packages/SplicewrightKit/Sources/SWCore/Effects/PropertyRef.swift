@@ -28,6 +28,30 @@ public extension Clip {
     }
 }
 
+public extension Clip {
+    /// Every keyframeable number of the clip: its properties and its effects' parameters.
+    var allRefs: [PropertyRef] {
+        ClipProperty.allCases.map { PropertyRef.clip($0) }
+            + effects.flatMap { effect in effect.kind.parameters.map { PropertyRef.effect(effect.id, $0.key) } }
+    }
+
+    /// The sequence frames where this clip has keyframes (any property or effect), inside the clip.
+    func keyframeFrames(rate: FrameRate) -> [Int64] {
+        var frames: Set<Int64> = []
+        for ref in allRefs {
+            for keyframe in animatable(ref)?.keyframes ?? [] {
+                let frame = sequenceFrame(ofKeyframeTime: keyframe.time, for: ref, rate: rate)
+                if range.contains(frame) { frames.insert(frame) }
+            }
+        }
+        return frames.sorted()
+    }
+
+    /// The property a clip's line on the timeline shows and edits, as in Premiere: Volume on
+    /// audio clips, Opacity on video clips.
+    static func rubberBandProperty(isAudio: Bool) -> ClipProperty { isAudio ? .volume : .opacity }
+}
+
 public extension EditSequence {
     /// Changes one keyframeable number of a clip (values stay within its range).
     mutating func updateAnimatable(_ ref: PropertyRef, of clipID: UUID, _ change: (inout AnimatableProperty) -> Void) {

@@ -90,6 +90,12 @@ public struct SplicewrightCommands: Commands {
                 .disabled(workspace == nil)
             Button("Program Monitor Background…") { workspace?.isMonitorBackgroundPickerShown = true }
                 .disabled(workspace == nil)
+            Toggle("Show Video Keyframes", isOn: Binding(get: { workspace?.timeline.showsVideoKeyframes ?? true },
+                                                         set: { workspace?.timeline.showsVideoKeyframes = $0 }))
+                .disabled(workspace == nil)
+            Toggle("Show Audio Keyframes", isOn: Binding(get: { workspace?.timeline.showsAudioKeyframes ?? true },
+                                                         set: { workspace?.timeline.showsAudioKeyframes = $0 }))
+                .disabled(workspace == nil)
             Divider()
         }
         CommandMenu("Clip") {

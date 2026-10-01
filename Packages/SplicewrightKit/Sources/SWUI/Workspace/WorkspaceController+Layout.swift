@@ -24,6 +24,8 @@ extension WorkspaceController {
         record(program.$renderScale) { $0.programResolution = $1 }
         record(program.$showsClipping) { $0.showsClipping = $1 }
         record(timeline.$isSnapping) { $0.snapping = $1 }
+        record(timeline.$showsVideoKeyframes) { $0.showsVideoKeyframes = $1 }
+        record(timeline.$showsAudioKeyframes) { $0.showsAudioKeyframes = $1 }
         // Zoom changes continuously while pinching; save it once it settles.
         timeline.$pixelsPerFrame.dropFirst()
             .debounce(for: .milliseconds(600), scheduler: RunLoop.main)
@@ -55,6 +57,8 @@ extension WorkspaceController {
         program.renderScale = layout.programResolution
         program.showsClipping = layout.showsClipping
         timeline.isSnapping = layout.snapping
+        timeline.showsVideoKeyframes = layout.showsVideoKeyframes
+        timeline.showsAudioKeyframes = layout.showsAudioKeyframes
         timeline.pixelsPerFrame = CGFloat(layout.timelineZoom)
         if includingWindow, let window, let frame = layout.windowFrame { Self.place(window, at: frame) }
     }

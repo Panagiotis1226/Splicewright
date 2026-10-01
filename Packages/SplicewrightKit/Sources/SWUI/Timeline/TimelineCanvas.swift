@@ -36,6 +36,10 @@ final class TimelineCanvas: NSView {
         case rateStretch(clipID: UUID, edge: TrimEdge)
         /// Dragging a marker along the ruler.
         case marker(id: UUID, startFrame: Int64)
+        /// Dragging a keyframe on a clip's Opacity or Volume line.
+        case keyframe(clipID: UUID, keyframeID: UUID, property: ClipProperty)
+        /// Dragging the whole Opacity or Volume line up or down.
+        case band(clipID: UUID, property: ClipProperty)
     }
 
     struct Drag {

@@ -45,6 +45,16 @@ struct TimelinePanel: View {
             Toggle(isOn: $timeline.isSnapping) { Image(systemName: "arrow.left.and.line.vertical.and.arrow.right") }
                 .toggleStyle(.button)
                 .help("Snap in Timeline (S)")
+            Menu {
+                Toggle("Show Video Keyframes", isOn: $timeline.showsVideoKeyframes)
+                Toggle("Show Audio Keyframes", isOn: $timeline.showsAudioKeyframes)
+            } label: {
+                Image(systemName: "wrench.adjustable")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Timeline Display Settings: keyframes and the Opacity/Volume line on clips")
             Button { zoom(1 / 1.5) } label: { Image(systemName: "minus.magnifyingglass") }
                 .help("Zoom Out (-)")
             Button { zoom(1.5) } label: { Image(systemName: "plus.magnifyingglass") }

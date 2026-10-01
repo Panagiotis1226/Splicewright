@@ -54,6 +54,7 @@ enum SmokeTestDriver {
         var mixerApplied = false
         var loudnessNormalized = ""
         var timelineRoundTrip = ""
+        var timelineKeyframes = ""
         var errors: [String] = []
     }
 
@@ -199,6 +200,12 @@ enum SmokeTestDriver {
         workspace.setProperty(.scale, of: clip.id, to: [100])
         let scale = workspace.activeSequence?.clip(clip.id)?.motion.scale
         report.keyframesAdded = scale?.keyframes.map(\.values) == [[50], [100]]
+        // Where the timeline draws them: at the frames they were set on, not the clip's start.
+        if let animated = workspace.activeSequence?.clip(clip.id), let rate = workspace.activeSequence?.rate {
+            let expected = [clip.start, clip.start + min(10, clip.duration - 1)]
+            let frames = animated.keyframeFrames(rate: rate)
+            report.timelineKeyframes = frames == expected ? "ok" : "\(frames) instead of \(expected)"
+        }
 
         let before = workspace.activeSequence?.allTracks.reduce(0) { $0 + $1.clips.count } ?? 0
         workspace.copySelectedClips()

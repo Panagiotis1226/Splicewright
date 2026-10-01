@@ -91,6 +91,7 @@ extension TimelineCanvas {
             workspace.openInSource(hit.clip.mediaID)
             return
         }
+        if keyframeMouseDown(at: point, event: event, in: sequence) { return }
         toolDown(workspace.activeTool, at: point, event: event, sequence: sequence)
     }
 
@@ -273,6 +274,8 @@ extension TimelineCanvas {
             return captionPreview(id, edge: edge, original: original, delta: delta)
         case .marker(let id, let startFrame):
             return markerPreview(id, startFrame: startFrame, original: original, delta: delta)
+        case .keyframe, .band:
+            return keyframePreview(kind, original: original, point: point)
         case .rateStretch(let clipID, let edge):
             delta = snappedEdgeDelta(clipID, edge: edge, delta: delta, in: original, playhead: playhead)
             copy.rateStretch(clipID, edge: edge, by: delta)

@@ -144,6 +144,7 @@ extension TimelineCanvas {
         let point = convert(event.locationInWindow, from: nil)
         if let menu = rulerMenu(at: point, in: sequence) { return menu }
         if let menu = captionMenu(at: point, in: sequence) { return menu }
+        if let menu = keyframeMenu(at: point, in: sequence) { return menu }
         if point.x < TimelineLayout.headerWidth, let row = row(at: point, in: sequence) {
             return trackMenu(for: row, in: sequence)
         }
@@ -152,7 +153,13 @@ extension TimelineCanvas {
             timeline.selectedTransition = hit.transition.id
             return transitionMenu(for: hit.transition)
         }
-        guard let hit = clipHit(at: point, in: sequence) else { return nil }
+        guard let hit = clipHit(at: point, in: sequence) else {
+            // An empty part of a track: the keyframe display options.
+            guard row(at: point, in: sequence) != nil else { return nil }
+            let menu = NSMenu()
+            keyframeVisibilityItems().forEach(menu.addItem)
+            return menu
+        }
         if !timeline.selection.contains(hit.clip.id) { timeline.selection = sequence.expandingLinks([hit.clip.id]) }
         return clipMenu(for: hit, in: sequence)
     }
@@ -254,6 +261,9 @@ extension TimelineCanvas {
             self.workspace.selectedMediaIDs = [hit.clip.mediaID]
             self.workspace.activePanel = .project
         })
+        menu.addItem(.separator())
+        keyframeVisibilityItems().forEach(menu.addItem)
+        menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Ripple Delete") { [weak self] in self?.workspace.deleteSelectedClips(ripple: true) })
         menu.addItem(ActionMenuItem("Delete") { [weak self] in self?.workspace.deleteSelectedClips(ripple: false) })
         return menu
