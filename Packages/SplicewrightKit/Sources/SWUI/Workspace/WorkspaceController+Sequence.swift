@@ -100,7 +100,11 @@ extension WorkspaceController {
         guard let id = activeSequenceID else { return }
         document?.perform(actionName, undoManager: undoManager) { project in
             let durations = project.mediaDurations
-            project.updateSequence(id) { change(&$0, durations) }
+            project.updateSequence(id) { sequence in
+                change(&sequence, durations)
+                // Transitions whose clips no longer meet go away with the edit that separated them.
+                sequence.pruneTransitions()
+            }
         }
     }
 
@@ -308,6 +312,8 @@ extension WorkspaceController {
             liftOrExtract(extract: false)
         case .extractEdit:
             liftOrExtract(extract: true)
+        case .deleteSelection where activePanel == .timeline && timeline.selectedTransition != nil:
+            if let id = timeline.selectedTransition { deleteTransition(id) }
         case .deleteSelection where activePanel == .timeline:
             deleteSelectedClips(ripple: false)
         case .rippleDelete where activePanel == .timeline:

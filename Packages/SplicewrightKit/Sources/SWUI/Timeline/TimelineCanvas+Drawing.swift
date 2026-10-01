@@ -71,6 +71,10 @@ extension TimelineCanvas {
         for clip in track.clips where clip.end >= firstVisible && clip.start <= lastVisible {
             drawClip(clip, in: row, track: track)
         }
+        for transition in track.resolvedTransitions
+        where transition.range.end >= firstVisible && transition.range.start <= lastVisible {
+            drawTransition(transition, in: row)
+        }
         if track.isLocked {
             NSColor(white: 0, alpha: 0.35).setFill()
             CGRect(x: TimelineLayout.headerWidth, y: row.rect.minY, width: laneWidth, height: row.rect.height)
@@ -115,6 +119,57 @@ extension TimelineCanvas {
             path.lineWidth = 1.5
             path.stroke()
         }
+    }
+
+    /// A transition is a band across the top of its clips, so the clips below stay clickable.
+    private func drawTransition(_ transition: ResolvedTransition, in row: TimelineLayout.Row) {
+        let rect = transitionRect(transition, in: row)
+        let selected = timeline.selectedTransition == transition.id
+        let path = NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2)
+        NSColor(white: selected ? 0.85 : 0.62, alpha: 0.92).setFill()
+        path.fill()
+        NSColor(white: 0, alpha: 0.5).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+        // A diagonal shows the mix direction, as in Premiere.
+        let diagonal = NSBezierPath()
+        diagonal.move(to: CGPoint(x: rect.minX + 1, y: rect.maxY - 1))
+        diagonal.line(to: CGPoint(x: rect.maxX - 1, y: rect.minY + 1))
+        NSColor(white: 0, alpha: 0.35).setStroke()
+        diagonal.stroke()
+        if repeatsFrames(transition) {
+            // Not enough source media beyond the cut: frames are held. Mark the corner red.
+            let corner = NSBezierPath()
+            corner.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+            corner.line(to: CGPoint(x: rect.maxX - 7, y: rect.minY))
+            corner.line(to: CGPoint(x: rect.maxX, y: rect.minY + 7))
+            corner.close()
+            NSColor.systemRed.setFill()
+            corner.fill()
+        }
+        guard rect.width > 40 else { return }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 9, weight: .semibold),
+            .foregroundColor: NSColor.black.withAlphaComponent(0.8),
+        ]
+        (transition.kind.displayName as NSString).draw(in: rect.insetBy(dx: 4, dy: 1), withAttributes: attributes)
+    }
+
+    /// True when a side of the transition has to hold its first or last frame.
+    func repeatsFrames(_ transition: ResolvedTransition) -> Bool {
+        guard let sequence else { return false }
+        let rate = sequence.rate
+        func mediaFrames(_ clip: Clip) -> Int64? {
+            workspace.project.item(clip.mediaID)?.info.duration.frameIndex(at: rate)
+        }
+        if let left = transition.right != nil ? transition.left : nil, let total = mediaFrames(left) {
+            let tail = total - left.sourceStart.frameIndex(at: rate) - left.duration
+            if tail < transition.after { return true }
+        }
+        if let right = transition.left != nil ? transition.right : nil {
+            if right.sourceStart.frameIndex(at: rate) < transition.before { return true }
+        }
+        return false
     }
 
     private func drawClipLabel(_ clip: Clip, at point: CGPoint, maxX: CGFloat, online: Bool) {

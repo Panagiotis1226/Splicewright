@@ -14,6 +14,27 @@ extension TimelineCanvas {
             .filter { workspace.project.item($0) != nil }
     }
 
+    private func droppedTransition(_ info: NSDraggingInfo) -> TransitionKind? {
+        let strings = (info.draggingPasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: .string) }
+        guard let payload = strings.first(where: { $0.hasPrefix(EffectsPanel.transitionPrefix) }) else { return nil }
+        return TransitionKind(rawValue: String(payload.dropFirst(EffectsPanel.transitionPrefix.count)))
+    }
+
+    /// The clip edge a transition dropped at `info` would attach to, and its would-be range.
+    private func transitionDrop(_ kind: TransitionKind, _ info: NSDraggingInfo)
+        -> (trackID: UUID, edge: Int64, range: FrameRange)? {
+        guard let sequence = workspace.activeSequence else { return nil }
+        let point = convert(info.draggingLocation, from: nil)
+        guard let row = row(at: point, in: sequence), row.kind == kind.trackKind else { return nil }
+        let tolerance = Int64(max(2, (16 / pixelsPerFrame).rounded()))
+        guard let edge = sequence.nearestClipEdge(to: frame(at: point.x), trackID: row.trackID, tolerance: tolerance)
+        else { return nil }
+        var trial = sequence
+        guard let id = trial.addTransition(kind, trackID: row.trackID, at: edge),
+              let range = trial.transition(id)?.transition.range else { return nil }
+        return (row.trackID, edge, range)
+    }
+
     private func dropLocation(_ info: NSDraggingInfo) -> (frame: Int64, trackID: UUID?) {
         let point = convert(info.draggingLocation, from: nil)
         guard let sequence = workspace.activeSequence else { return (0, nil) }
@@ -28,6 +49,15 @@ extension TimelineCanvas {
     }
 
     private func updateDropTarget(_ info: NSDraggingInfo) -> NSDragOperation {
+        if let kind = droppedTransition(info) {
+            guard let drop = transitionDrop(kind, info) else {
+                timeline.dropTarget = nil
+                return []
+            }
+            timeline.dropTarget = TimelineState.DropTarget(frame: drop.range.start, trackID: drop.trackID,
+                                                           length: drop.range.length, transition: kind)
+            return .copy
+        }
         let ids = droppedMediaIDs(info)
         guard !ids.isEmpty else {
             timeline.dropTarget = nil
@@ -63,6 +93,12 @@ extension TimelineCanvas {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         defer { timeline.dropTarget = nil }
+        if let kind = droppedTransition(sender) {
+            guard let drop = transitionDrop(kind, sender) else { return false }
+            workspace.addTransition(kind, trackID: drop.trackID, at: drop.edge)
+            window?.makeFirstResponder(self)
+            return true
+        }
         let ids = droppedMediaIDs(sender)
         guard !ids.isEmpty else { return false }
         let location = dropLocation(sender)
@@ -81,9 +117,46 @@ extension TimelineCanvas {
         if point.x < TimelineLayout.headerWidth, let row = row(at: point, in: sequence) {
             return trackMenu(for: row, in: sequence)
         }
+        if let hit = transitionHit(at: point, in: sequence) {
+            timeline.selection = []
+            timeline.selectedTransition = hit.transition.id
+            return transitionMenu(for: hit.transition)
+        }
         guard let hit = clipHit(at: point, in: sequence) else { return nil }
         if !timeline.selection.contains(hit.clip.id) { timeline.selection = sequence.expandingLinks([hit.clip.id]) }
         return clipMenu(for: hit, in: sequence)
+    }
+
+    private func transitionMenu(for transition: ResolvedTransition) -> NSMenu {
+        let menu = NSMenu()
+        let kinds = NSMenu()
+        for kind in transition.kind.isAudio ? TransitionKind.audio : TransitionKind.video {
+            let item = ActionMenuItem(kind.displayName) { [weak self] in
+                self?.workspace.updateTransition(transition.id, "Change Transition") { $0.kind = kind }
+            }
+            item.state = kind == transition.kind ? .on : .off
+            kinds.addItem(item)
+        }
+        let kindItem = NSMenuItem(title: "Transition", action: nil, keyEquivalent: "")
+        kindItem.submenu = kinds
+        menu.addItem(kindItem)
+        if transition.left != nil && transition.right != nil {
+            let alignments = NSMenu()
+            for alignment in TransitionAlignment.allCases {
+                let item = ActionMenuItem(alignment.displayName) { [weak self] in
+                    self?.workspace.updateTransition(transition.id, "Transition Alignment") { $0.alignment = alignment }
+                }
+                item.state = alignment == transition.transition.alignment ? .on : .off
+                alignments.addItem(item)
+            }
+            let alignmentItem = NSMenuItem(title: "Alignment", action: nil, keyEquivalent: "")
+            alignmentItem.submenu = alignments
+            menu.addItem(alignmentItem)
+        }
+        menu.addItem(ActionMenuItem("Set Duration…") { [weak self] in self?.workspace.activePanel = .effectControls })
+        menu.addItem(.separator())
+        menu.addItem(ActionMenuItem("Delete") { [weak self] in self?.workspace.deleteTransition(transition.id) })
+        return menu
     }
 
     private func trackMenu(for row: TimelineLayout.Row, in sequence: EditSequence) -> NSMenu {
@@ -134,6 +207,11 @@ extension TimelineCanvas {
             item.submenu = gain
             menu.addItem(item)
         }
+        menu.addItem(.separator())
+        let audio = hit.row.kind == .audio
+        menu.addItem(ActionMenuItem("Apply Default Transitions") { [weak self] in
+            self?.workspace.applyDefaultTransition(audio: audio)
+        })
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Reveal in Project") { [weak self] in
             guard let self else { return }

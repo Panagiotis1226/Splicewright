@@ -65,38 +65,3 @@ struct ToolsPanel: View {
         }
     }
 }
-
-/// Effects browser. Transitions and titles are implemented in M6.
-struct EffectsPanel: View {
-    var body: some View {
-        List {
-            Section("Video Transitions") {
-                Label("Cross Dissolve", systemImage: "square.on.square")
-                Label("Dip to Black", systemImage: "square.fill")
-                Label("Dip to White", systemImage: "square")
-                Label("Film Dissolve", systemImage: "square.on.square.dashed")
-            }
-            Section("Graphics") {
-                Label("Title", systemImage: "textformat")
-            }
-        }
-        .font(.system(size: 11))
-        .foregroundStyle(Theme.textSecondary)
-        .scrollContentBackground(.hidden)
-        .disabled(true)
-        .overlay(alignment: .bottom) {
-            Text("Available in a later milestone").font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
-                .padding(8)
-        }
-    }
-}
-
-/// Effect Controls for the selected timeline clip (Motion, Opacity, …) — later milestones.
-struct EffectControlsPanel: View {
-    var body: some View {
-        Text("(no clip selected)")
-            .font(.system(size: 11))
-            .foregroundStyle(Theme.textSecondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}

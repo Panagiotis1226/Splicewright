@@ -28,6 +28,8 @@ final class TimelineCanvas: NSView {
         case trim(clipID: UUID, edge: TrimEdge, mode: TrimMode)
         case slip(UUID)
         case slide(UUID)
+        /// Dragging a transition's edge changes its duration.
+        case transitionDuration(id: UUID, edge: TrimEdge, original: Int64, symmetric: Bool)
     }
 
     struct Drag {

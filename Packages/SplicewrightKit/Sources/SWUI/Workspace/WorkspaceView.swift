@@ -31,8 +31,8 @@ public struct WorkspaceView: View {
                     workspace: workspace
                 ) {
                     switch sourceTab {
-                    case .effectControls: EffectControlsPanel()
-                    case .effects: EffectsPanel()
+                    case .effectControls: EffectControlsPanel(workspace: workspace)
+                    case .effects: EffectsPanel(workspace: workspace)
                     default: SourceMonitorPanel(workspace: workspace)
                     }
                 }

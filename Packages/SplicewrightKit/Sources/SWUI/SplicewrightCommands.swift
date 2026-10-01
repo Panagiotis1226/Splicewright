@@ -41,6 +41,13 @@ public struct SplicewrightCommands: Commands {
                 .shortcut(.addEditAllTracks, keys)
             Button("Ripple Delete") { workspace?.deleteSelectedClips(ripple: true) }
             Divider()
+            Button("Apply Video Transition") { workspace?.applyDefaultTransition(audio: false) }
+                .shortcut(.applyVideoTransition, keys)
+                .disabled(workspace?.activeSequenceID == nil)
+            Button("Apply Audio Transition") { workspace?.applyDefaultTransition(audio: true) }
+                .shortcut(.applyAudioTransition, keys)
+                .disabled(workspace?.activeSequenceID == nil)
+            Divider()
             Button("Add Video Track") { workspace?.addTrack(.video) }
             Button("Add Audio Track") { workspace?.addTrack(.audio) }
         }

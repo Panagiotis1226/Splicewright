@@ -7,7 +7,11 @@ import SWMedia
 /// shown while a drag is in progress (committed to the document on mouse-up).
 @MainActor
 public final class TimelineState: ObservableObject {
-    @Published public var selection: Set<UUID> = []
+    @Published public var selection: Set<UUID> = [] {
+        didSet { if !selection.isEmpty { selectedTransition = nil } }
+    }
+    /// The selected transition (selecting one clears the clip selection, and vice versa).
+    @Published public var selectedTransition: UUID?
     /// Horizontal zoom.
     @Published public var pixelsPerFrame: CGFloat = 3
     /// Horizontal scroll offset of frame 0, in points.
@@ -25,6 +29,8 @@ public final class TimelineState: ObservableObject {
         public var frame: Int64
         public var trackID: UUID
         public var length: Int64
+        /// Set for an Effects-panel transition drop: `frame...frame+length` is its would-be range.
+        public var transition: TransitionKind?
     }
 
     public static let minPixelsPerFrame: CGFloat = 0.02

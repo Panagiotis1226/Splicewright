@@ -26,6 +26,32 @@ extension TimelineCanvas {
         return nil
     }
 
+    struct TransitionHit {
+        var transition: ResolvedTransition
+        var row: TimelineLayout.Row
+        var edge: TrimEdge?
+    }
+
+    func transitionRect(_ transition: ResolvedTransition, in row: TimelineLayout.Row) -> CGRect {
+        CGRect(x: x(for: transition.range.start), y: row.rect.minY + 2,
+               width: max(4, CGFloat(transition.range.length) * pixelsPerFrame), height: (row.rect.height - 4) * 0.42)
+    }
+
+    func transitionHit(at point: CGPoint, in sequence: EditSequence) -> TransitionHit? {
+        guard point.x >= TimelineLayout.headerWidth, let row = row(at: point, in: sequence),
+              let track = sequence.track(row.trackID) else { return nil }
+        for transition in track.resolvedTransitions {
+            let rect = transitionRect(transition, in: row)
+            guard rect.insetBy(dx: -3, dy: 0).contains(point) else { continue }
+            let grab: CGFloat = 4
+            var edge: TrimEdge?
+            if rect.width > grab * 4, abs(point.x - rect.minX) <= grab { edge = .start }
+            if rect.width > grab * 4, abs(point.x - rect.maxX) <= grab { edge = .end }
+            return TransitionHit(transition: transition, row: row, edge: edge)
+        }
+        return nil
+    }
+
     // MARK: - Mouse down
 
     override func mouseDown(with event: NSEvent) {
@@ -46,6 +72,10 @@ extension TimelineCanvas {
         }
         if point.x < TimelineLayout.headerWidth {
             headerClicked(at: point, in: sequence)
+            return
+        }
+        if event.clickCount == 2, transitionHit(at: point, in: sequence) != nil {
+            workspace.activePanel = .effectControls
             return
         }
         if event.clickCount == 2, let hit = clipHit(at: point, in: sequence), hit.edge == nil {
@@ -80,6 +110,18 @@ extension TimelineCanvas {
             drag = Drag(kind: .trim(clipID: hit.clip.id, edge: edge, mode: tool == .rippleEdit ? .ripple : .roll),
                         original: sequence, actionName: tool == .rippleEdit ? "Ripple Trim" : "Rolling Edit")
         case .selection, .rateStretch, .pen, .type:
+            if let transition = transitionHit(at: point, in: sequence) {
+                timeline.selection = []
+                timeline.selectedTransition = transition.transition.id
+                if let edge = transition.edge {
+                    let resolved = transition.transition
+                    drag = Drag(kind: .transitionDuration(id: resolved.id, edge: edge, original: resolved.duration,
+                                                          symmetric: resolved.before > 0 && resolved.after > 0),
+                                original: sequence, actionName: "Transition Duration")
+                }
+                return
+            }
+            timeline.selectedTransition = nil
             guard let hit else {
                 timeline.selection = []
                 return
@@ -218,6 +260,10 @@ extension TimelineCanvas {
             copy.slip(clipID, by: -delta, media: media)
         case .slide(let clipID):
             copy.slide(clipID, by: delta, media: media)
+        case .transitionDuration(let id, let edge, let original, let symmetric):
+            // Centered transitions grow on both sides, so an edge moves half as far as the duration.
+            let change = (symmetric ? 2 : 1) * (edge == .end ? delta : -delta)
+            copy.updateTransition(id) { $0.duration = max(1, original + change) }
         case .scrub, .hand:
             break
         }
