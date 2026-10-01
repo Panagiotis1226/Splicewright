@@ -111,6 +111,10 @@ enum SmokeTestDriver {
         _ = await waitFor(seconds: 30) { !workspace.program.isBuilding && workspace.program.player.currentItem != nil }
         report.playheadBefore = workspace.program.currentFrame
         workspace.program.togglePlay()
+        // Time two seconds from when frames start moving: a busy CI machine can take a while
+        // to start playback, which isn't what this checks.
+        let start = report.playheadBefore
+        _ = await waitFor(seconds: 10) { workspace.program.currentFrame != start }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         workspace.program.pause()
         report.playheadAfter = workspace.program.currentFrame
