@@ -50,6 +50,11 @@ struct SourceMonitorPanel: View {
                 .font(Theme.timecodeFont)
                 .foregroundStyle(Theme.timecode)
                 .help("Playhead position")
+            Toggle(isOn: $workspace.useProxies) { Image(systemName: "p.square") }
+                .toggleStyle(.button)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(keys.hint("Toggle Proxies", .toggleProxies))
             Spacer()
             Text(monitor.mediaName)
                 .font(.system(size: 11))

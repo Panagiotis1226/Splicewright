@@ -12,6 +12,11 @@ public actor WaveformProvider {
     public static let shared = WaveformProvider()
 
     private var memory: [String: WaveformPeaks] = [:]
+
+    /// Forgets waveforms held in memory (after the disk cache was cleared).
+    public func clearMemory() {
+        memory.removeAll()
+    }
     private var inFlight: [String: Task<WaveformPeaks?, Never>] = [:]
     private let directory: URL
 

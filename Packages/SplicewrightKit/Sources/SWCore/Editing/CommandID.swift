@@ -22,6 +22,8 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
     case importMedia, newBin, exportMedia, newSequence
     // Graphics
     case newTitle
+    // View
+    case toggleProxies
 
     public var id: String { rawValue }
 
@@ -56,6 +58,8 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
             return .file
         case .newTitle:
             return .graphics
+        case .toggleProxies:
+            return .transport
         }
     }
 
@@ -77,7 +81,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         .applyVideoTransition: "Apply Video Transition", .applyAudioTransition: "Apply Audio Transition",
         .zoomIn: "Zoom In", .zoomOut: "Zoom Out", .zoomToFit: "Zoom to Sequence", .toggleSnapping: "Snap",
         .importMedia: "Import…", .newBin: "New Bin", .exportMedia: "Export Media…", .newSequence: "New Sequence…",
-        .newTitle: "New Title",
+        .newTitle: "New Title", .toggleProxies: "Toggle Proxies",
     ]
 
     public var tool: EditTool? {

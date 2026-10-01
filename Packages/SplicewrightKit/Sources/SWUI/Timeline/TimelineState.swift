@@ -41,8 +41,30 @@ public final class TimelineState: ObservableObject {
     // Each item is loaded at most once per session, whether or not loading succeeds.
     private var attemptedWaveforms: Set<UUID> = []
     private var attemptedThumbnails: Set<UUID> = []
+    private var cacheObserver: AnyCancellable?
 
-    public init() {}
+    public init() {
+        // After the cache manager deletes artwork, load it again (which rebuilds the files).
+        cacheObserver = NotificationCenter.default.publisher(for: .splicewrightCacheCleared)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] note in
+                let categories = note.userInfo?["categories"] as? [String] ?? []
+                self?.clearArtwork(thumbnails: categories.contains(CacheCategory.thumbnails.rawValue),
+                                   waveforms: categories.contains(CacheCategory.waveforms.rawValue))
+            }
+    }
+
+    func clearArtwork(thumbnails clearThumbnails: Bool, waveforms clearWaveforms: Bool) {
+        if clearThumbnails {
+            thumbnails = [:]
+            attemptedThumbnails = []
+        }
+        if clearWaveforms {
+            waveforms = [:]
+            attemptedWaveforms = []
+        }
+        if clearThumbnails || clearWaveforms { objectWillChange.send() }
+    }
 
     public func zoom(by factor: CGFloat, anchorX: CGFloat, headerWidth: CGFloat) {
         let old = pixelsPerFrame

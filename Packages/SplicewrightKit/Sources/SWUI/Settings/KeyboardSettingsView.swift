@@ -182,6 +182,10 @@ public struct SettingsView: View {
         TabView {
             KeyboardSettingsView(store: store)
                 .tabItem { Label("Keyboard", systemImage: "keyboard") }
+            MediaSettingsView(preferences: MediaPreferences.shared)
+                .tabItem { Label("Media", systemImage: "film.stack") }
+            CacheSettingsView()
+                .tabItem { Label("Media Cache", systemImage: "internaldrive") }
         }
     }
 }

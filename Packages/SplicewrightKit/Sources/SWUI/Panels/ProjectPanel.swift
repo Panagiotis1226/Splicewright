@@ -6,6 +6,7 @@ import SWMedia
 /// in the Source monitor; files or folders dropped anywhere on the panel are imported.
 struct ProjectPanel: View {
     @ObservedObject var workspace: WorkspaceController
+    @ObservedObject private var proxies = ProxyQueue.shared
     @State private var isDropTargeted = false
 
     var body: some View {
@@ -85,6 +86,13 @@ struct ProjectPanel: View {
             if workspace.isImporting {
                 ProgressView().controlSize(.mini)
                 Text("Importing…")
+            }
+            if proxies.activeCount > 0 {
+                ProgressView(value: proxies.overallProgress).frame(width: 60).controlSize(.mini)
+                Text("Creating proxies (\(proxies.activeCount) left)")
+                Button("Cancel") { proxies.cancelAll() }
+                    .buttonStyle(.borderless)
+                    .controlSize(.mini)
             }
             Spacer()
             let count = workspace.visibleMedia.count
@@ -212,6 +220,7 @@ private struct BinList: View {
 
 private struct MediaTable: View {
     @ObservedObject var workspace: WorkspaceController
+    @ObservedObject private var proxies = ProxyQueue.shared
 
     var body: some View {
         Table(workspace.visibleMedia, selection: $workspace.selectedMediaIDs) {
@@ -244,6 +253,10 @@ private struct MediaTable: View {
                 Text(item.info.audioSummary)
             }
             .width(min: 80, ideal: 130)
+            TableColumn("Proxy") { item in
+                ProxyStatusCell(item: item, queue: proxies)
+            }
+            .width(min: 44, ideal: 60)
         }
         .font(.system(size: 11))
         .contextMenu(forSelectionType: UUID.self) { ids in
@@ -339,9 +352,33 @@ private struct MediaGrid: View {
     }
 }
 
+/// —, a progress bar, ✓ (proxy ready) or ⚠ (failed, with the reason as a tooltip).
+private struct ProxyStatusCell: View {
+    let item: MediaItem
+    @ObservedObject var queue: ProxyQueue
+
+    var body: some View {
+        switch queue.jobs[item.id] {
+        case .queued?:
+            Text("Queued").foregroundStyle(Theme.textSecondary)
+        case .running(let fraction)?:
+            ProgressView(value: fraction).controlSize(.mini)
+        case .failed(let reason)?:
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow).help(reason)
+        case nil:
+            if queue.hasProxy(item) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).help("Proxy ready")
+            } else {
+                Text("—").foregroundStyle(Theme.textSecondary)
+            }
+        }
+    }
+}
+
 private struct MediaTile: View {
     let item: MediaItem
     let isSelected: Bool
+    @ObservedObject private var proxies = ProxyQueue.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -359,6 +396,14 @@ private struct MediaTile: View {
                         Text("HDR").font(.system(size: 8, weight: .heavy)).padding(.horizontal, 3)
                             .background(Color.orange.opacity(0.85), in: RoundedRectangle(cornerRadius: 2))
                             .foregroundStyle(.black).padding(4)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if proxies.hasProxy(item) {
+                        Text("PROXY").font(.system(size: 8, weight: .heavy)).padding(.horizontal, 3)
+                            .background(Color.green.opacity(0.85), in: RoundedRectangle(cornerRadius: 2))
+                            .foregroundStyle(.black).padding(4)
+                            .help("This clip has a proxy")
                     }
                 }
             Text(item.name).font(.system(size: 11)).lineLimit(1).foregroundStyle(Theme.textPrimary)
@@ -396,6 +441,22 @@ private struct MediaContextMenu: View {
         .disabled(ids.isEmpty)
         Button("Reveal in Finder") { workspace.revealInFinder(ids) }
             .disabled(ids.isEmpty)
+        Menu("Proxy") {
+            Button("Create Proxies (\(MediaPreferences.shared.proxyPreset.displayName))") { workspace.createProxies(ids) }
+            Menu("Create Proxies at") {
+                ForEach(ProxyPreset.Resolution.allCases, id: \.self) { resolution in
+                    ForEach(ProxyPreset.Codec.allCases, id: \.self) { codec in
+                        Button("\(resolution.displayName), \(codec.displayName)") {
+                            workspace.createProxies(ids, preset: ProxyPreset(resolution: resolution, codec: codec))
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("Delete Proxies") { workspace.deleteProxies(ids) }
+            Button("Reveal Proxy in Finder") { workspace.revealProxies(ids) }
+        }
+        .disabled(ids.isEmpty)
         Divider()
         Button("Remove from Project") { workspace.removeMedia(ids) }
             .disabled(ids.isEmpty)

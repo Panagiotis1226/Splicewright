@@ -46,6 +46,13 @@ public final class WorkspaceController: ObservableObject {
     public let sourceMonitor = SourceMonitorModel()
     public let timeline = TimelineState()
     public let program = PlaybackEngine()
+    /// Both monitors play proxies, where clips have them. Export always uses originals.
+    @Published public var useProxies = false {
+        didSet {
+            program.useProxies = useProxies
+            sourceMonitor.useProxies = useProxies
+        }
+    }
     /// The window hosting this workspace (set by the view; used by smoke tests).
     public weak var window: NSWindow?
 
@@ -55,7 +62,16 @@ public final class WorkspaceController: ObservableObject {
     private var importTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
 
-    public init() {}
+    public init() {
+        NotificationCenter.default.publisher(for: .splicewrightProxiesChanged)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.useProxies else { return }
+                self.program.refresh()
+                self.sourceMonitor.reloadForProxies()
+            }
+            .store(in: &cancellables)
+    }
 
     public func attach(document: ProjectDocument, undoManager: UndoManager?) {
         self.undoManager = undoManager
@@ -174,11 +190,37 @@ public final class WorkspaceController: ObservableObject {
                 let name = result.items.count == 1 ? "Import Clip" : "Import \(result.items.count) Clips"
                 self.document?.perform(name, undoManager: self.undoManager) { $0.addMedia(result.items) }
                 self.selectedMediaIDs = Set(result.items.map(\.id))
+                self.autoCreateProxies(for: result.items)
             }
             if !result.failures.isEmpty || !result.duplicates.isEmpty {
                 self.importReport = ImportReport(failures: result.failures, duplicates: result.duplicates)
             }
         }
+    }
+
+    /// With the preference on, queues proxies for imported video bigger than the proxy size.
+    private func autoCreateProxies(for items: [MediaItem]) {
+        let preferences = MediaPreferences.shared
+        guard preferences.autoCreateProxies else { return }
+        let large = items.filter { item in
+            guard let video = item.info.video else { return false }
+            return preferences.proxyPreset.isUseful(width: video.width, height: video.height)
+        }
+        ProxyQueue.shared.enqueue(large, preset: preferences.proxyPreset)
+    }
+
+    public func createProxies(_ ids: Set<UUID>, preset: ProxyPreset? = nil) {
+        let items = project.media.filter { ids.contains($0.id) && $0.info.video != nil }
+        ProxyQueue.shared.enqueue(items, preset: preset ?? MediaPreferences.shared.proxyPreset)
+    }
+
+    public func deleteProxies(_ ids: Set<UUID>) {
+        ProxyQueue.shared.deleteProxies(project.media.filter { ids.contains($0.id) })
+    }
+
+    public func revealProxies(_ ids: Set<UUID>) {
+        let urls = project.media.filter { ids.contains($0.id) }.compactMap { ProxyQueue.shared.proxyURL($0) }
+        if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
     }
 
     private func relinkMovedMedia() {

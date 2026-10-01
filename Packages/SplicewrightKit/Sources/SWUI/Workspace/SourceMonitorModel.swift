@@ -20,6 +20,13 @@ public final class SourceMonitorModel: ObservableObject {
     @Published public private(set) var hasVideo = false
     @Published public private(set) var waveform: WaveformPeaks?
 
+    /// Plays the clip's proxy (video) with the original's audio, when a proxy exists.
+    @Published public var useProxies = false {
+        didSet { if useProxies != oldValue { reloadForProxies() } }
+    }
+
+    private var item: MediaItem?
+    private var proxyTask: Task<Void, Never>?
     private var timeObserver: Any?
     private var rateObservation: AnyCancellable?
     private var waveformTask: Task<Void, Never>?
@@ -52,10 +59,12 @@ public final class SourceMonitorModel: ObservableObject {
         frameRate = item.info.displayFrameRate
         hasVideo = item.info.video != nil
 
+        self.item = item
         let playerItem = AVPlayerItem(asset: AVURLAsset(url: item.url))
         player.replaceCurrentItem(with: playerItem)
         installTimeObserver()
         seek(to: item.marks.inPoint ?? .zero)
+        if useProxies { reloadForProxies() }
 
         if !item.info.audio.isEmpty {
             let url = item.url
@@ -67,7 +76,47 @@ public final class SourceMonitorModel: ObservableObject {
         }
     }
 
+    /// Swaps between the original and a proxy composition, keeping the position.
+    public func reloadForProxies() {
+        proxyTask?.cancel()
+        guard let item else { return }
+        let proxy = useProxies ? ProxyStore.shared.proxy(for: item) : nil
+        let time = currentTime
+        proxyTask = Task { [weak self] in
+            let asset: AVAsset = await Self.asset(for: item, proxy: proxy)
+            guard !Task.isCancelled, let self, self.item?.id == item.id else { return }
+            self.player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
+            self.seek(to: time)
+        }
+    }
+
+    private static func asset(for item: MediaItem, proxy: URL?) async -> AVAsset {
+        let original = AVURLAsset(url: item.url)
+        guard let proxy else { return original }
+        let composition = AVMutableComposition()
+        do {
+            let duration = try await original.load(.duration)
+            let range = CMTimeRange(start: .zero, duration: duration)
+            if let video = try await AVURLAsset(url: proxy).loadTracks(withMediaType: .video).first,
+               let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                // The proxy's own range: it may end a frame earlier than the original.
+                let videoRange = try await video.load(.timeRange)
+                try track.insertTimeRange(videoRange, of: video, at: videoRange.start)
+                track.preferredTransform = try await video.load(.preferredTransform)
+            }
+            if let audio = try await original.loadTracks(withMediaType: .audio).first,
+               let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                try track.insertTimeRange(range, of: audio, at: .zero)
+            }
+            return composition
+        } catch {
+            return original
+        }
+    }
+
     public func unload() {
+        proxyTask?.cancel()
+        item = nil
         player.pause()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil

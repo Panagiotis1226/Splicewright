@@ -51,6 +51,13 @@ public struct SplicewrightCommands: Commands {
             Button("Add Video Track") { workspace?.addTrack(.video) }
             Button("Add Audio Track") { workspace?.addTrack(.audio) }
         }
+        CommandGroup(after: .toolbar) {
+            Toggle("Use Proxies", isOn: Binding(get: { workspace?.useProxies ?? false },
+                                                set: { workspace?.useProxies = $0 }))
+                .shortcut(.toggleProxies, keys)
+                .disabled(workspace == nil)
+            Divider()
+        }
         CommandMenu("Graphics") {
             Button("New Title") { workspace?.newTitle() }
                 .shortcut(.newTitle, keys)

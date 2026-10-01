@@ -9,6 +9,11 @@ public actor ThumbnailProvider {
     public static let shared = ThumbnailProvider()
 
     private let memory = NSCache<NSString, CGImage>()
+
+    /// Forgets thumbnails held in memory (after the disk cache was cleared).
+    public func clearMemory() {
+        memory.removeAllObjects()
+    }
     private var inFlight: [String: Task<CGImage?, Never>] = [:]
     private let directory: URL
 

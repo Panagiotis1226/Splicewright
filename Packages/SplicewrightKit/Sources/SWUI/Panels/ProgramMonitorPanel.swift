@@ -50,6 +50,12 @@ struct ProgramMonitorPanel: View {
                 .font(Theme.timecodeFont)
                 .foregroundStyle(Theme.timecode)
             Spacer()
+            Toggle(isOn: $workspace.useProxies) { Image(systemName: "p.square") }
+                .toggleStyle(.button)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(keys.hint("Toggle Proxies", .toggleProxies)
+                      + ": play proxies where clips have them (export always uses originals)")
             Toggle(isOn: $showsSafeMargins) { Image(systemName: "rectangle.dashed") }
                 .toggleStyle(.button)
                 .buttonStyle(.borderless)
