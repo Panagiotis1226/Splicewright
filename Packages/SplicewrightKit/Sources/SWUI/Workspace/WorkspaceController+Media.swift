@@ -109,8 +109,8 @@ extension WorkspaceController {
             AppLog.shared.info("Reloaded changed files: \(names.joined(separator: ", "))", category: "media")
             self.mediaNotice = changed.count == 1 ? "“\(names[0])” changed on disk and was reloaded."
                 : "\(changed.count) files changed on disk and were reloaded."
-            ThumbnailProvider.shared.clearMemory()
-            WaveformProvider.shared.clearMemory()
+            await ThumbnailProvider.shared.clearMemory()
+            await WaveformProvider.shared.clearMemory()
             self.timeline.clearArtwork(thumbnails: true, waveforms: true)
         }
     }

@@ -21,7 +21,7 @@ extension WorkspaceController {
         let session = ExportSession(sequence: sequence, project: project, settings: settings, outputURL: url)
         exportSession = session
         let offline = Set(sequence.allTracks.flatMap { $0.clips.map(\.mediaID) }).intersection(offlineMediaIDs)
-        AppLog.shared.info("Export started: \(url.lastPathComponent), \(settings.codec.displayName)"
+        AppLog.shared.info("Export started: \(url.lastPathComponent), \(settings.preset.codec.displayName)"
                            + (offline.isEmpty ? "" : ", \(offline.count) offline file(s) render as Media Offline"),
                            category: "export")
         session.$state

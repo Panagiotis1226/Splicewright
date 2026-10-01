@@ -133,14 +133,21 @@ XcodeGen project (committed), SPM modules, Makefile, README quick start, CI on a
 - The Program monitor proxy toggle swaps sources inside `CompositionBuilder`. **Export always uses the full-resolution originals.**
 - *As built:*
   - **Location.** Proxies live in one app folder, `~/Library/Application Support/Splicewright/Proxies`, which can be changed in Settings, rather than inside each project. They are found by the source file's path, size and date, so every project using a file shares its proxy, and a changed source file needs a new one.
-  - **Format.** Proxies are video only; audio plays from the original. They are made at 1080p, 720p or half size in ProRes 422 Proxy or LT, and both monitors have a toggle.
+  - **Format.** Proxies are video only; audio plays from the original. They are made at 1080p, 720p or half size in HEVC (the default: about 6 Mbps at 1080p30, Main10 for HDR), H.264, ProRes 422 Proxy or LT, with a key frame every half second and no B-frames for scrubbing. Both monitors have a toggle.
   - **Caches.** Settings ▸ Media Cache measures and deletes thumbnails, waveforms and proxies.
   - **Workspaces.** Window ▸ Workspaces saves and switches layouts, and layouts are kept automatically.
 
 **M8 — Hardening (≈2 wk)**
 Autosave and crash recovery, relinking missing media, preferences, performance passes with Instruments (Metal System Trace, Allocations), and signing plus notarization.
+- *As built:*
+  - **Auto-save.** Timestamped copies of changed projects every few minutes in `Application Support/Splicewright/Auto-Save`, written atomically and pruned to a set number; a marker file detects a session that didn't quit normally, and the next launch offers the latest versions. NSDocument's own autosave-in-place still restores open documents.
+  - **Missing and changed media.** Offline clips render a red Media Offline frame (playback and export). Link Media asks for one file and matches the rest by name in that folder tree, preferring the same size. Files whose size or date changed are re-probed on open and when the app becomes active.
+  - **Copy/paste.** Clips copy with relative tracks and times (and their media, so they paste across projects); Paste Attributes copies motion and volume keyframes.
+  - **Logs** go to `~/Library/Logs/Splicewright`, rolled over at 2 MB.
+  - **Notarization dropped** for now: it needs a paid Apple Developer account. Releases stay unsigned (ad hoc), opened once via Privacy & Security ▸ Open Anyway.
+  - **Keyframes were pulled forward** from the post-v1 list: Position, Scale (uniform or not), Rotation, Anchor Point, Opacity and Volume, with Linear, Ease In/Out and Hold, stored in source time so they stay with the picture when clips are trimmed. The Program monitor has a transform box.
 
-Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: audio mixer and keyframes, Lumetri-style color and LUTs, keyframed Effect Controls and motion, nested sequences, multicam, dockable workspaces, captions, OTIO/XML interchange, and plugins.
+Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: audio mixer, Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), bezier keyframe curves, nested sequences, multicam, dockable workspaces, captions, OTIO/XML interchange, and plugins.
 
 ## Risks and mitigations
 - **Composition track limits.** AVFoundation has a practical cap on how many video layers it can decode at once. Mitigation: reuse composition tracks by packing non-overlapping clips onto the same track (A/B-roll allocation), and warn beyond about 8 simultaneous layers.

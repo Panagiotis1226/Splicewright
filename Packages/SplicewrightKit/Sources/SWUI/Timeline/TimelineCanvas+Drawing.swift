@@ -176,7 +176,9 @@ extension TimelineCanvas {
     private func drawClipLabel(_ clip: Clip, at point: CGPoint, maxX: CGFloat, online: Bool) {
         guard maxX - point.x > 14 else { return }
         var label = online ? clip.name : "\(clip.name) (offline)"
-        if clip.opacity < 1 { label += "  \(Int((clip.opacity * 100).rounded()))%" }
+        // ◆ marks clips with keyframes (Effect Controls shows them).
+        if clip.isAnimated { label = "◆ " + label }
+        if clip.opacity < 1 && !clip.motion.opacity.isAnimated { label += "  \(Int((clip.opacity * 100).rounded()))%" }
         if clip.gainDB != 0 { label += String(format: "  %+.1f dB", clip.gainDB) }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10, weight: .medium),
