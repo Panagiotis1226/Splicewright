@@ -29,7 +29,7 @@ public final class WorkspaceController: ObservableObject {
     @Published public var showsSafeMargins = false
     @Published public var searchText = ""
     @Published public var isImporterPresented = false
-    @Published public private(set) var isImporting = false
+    @Published public internal(set) var isImporting = false
     @Published public var importReport: ImportReport?
     @Published public var renamingBinID: UUID?
     /// Name shown on the Source monitor tab. Kept here rather than read from the monitor so
