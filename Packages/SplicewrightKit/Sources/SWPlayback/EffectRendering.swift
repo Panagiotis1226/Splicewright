@@ -50,8 +50,10 @@ enum EffectRendering {
     /// Crop, Flip and Mirror become layer geometry; Blur, Sharpen and Drop Shadow become passes,
     /// in stack order. Sizes scale with the preview resolution (`pixelScale`). An effect with
     /// masks (and `maskSpace` to place them) applies only inside them.
-    static func split(_ effects: [ResolvedEffect], pixelScale: Double,
-                      maskSpace: MaskSpace? = nil) -> (LayerGeometry, [PixelEffect]) {
+    /// Crop and flips are set on the picture as shown; `quarterTurns` turns them into the
+    /// encoded frame the shader samples (phone video is stored sideways).
+    static func split(_ effects: [ResolvedEffect], pixelScale: Double, maskSpace: MaskSpace? = nil,
+                      quarterTurns: Int = 0) -> (LayerGeometry, [PixelEffect]) {
         var geometry = LayerGeometry.none
         var passes: [PixelEffect] = []
         for effect in effects {
@@ -63,7 +65,7 @@ enum EffectRendering {
                 passes.append(.masked(own, masks))
             }
         }
-        return (geometry, passes)
+        return (geometry.reoriented(quarterTurns: quarterTurns), passes)
     }
 
     private static func passes(for effect: ResolvedEffect, pixelScale: Double,
@@ -103,5 +105,22 @@ enum EffectRendering {
             break
         }
         return []
+    }
+}
+
+extension LayerGeometry {
+    /// Crop sides and flips measured on the displayed picture, as the encoded frame's.
+    func reoriented(quarterTurns: Int) -> LayerGeometry {
+        let turns = (quarterTurns % 4 + 4) % 4
+        guard turns != 0 else { return self }
+        var result = self
+        let sides = PictureEdges.encoded([crop.left, crop.top, crop.right, crop.bottom], quarterTurns: turns)
+        result.crop = CropInsets(left: sides[0], top: sides[1], right: sides[2], bottom: sides[3])
+        // A sideways picture's left-right is the encoded frame's top-bottom.
+        if turns % 2 == 1 {
+            result.flipHorizontal = flipVertical
+            result.flipVertical = flipHorizontal
+        }
+        return result
     }
 }

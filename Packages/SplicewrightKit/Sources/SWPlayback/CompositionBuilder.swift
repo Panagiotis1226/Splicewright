@@ -360,13 +360,18 @@ public struct CompositionBuilder {
                                              orientation: orientation, renderWidth: renderWidth,
                                              renderHeight: renderHeight)
                 let item = project.item(layer.mediaID)
-                return InstructionLayer(trackID: trackID, opacity: layer.opacity,
-                                        transform: transform, sourceWidth: media.naturalSize.width,
-                                        sourceHeight: media.naturalSize.height,
-                                        fallbackColor: item?.info.video?.color ?? .untagged,
-                                        forcedColor: item?.colorOverride, transition: transition, motion: layer.motion,
-                                        clipStart: time(layer.clipStart), sourceStart: layer.sourceStart,
-                                        pixelScale: pixelScale, timing: layer.timing)
+                var built = InstructionLayer(trackID: trackID, opacity: layer.opacity,
+                                            transform: transform, sourceWidth: media.naturalSize.width,
+                                            sourceHeight: media.naturalSize.height,
+                                            fallbackColor: item?.info.video?.color ?? .untagged,
+                                            forcedColor: item?.colorOverride, transition: transition, motion: layer.motion,
+                                            clipStart: time(layer.clipStart), sourceStart: layer.sourceStart,
+                                            pixelScale: pixelScale, timing: layer.timing)
+                // Phone video is stored sideways; masks, crop and flips are set on it upright.
+                built.picture = DisplayedPicture(sourceWidth: media.naturalSize.width,
+                                                 sourceHeight: media.naturalSize.height, orientation: orientation,
+                                                 renderWidth: renderWidth, renderHeight: renderHeight)
+                return built
             }
             let layers: [InstructionLayer] = segment.layers.compactMap { layer -> InstructionLayer? in
                 var built = instructionLayer(for: layer)

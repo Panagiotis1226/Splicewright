@@ -63,6 +63,36 @@ public struct Affine2D: Sendable, Hashable, Codable {
     }
 }
 
+public extension Affine2D {
+    /// Clockwise quarter turns (0...3) of a rotation such as a video track's preferred transform.
+    var quarterTurns: Int {
+        let turns = Int((atan2(b, a) / (.pi / 2)).rounded())
+        return (turns % 4 + 4) % 4
+    }
+
+    /// Maps the picture as displayed (after the track's rotation, origin at its top left) to the
+    /// render frame. It's `fit` without the rotation: the same scale and centring, so a point a
+    /// fraction across the shown picture lands where the Program monitor shows it.
+    static func pictureFit(sourceWidth: Double, sourceHeight: Double, orientation: Affine2D,
+                           renderWidth: Double, renderHeight: Double) -> Affine2D {
+        let box = orientation.bounds(width: sourceWidth, height: sourceHeight)
+        return fit(sourceWidth: max(1, box.maxX - box.minX), sourceHeight: max(1, box.maxY - box.minY),
+                   orientation: .identity, renderWidth: renderWidth, renderHeight: renderHeight)
+    }
+}
+
+/// Edges of a picture (left, top, right, bottom), as shown versus as encoded.
+public enum PictureEdges {
+    /// The encoded frame's edges for edges of the displayed picture, when the track is turned
+    /// `quarterTurns` clockwise for display. One turn shows the encoded top on the right, so the
+    /// displayed left, top, right and bottom are the encoded bottom, left, top and right.
+    public static func encoded(_ displayed: [Double], quarterTurns: Int) -> [Double] {
+        guard displayed.count == 4 else { return displayed }
+        let turns = (quarterTurns % 4 + 4) % 4
+        return (0..<4).map { displayed[($0 + turns) % 4] }
+    }
+}
+
 /// The part a layer plays in a transition.
 public struct LayerTransition: Sendable, Hashable {
     public enum Role: Sendable, Hashable { case outgoing, incoming }

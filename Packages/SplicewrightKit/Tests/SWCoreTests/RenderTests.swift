@@ -74,6 +74,43 @@ struct RenderPlanTests {
         let corner = portrait.apply(x: 0, y: 0)
         #expect(abs(corner.x - 1263.75) < 0.001 && abs(corner.y) < 0.001)
     }
+
+    /// Masks, crop and flips are set on the picture as shown, so a point a fraction across the
+    /// displayed picture must land where `fit` puts the encoded pixel shown there.
+    @Test func pictureFitMatchesTheDisplayedPicture() {
+        let (w, h) = (160.0, 90.0)
+        let rotations = [Affine2D.identity, Affine2D(a: 0, b: 1, c: -1, d: 0, tx: h, ty: 0),
+                         Affine2D(a: -1, b: 0, c: 0, d: -1, tx: w, ty: h), Affine2D(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: w)]
+        for (turns, orientation) in rotations.enumerated() {
+            #expect(orientation.quarterTurns == turns)
+            let fit = Affine2D.fit(sourceWidth: w, sourceHeight: h, orientation: orientation, renderWidth: 100,
+                                   renderHeight: 100)
+            let picture = Affine2D.pictureFit(sourceWidth: w, sourceHeight: h, orientation: orientation,
+                                              renderWidth: 100, renderHeight: 100)
+            let box = orientation.bounds(width: w, height: h)
+            let (dw, dh) = (box.maxX - box.minX, box.maxY - box.minY)
+            let determinant = orientation.a * orientation.d - orientation.b * orientation.c
+            for (u, v) in [(0.0, 0.0), (1.0, 0.0), (0.25, 0.75), (1.0, 1.0)] {
+                // The encoded pixel the rotation shows at this display point.
+                let (x, y) = (u * dw + box.minX - orientation.tx, v * dh + box.minY - orientation.ty)
+                let encoded = ((orientation.d * x - orientation.c * y) / determinant,
+                               (orientation.a * y - orientation.b * x) / determinant)
+                let expected = fit.apply(x: encoded.0, y: encoded.1)
+                let actual = picture.apply(x: u * dw, y: v * dh)
+                #expect(abs(actual.x - expected.x) < 1e-9 && abs(actual.y - expected.y) < 1e-9, "turns \(turns) at \(u),\(v)")
+            }
+        }
+    }
+
+    @Test func displayedEdgesMapToEncodedEdges() {
+        let shown = [1.0, 2, 3, 4]  // left, top, right, bottom as displayed
+        #expect(PictureEdges.encoded(shown, quarterTurns: 0) == shown)
+        // A clockwise turn shows the encoded left at the top: the shown top is the encoded left.
+        #expect(PictureEdges.encoded(shown, quarterTurns: 1) == [2, 3, 4, 1])
+        #expect(PictureEdges.encoded(shown, quarterTurns: 2) == [3, 4, 1, 2])
+        #expect(PictureEdges.encoded(shown, quarterTurns: 3) == [4, 1, 2, 3])
+        #expect(PictureEdges.encoded(shown, quarterTurns: -1) == [4, 1, 2, 3])
+    }
 }
 
 @Suite("Transfer functions")

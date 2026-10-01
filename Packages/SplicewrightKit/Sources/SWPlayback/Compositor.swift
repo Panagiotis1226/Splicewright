@@ -33,17 +33,24 @@ struct InstructionLayer {
 
     /// Masks on Opacity: only what's inside them shows.
     var opacityMasks: [Mask] = []
+    /// The picture as displayed (after the track's rotation), where masks, crop and flips are
+    /// set: its size and its transform to render pixels before motion. Nil when that's the
+    /// encoded picture itself (unrotated media, titles, adjustment layers).
+    var picture: DisplayedPicture?
 
     /// The effects at a composition time, split into what the layer draw does itself (Crop,
     /// Flip, Mirror) and what needs passes of its own (in render pixels), masks included.
     func effects(at time: CMTime, renderWidth: Double, renderHeight: Double) -> (LayerGeometry, [PixelEffect]) {
         guard !effects.isEmpty || !opacityMasks.isEmpty else { return (.none, []) }
         let source = sourceTime(at: time)
-        let space = MaskSpace(transform: transform(at: time, renderWidth: renderWidth, renderHeight: renderHeight),
-                              width: sourceWidth, height: sourceHeight, pixelScale: pixelScale)
+        let shown = picture ?? DisplayedPicture(transform: transform, width: sourceWidth, height: sourceHeight)
+        let space = MaskSpace(transform: withMotion(shown.transform, at: time, renderWidth: renderWidth,
+                                                    renderHeight: renderHeight),
+                              width: shown.width, height: shown.height, pixelScale: pixelScale)
         let resolved = effects.filter { $0.isEnabled && !$0.kind.isAudio }
             .map { $0.resolved(at: source) }.filter { !$0.isNoOp }
-        let (geometry, split) = EffectRendering.split(resolved, pixelScale: pixelScale, maskSpace: space)
+        let (geometry, split) = EffectRendering.split(resolved, pixelScale: pixelScale, maskSpace: space,
+                                                      quarterTurns: shown.quarterTurns)
         let masks = space.place(opacityMasks.map { $0.resolved(at: source) })
         guard !masks.isEmpty else { return (geometry, split) }
         // An adjustment layer's masks limit where its effects apply; a clip's cut it out.
@@ -61,13 +68,47 @@ struct InstructionLayer {
 
     /// Fit, then motion, at a composition time.
     func transform(at time: CMTime, renderWidth: Double, renderHeight: Double) -> Affine2D {
-        guard !motion.isIdentity else { return transform }
-        return transform.concatenating(motion.transform(at: sourceTime(at: time), renderWidth: renderWidth,
-                                                        renderHeight: renderHeight, scale: pixelScale))
+        withMotion(transform, at: time, renderWidth: renderWidth, renderHeight: renderHeight)
+    }
+
+    /// `base`, then the clip's motion at a composition time.
+    private func withMotion(_ base: Affine2D, at time: CMTime, renderWidth: Double, renderHeight: Double) -> Affine2D {
+        guard !motion.isIdentity else { return base }
+        return base.concatenating(motion.transform(at: sourceTime(at: time), renderWidth: renderWidth,
+                                                   renderHeight: renderHeight, scale: pixelScale))
     }
 
     func opacity(at time: CMTime) -> Double {
         motion.opacity(at: sourceTime(at: time))
+    }
+}
+
+/// A rotated video's picture as shown: what masks, crop and flips are measured on.
+struct DisplayedPicture {
+    /// Displayed pixels (top left origin) → render pixels, before motion.
+    var transform: Affine2D
+    var width: Double
+    var height: Double
+    /// Clockwise quarter turns from the encoded frame to the displayed picture.
+    var quarterTurns = 0
+
+    /// Nil for an unrotated track, whose displayed picture is the encoded one.
+    init?(sourceWidth: Double, sourceHeight: Double, orientation: Affine2D, renderWidth: Double,
+          renderHeight: Double) {
+        let box = orientation.bounds(width: sourceWidth, height: sourceHeight)
+        let turns = orientation.quarterTurns
+        guard turns != 0 else { return nil }
+        transform = Affine2D.pictureFit(sourceWidth: sourceWidth, sourceHeight: sourceHeight, orientation: orientation,
+                                        renderWidth: renderWidth, renderHeight: renderHeight)
+        width = box.maxX - box.minX
+        height = box.maxY - box.minY
+        quarterTurns = turns
+    }
+
+    init(transform: Affine2D, width: Double, height: Double) {
+        self.transform = transform
+        self.width = width
+        self.height = height
     }
 }
 

@@ -125,6 +125,34 @@ final class MaskRenderTests: XCTestCase {
         XCTAssertEqual(graded[1], plain[1], accuracy: 3, "unchanged outside it")
     }
 
+    /// Phone video: encoded 160×90, turned 90° clockwise for display, in a 90×160 frame. Masks and
+    /// Crop are set on the upright picture, so they must land there, not transposed.
+    func testRotatedVideoMasksAndCropFollowTheDisplayedPicture() throws {
+        let orientation = Affine2D(a: 0, b: 1, c: -1, d: 0, tx: 90, ty: 0)
+        let fit = Affine2D.fit(sourceWidth: 160, sourceHeight: 90, orientation: orientation, renderWidth: 90,
+                               renderHeight: 160)
+        var layer = InstructionLayer(trackID: 1, opacity: 1, transform: fit, sourceWidth: 160, sourceHeight: 90,
+                                     fallbackColor: .rec709)
+        layer.picture = DisplayedPicture(sourceWidth: 160, sourceHeight: 90, orientation: orientation,
+                                         renderWidth: 90, renderHeight: 160)
+        XCTAssertEqual(layer.picture?.width, 90)
+        XCTAssertEqual(layer.picture?.height, 160)
+        // The left half of the picture as shown.
+        layer.opacityMasks = [Mask.rectangle(left: 0, top: 0, right: 0.5, bottom: 1)]
+        var crop = ClipEffect(kind: .crop)
+        crop.parameters["left"] = AnimatableProperty([25])
+        layer.effects = [crop]
+        let (geometry, passes) = layer.effects(at: .zero, renderWidth: 90, renderHeight: 160)
+        guard case .mask(let masks)? = passes.last else { return XCTFail("no opacity mask pass") }
+        let points = masks[0].vertices.map { [$0.x, $0.y] }
+        XCTAssertEqual(points, [[0, 0], [45, 0], [45, 160], [0, 160]], "the left half of the frame, upright")
+        // The shown left edge is the encoded bottom (the encoded top is on the right).
+        XCTAssertEqual(geometry.crop.bottom, 0.25, accuracy: 1e-9)
+        XCTAssertEqual(geometry.crop.left, 0)
+        let flipped = LayerGeometry(flipHorizontal: true).reoriented(quarterTurns: 1)
+        XCTAssertTrue(flipped.flipVertical && !flipped.flipHorizontal, "left-right shown is top-bottom encoded")
+    }
+
     func testMasksFollowTheLayerTransform() {
         let space = MaskSpace(transform: Affine2D(a: 2, b: 0, c: 0, d: 2, tx: 10, ty: 20), width: 100, height: 50,
                               pixelScale: 0.5)
