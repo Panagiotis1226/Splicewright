@@ -136,6 +136,20 @@ public struct CompositionBuilder {
             }
         }
 
+        let mixParameters = addAudio(sequence, to: composition, loaded: loaded)
+        let audioMix = AVMutableAudioMix()
+        audioMix.inputParameters = mixParameters
+
+        let videoComposition = makeVideoComposition(sequence, clipTracks: clipTracks, loaded: loaded,
+                                                    totalFrames: totalFrames, project: project)
+        return CompositionOutput(composition: composition, videoComposition: videoComposition,
+                                 audioMix: audioMix, durationFrames: totalFrames)
+    }
+
+    /// Audio tracks (A/B packed where crossfades need it) and their volume automation.
+    private func addAudio(_ sequence: EditSequence, to composition: AVMutableComposition,
+                          loaded: [UUID: LoadedMedia]) -> [AVAudioMixInputParameters] {
+        let rate = sequence.rate
         let audible = RenderPlan.audibleTracks(in: sequence)
         var mixParameters: [AVAudioMixInputParameters] = []
         for (index, track) in sequence.audioTracks.enumerated() {
@@ -152,19 +166,16 @@ public struct CompositionBuilder {
                 let params = parameters[compositionTrack.trackID]
                     ?? AVMutableAudioMixInputParameters(track: compositionTrack)
                 parameters[compositionTrack.trackID] = params
-                let gain = audible[index] && clip.isEnabled ? Float(RenderPlan.linearGain(dB: clip.gainDB)) : 0
-                AudioEnvelope.apply(gain: gain, fades: fades[clip.id], clipStart: clip.start - head, to: params,
-                                    rate: rate)
+                let range = FrameRange(start: clip.start - head, end: clip.end + tail)
+                if audible[index] && clip.isEnabled {
+                    AudioEnvelope.apply(clip, fades: fades[clip.id], range: range, to: params, rate: rate)
+                } else {
+                    params.setVolume(0, at: RationalTime(frames: range.start, rate: rate).cmTime)
+                }
             }
             mixParameters += parameters.keys.sorted().compactMap { parameters[$0] }
         }
-        let audioMix = AVMutableAudioMix()
-        audioMix.inputParameters = mixParameters
-
-        let videoComposition = makeVideoComposition(sequence, clipTracks: clipTracks, loaded: loaded,
-                                                    totalFrames: totalFrames, project: project)
-        return CompositionOutput(composition: composition, videoComposition: videoComposition,
-                                 audioMix: audioMix, durationFrames: totalFrames)
+        return mixParameters
     }
 
     /// Inserts a clip plus `head`/`tail` frames of handle for its transitions. Handles the
@@ -223,6 +234,8 @@ public struct CompositionBuilder {
         videoComposition.colorTransferFunction = tags.transfer as String
         videoComposition.colorYCbCrMatrix = tags.matrix as String
 
+        func time(_ frames: Int64) -> CMTime { RationalTime(frames: frames, rate: rate).cmTime }
+        let pixelScale = renderWidth / Double(max(settings.width, 1))
         let segments = RenderPlan.videoSegments(for: sequence, minimumFrames: totalFrames) { mediaID in
             // (Title clips render without media.)
             loaded[mediaID]?.video != nil
@@ -234,7 +247,8 @@ public struct CompositionBuilder {
                     return InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity,
                                             transform: .identity, sourceWidth: renderWidth, sourceHeight: renderHeight,
                                             fallbackColor: .rec709, forcedColor: nil, transition: transition,
-                                            title: title)
+                                            title: title, motion: layer.motion, clipStart: time(layer.clipStart),
+                                            sourceStart: layer.sourceStart, pixelScale: pixelScale)
                 }
                 guard let media = loaded[layer.mediaID], let trackID = clipTracks[layer.clipID] else { return nil }
                 let orientation = Affine2D(media.preferredTransform)
@@ -246,7 +260,9 @@ public struct CompositionBuilder {
                                         transform: transform, sourceWidth: media.naturalSize.width,
                                         sourceHeight: media.naturalSize.height,
                                         fallbackColor: item?.info.video?.color ?? .untagged,
-                                        forcedColor: item?.colorOverride, transition: transition)
+                                        forcedColor: item?.colorOverride, transition: transition, motion: layer.motion,
+                                        clipStart: time(layer.clipStart), sourceStart: layer.sourceStart,
+                                        pixelScale: pixelScale)
             }
             let range = CMTimeRange(start: RationalTime(frames: segment.range.start, rate: rate).cmTime,
                                     end: RationalTime(frames: segment.range.end, rate: rate).cmTime)
@@ -296,32 +312,23 @@ private final class TrackPacker {
     }
 }
 
-/// Clip gain and fade ramps on an audio mix track.
+/// Clip gain, keyframed volume and fade ramps on an audio mix track.
 enum AudioEnvelope {
-    /// Constant-power fades are approximated with this many linear ramps.
-    static let curveSteps = 8
-
-    static func apply(gain: Float, fades: ClipFades?, clipStart: Int64, to parameters: AVMutableAudioMixInputParameters,
-                      rate: FrameRate) {
+    static func apply(_ clip: Clip, fades: ClipFades?, range: FrameRange,
+                      to parameters: AVMutableAudioMixInputParameters, rate: FrameRate) {
         func time(_ frames: Double) -> CMTime {
             CMTime(seconds: frames / rate.framesPerSecond, preferredTimescale: 48_000)
         }
-        guard let fades, fades.fadeIn != nil || fades.fadeOut != nil else {
-            parameters.setVolume(gain, at: time(Double(clipStart)))
+        let points = RenderPlan.audioEnvelope(for: clip, fades: fades, range: range, rate: rate)
+        guard let first = points.first else { return }
+        guard points.count > 1, points.contains(where: { $0.gain != first.gain }) else {
+            // Volume holds until the next change, so one setting covers the clip.
+            parameters.setVolume(Float(first.gain), at: time(first.frame))
             return
         }
-        if fades.fadeIn == nil { parameters.setVolume(gain, at: time(Double(clipStart))) }
-        for range in [fades.fadeIn?.range, fades.fadeOut?.range].compactMap({ $0 }) {
-            let steps = (fades.fadeIn?.curve == .constantPower || fades.fadeOut?.curve == .constantPower) ? curveSteps : 1
-            for step in 0..<steps {
-                let from = Double(range.start) + Double(range.length) * Double(step) / Double(steps)
-                let to = Double(range.start) + Double(range.length) * Double(step + 1) / Double(steps)
-                // Sample the envelope just inside each end so neighbouring ramps meet exactly.
-                let startGain = Float(fades.gain(at: from)) * gain
-                let endGain = Float(fades.gain(at: to)) * gain
-                parameters.setVolumeRamp(fromStartVolume: startGain, toEndVolume: endGain,
-                                         timeRange: CMTimeRange(start: time(from), end: time(to)))
-            }
+        for (from, to) in zip(points, points.dropFirst()) where to.frame > from.frame {
+            parameters.setVolumeRamp(fromStartVolume: Float(from.gain), toEndVolume: Float(to.gain),
+                                     timeRange: CMTimeRange(start: time(from.frame), end: time(to.frame)))
         }
     }
 }

@@ -42,6 +42,8 @@ struct TransitionUniforms {
 struct TitleFrame {
     var spec: TitleSpec
     var opacity: Double
+    /// Frame-sized texture → render pixels (identity unless the title has motion).
+    var transform: Affine2D = .identity
 }
 
 /// One layer's pixels: a decoded video frame or a rasterized title.
@@ -247,7 +249,9 @@ final class MetalRenderer {
     private func drawTitle(_ title: TitleFrame, with encoder: MTLRenderCommandEncoder, width: Int, height: Int) {
         guard let texture = titles.texture(for: title.spec, width: width, height: height) else { return }
         let size = SIMD4(Float(width), Float(height), Float(width), Float(height))
-        var uniforms = LayerUniforms(row0: SIMD4(1, 0, 0, 0), row1: SIMD4(0, 1, 0, 0), sizes: size, ycbcr: .zero,
+        let t = title.transform
+        var uniforms = LayerUniforms(row0: SIMD4(Float(t.a), Float(t.c), Float(t.tx), 0),
+                                     row1: SIMD4(Float(t.b), Float(t.d), Float(t.ty), 0), sizes: size, ycbcr: .zero,
                                      color: SIMD4(0, 0, Float(min(max(title.opacity, 0), 1)), 0), tone: .zero)
         encoder.setRenderPipelineState(titlePipeline)
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)

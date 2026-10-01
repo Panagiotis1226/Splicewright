@@ -17,6 +17,29 @@ struct InstructionLayer {
     var transition: InstructionTransition?
     /// Set for a title layer, which has no source track (`trackID` is invalid).
     var title: TitleSpec?
+    /// Keyframeable motion and opacity, applied after `transform`.
+    var motion = Motion()
+    /// Composition time of the clip's first frame, and the source time shown there.
+    var clipStart: CMTime = .zero
+    var sourceStart: RationalTime = .zero
+    /// Sequence pixels → render pixels (below 1 at reduced playback resolution).
+    var pixelScale: Double = 1
+
+    /// The source time shown at a composition time, for evaluating keyframes.
+    func sourceTime(at time: CMTime) -> RationalTime {
+        sourceStart + RationalTime(seconds: (time - clipStart).seconds, timescale: 600_000)
+    }
+
+    /// Fit, then motion, at a composition time.
+    func transform(at time: CMTime, renderWidth: Double, renderHeight: Double) -> Affine2D {
+        guard !motion.isIdentity else { return transform }
+        return transform.concatenating(motion.transform(at: sourceTime(at: time), renderWidth: renderWidth,
+                                                        renderHeight: renderHeight, scale: pixelScale))
+    }
+
+    func opacity(at time: CMTime) -> Double {
+        motion.opacity(at: sourceTime(at: time))
+    }
 }
 
 /// A layer's part in a transition, in composition time.
@@ -73,7 +96,7 @@ final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProto
         self.layers = layers
         self.outputSpace = outputSpace
         self.overlay = overlay
-        containsTweening = everyFrame || layers.contains { $0.transition != nil }
+        containsTweening = everyFrame || layers.contains { $0.transition != nil || $0.motion.isAnimated }
         let ids = Array(Set(layers.map(\.trackID).filter { $0 != kCMPersistentTrackID_Invalid })).sorted()
         requiredSourceTrackIDs = ids.isEmpty ? nil : ids.map { NSNumber(value: $0) }
     }
@@ -141,11 +164,17 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
             try renderer.render(layers: [], into: output, space: .rec709)
             return output
         }
+        let time = request.compositionTime
+        let renderSize = request.renderContext.size
         func frame(_ layer: InstructionLayer) -> LayerSource? {
-            if let title = layer.title { return .title(TitleFrame(spec: title, opacity: layer.opacity)) }
+            let transform = layer.transform(at: time, renderWidth: renderSize.width, renderHeight: renderSize.height)
+            let opacity = layer.opacity(at: time)
+            if let title = layer.title {
+                return .title(TitleFrame(spec: title, opacity: opacity, transform: transform))
+            }
             guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { return nil }
-            return .video(LayerFrame(pixelBuffer: buffer, transform: layer.transform, sourceWidth: layer.sourceWidth,
-                                     sourceHeight: layer.sourceHeight, opacity: layer.opacity,
+            return .video(LayerFrame(pixelBuffer: buffer, transform: transform, sourceWidth: layer.sourceWidth,
+                                     sourceHeight: layer.sourceHeight, opacity: opacity,
                                      fallbackColor: layer.fallbackColor, forcedColor: layer.forcedColor))
         }
         var items: [RenderItem] = []

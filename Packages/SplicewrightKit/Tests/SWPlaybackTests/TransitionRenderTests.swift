@@ -356,3 +356,92 @@ final class ProxyPlaybackTests: XCTestCase {
         XCTAssertEqual(image.width, 1280)
     }
 }
+
+/// Scale, position and keyframed opacity through the real compositor.
+final class MotionRenderTests: XCTestCase {
+    private var project = Project()
+
+    override func setUp() async throws {
+        guard MTLCreateSystemDefaultDevice() != nil, MetalRenderer.shared != nil else { throw XCTSkip("No Metal device") }
+    }
+
+    private func whiteClipSequence() async throws -> (EditSequence, UUID) {
+        guard let url = try await FixtureWriter.writeVideo(
+            FixtureWriter.h264SDR30(frames: 60, width: 320, height: 180, fill: .grey(1, tenBit: false)),
+            name: "motion-white.mov") else { throw XCTSkip("No H.264 encoder") }
+        let imported = await MediaImporter().importMedia(from: [url], into: nil, existingPaths: [])
+        let item = try XCTUnwrap(imported.items.first)
+        project = Project()
+        project.addMedia([item])
+        var sequence = EditSequence(name: "M", settings: SequenceSettings(width: 320, height: 180, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        let clip = Clip(mediaID: item.id, name: "W", start: 0, duration: 60, sourceStart: .zero)
+        sequence.overwrite([TrackPlacement(trackID: sequence.videoTracks[0].id, clip: clip)])
+        return (sequence, clip.id)
+    }
+
+    private func green(_ sequence: EditSequence, frame: Int64, x: Double, y: Double, scale: Double = 1) async throws -> Int {
+        let output = await CompositionBuilder(renderScale: scale).build(sequence, project: project, cache: MediaAssetCache())
+        let generator = AVAssetImageGenerator(asset: output.composition)
+        generator.videoComposition = output.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let image = try await generator.image(at: RationalTime(frames: frame, rate: .fps30).cmTime).image
+        var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        bytes.withUnsafeMutableBytes { raw in
+            let context = CGContext(data: raw.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
+                                    bytesPerRow: image.width * 4, space: space,
+                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            context?.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        }
+        let px = min(image.width - 1, Int(Double(image.width) * x))
+        let py = min(image.height - 1, Int(Double(image.height) * y))
+        return Int(bytes[(py * image.width + px) * 4 + 1])
+    }
+
+    func testScaleAndPosition() async throws {
+        var (sequence, id) = try await whiteClipSequence()
+        sequence.updateProperty(.scale, of: id) { $0.values = [50] }
+        let centre = try await green(sequence, frame: 10, x: 0.5, y: 0.5)
+        let corner = try await green(sequence, frame: 10, x: 0.1, y: 0.1)
+        XCTAssertGreaterThan(centre, 240, "half-size white clip in the middle")
+        XCTAssertLessThan(corner, 10, "black around it")
+        // Move it right by a quarter of the frame (80 px): the left of centre goes black.
+        sequence.updateProperty(.position, of: id) { $0.values = [80, 0] }
+        let leftOfCentre = try await green(sequence, frame: 10, x: 0.3, y: 0.5)
+        let rightOfCentre = try await green(sequence, frame: 10, x: 0.7, y: 0.5)
+        XCTAssertLessThan(leftOfCentre, 10)
+        XCTAssertGreaterThan(rightOfCentre, 240)
+        // The same at half playback resolution: offsets scale with the preview.
+        let halfRes = try await green(sequence, frame: 10, x: 0.7, y: 0.5, scale: 0.5)
+        XCTAssertGreaterThan(halfRes, 240)
+    }
+
+    func testOpacityKeyframesFade() async throws {
+        var (sequence, id) = try await whiteClipSequence()
+        sequence.updateProperty(.opacity, of: id) { $0.setAnimated(true, at: .zero) }
+        sequence.setProperty(.opacity, of: id, to: [0], atFrame: 30)
+        let start = try await green(sequence, frame: 0, x: 0.5, y: 0.5)
+        let middle = try await green(sequence, frame: 15, x: 0.5, y: 0.5)
+        let end = try await green(sequence, frame: 40, x: 0.5, y: 0.5)
+        XCTAssertGreaterThan(start, 240)
+        XCTAssertGreaterThan(middle, 120)
+        XCTAssertLessThan(middle, 235)
+        XCTAssertLessThan(end, 10)
+    }
+
+    func testTitleMotion() async throws {
+        var sequence = EditSequence(name: "T", settings: SequenceSettings(width: 320, height: 180, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        project = Project()
+        let added = sequence.addTitle(TitleSpec(text: " ", size: 0.2, shadow: nil, background: .white), at: 0,
+                                      duration: 30, trackID: sequence.videoTracks[0].id)
+        let id = try XCTUnwrap(added)
+        sequence.updateProperty(.position, of: id) { $0.values = [100, 0] }
+        let moved = try await green(sequence, frame: 5, x: 0.5 + 100 / 320, y: 0.5)
+        let original = try await green(sequence, frame: 5, x: 0.5, y: 0.5)
+        XCTAssertGreaterThan(moved, 240, "the title's box moved right with Position")
+        XCTAssertLessThan(original, 10)
+    }
+}

@@ -121,12 +121,14 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     /// Clips sharing a link ID (a clip's video and audio) are selected and edited together.
     public var linkID: UUID?
     public var isEnabled: Bool
-    /// Video opacity, 0...1.
-    public var opacity: Double
-    /// Audio clip gain in dB.
+    /// Audio clip gain in dB (Premiere's Audio Gain, applied before Volume).
     public var gainDB: Double
     /// Set for a title (generated text) clip, whose `mediaID` is `Clip.generatedMediaID`.
     public var title: TitleSpec?
+    /// Video: position, scale, rotation, anchor point and opacity, each keyframeable.
+    public var motion: Motion
+    /// Audio: level in dB, keyframeable (Premiere's Volume effect).
+    public var volume: AnimatableProperty
 
     public init(id: UUID = UUID(), mediaID: UUID, name: String, start: Int64, duration: Int64,
                 sourceStart: RationalTime, linkID: UUID? = nil, isEnabled: Bool = true,
@@ -139,10 +141,21 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         self.sourceStart = sourceStart
         self.linkID = linkID
         self.isEnabled = isEnabled
-        self.opacity = opacity
         self.gainDB = gainDB
         self.title = title
+        motion = Motion()
+        volume = AnimatableProperty([0])
+        self.opacity = opacity
     }
+
+    /// Constant opacity, 0...1 (the value used when opacity isn't keyframed).
+    public var opacity: Double {
+        get { (motion.opacity.values.first ?? 100) / 100 }
+        set { motion.opacity.values = [min(max(newValue, 0), 1) * 100] }
+    }
+
+    /// Whether the clip can be seen at all (keyframed opacity may rise above zero).
+    public var isVisible: Bool { motion.opacity.isAnimated || opacity > 0 }
 
     public var end: Int64 { start + duration }
     public var range: FrameRange { FrameRange(start: start, end: end) }
@@ -150,6 +163,53 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     /// Source media time shown at sequence frame `frame`.
     public func sourceTime(atSequenceFrame frame: Int64, rate: FrameRate) -> RationalTime {
         sourceStart + RationalTime(frames: frame - start, rate: rate)
+    }
+
+    /// The sequence frame showing source time `time`.
+    public func sequenceFrame(atSourceTime time: RationalTime, rate: FrameRate) -> Int64 {
+        start + (time - sourceStart).frameIndex(at: rate)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, mediaID, name, start, duration, sourceStart, linkID, isEnabled, gainDB, title, motion, volume
+        /// Schema 3 and earlier stored a constant opacity (0...1).
+        case opacity
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        mediaID = try container.decode(UUID.self, forKey: .mediaID)
+        name = try container.decode(String.self, forKey: .name)
+        start = try container.decode(Int64.self, forKey: .start)
+        duration = try container.decode(Int64.self, forKey: .duration)
+        sourceStart = try container.decode(RationalTime.self, forKey: .sourceStart)
+        linkID = try container.decodeIfPresent(UUID.self, forKey: .linkID)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        gainDB = try container.decodeIfPresent(Double.self, forKey: .gainDB) ?? 0
+        title = try container.decodeIfPresent(TitleSpec.self, forKey: .title)
+        motion = try container.decodeIfPresent(Motion.self, forKey: .motion) ?? Motion()
+        volume = try container.decodeIfPresent(AnimatableProperty.self, forKey: .volume) ?? AnimatableProperty([0])
+        if try container.decodeIfPresent(Motion.self, forKey: .motion) == nil,
+           let legacy = try container.decodeIfPresent(Double.self, forKey: .opacity) {
+            opacity = legacy
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(mediaID, forKey: .mediaID)
+        try container.encode(name, forKey: .name)
+        try container.encode(start, forKey: .start)
+        try container.encode(duration, forKey: .duration)
+        try container.encode(sourceStart, forKey: .sourceStart)
+        try container.encodeIfPresent(linkID, forKey: .linkID)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(gainDB, forKey: .gainDB)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encode(motion, forKey: .motion)
+        try container.encode(volume, forKey: .volume)
     }
 }
 

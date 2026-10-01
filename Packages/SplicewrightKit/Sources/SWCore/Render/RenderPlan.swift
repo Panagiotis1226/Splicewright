@@ -91,15 +91,23 @@ public struct RenderLayer: Sendable, Hashable {
     public var transition: LayerTransition?
     /// Set for a title clip, which has no media.
     public var title: TitleSpec?
+    /// Position, scale, rotation, anchor and opacity (possibly keyframed).
+    public var motion: Motion
+    /// Where the clip starts in the sequence and in its source, to evaluate keyframes.
+    public var clipStart: Int64
+    public var sourceStart: RationalTime
 
     public init(trackIndex: Int, clipID: UUID, mediaID: UUID, opacity: Double, transition: LayerTransition? = nil,
-                title: TitleSpec? = nil) {
+                title: TitleSpec? = nil, motion: Motion = Motion(), clipStart: Int64 = 0, sourceStart: RationalTime = .zero) {
         self.trackIndex = trackIndex
         self.clipID = clipID
         self.mediaID = mediaID
         self.opacity = opacity
         self.transition = transition
         self.title = title
+        self.motion = motion
+        self.clipStart = clipStart
+        self.sourceStart = sourceStart
     }
 }
 
@@ -170,11 +178,12 @@ public enum RenderPlan {
             var layers: [RenderLayer] = []
             for (index, track) in sequence.videoTracks.enumerated() where track.isOutputEnabled {
                 func layer(_ clip: Clip?, _ transition: LayerTransition? = nil) -> RenderLayer? {
-                    guard let clip, clip.isEnabled, clip.opacity > 0, clip.isTitle || isAvailable(clip.mediaID) else {
+                    guard let clip, clip.isEnabled, clip.isVisible, clip.isTitle || isAvailable(clip.mediaID) else {
                         return nil
                     }
                     return RenderLayer(trackIndex: index, clipID: clip.id, mediaID: clip.mediaID,
-                                       opacity: min(1, clip.opacity), transition: transition, title: clip.title)
+                                       opacity: min(1, clip.opacity), transition: transition, title: clip.title,
+                                       motion: clip.motion, clipStart: clip.start, sourceStart: clip.sourceStart)
                 }
                 if let active = transitions[index].first(where: { $0.range.contains(start) }) {
                     let range = active.range

@@ -5,8 +5,9 @@ import Foundation
 /// `Project` is a value type: undo is implemented by keeping previous values,
 /// and every mutation below is a pure function that can be unit-tested.
 public struct Project: Sendable, Hashable, Codable {
-    /// 2: adds `sequences`. 3: adds track transitions and title clips. Older files load unchanged.
-    public static let currentSchemaVersion = 3
+    /// 2: adds `sequences`. 3: adds track transitions and title clips. 4: keyframeable clip
+    /// motion, opacity and volume. Older files load unchanged.
+    public static let currentSchemaVersion = 4
 
     public var schemaVersion: Int
     public var bins: [Bin]
