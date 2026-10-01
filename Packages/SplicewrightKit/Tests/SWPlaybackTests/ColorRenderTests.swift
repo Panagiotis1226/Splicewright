@@ -97,7 +97,7 @@ final class ColorRenderTests: XCTestCase {
         XCTAssertGreaterThan(warmed[0], warmed[2] + 20, "warmer: more red than blue")
     }
 
-    func testIdentityAndInvertLUTs() async throws {
+    func testIdentityAndLookLUTs() async throws {
         var (sequence, id) = try await greySequence()
         let before = try await rgb(sequence)
         let identity = try writeCube("identity.cube") { $0 }
@@ -106,10 +106,14 @@ final class ColorRenderTests: XCTestCase {
         XCTAssertEqual(Double(same[1]), Double(before[1]), accuracy: 4, "an identity LUT changes nothing")
 
         var (inverted, invertedID) = try await greySequence()
-        let invert = try writeCube("invert.cube") { $0.map { 1 - $0 } }
-        try set(.lut, ["intensity": 100], on: invertedID, in: &inverted) { $0.lutPath = invert }
-        let flipped = try await rgb(inverted)
-        XCTAssertEqual(Double(flipped[1]), Double(255 - before[1]), accuracy: 16, "inverted in display values")
+        // Mid grey is its own inverse in display values, so check channels instead: red full,
+        // blue off, green as it was.
+        let look = try writeCube("look.cube") { [1, $0[1], 0] }
+        try set(.lut, ["intensity": 100], on: invertedID, in: &inverted) { $0.lutPath = look }
+        let looked = try await rgb(inverted)
+        XCTAssertGreaterThan(looked[0], 240, "the LUT's red")
+        XCTAssertLessThan(looked[2], 15, "the LUT's blue")
+        XCTAssertEqual(Double(looked[1]), Double(before[1]), accuracy: 6, "green passes through")
 
         var (missing, missingID) = try await greySequence()
         try set(.lut, [:], on: missingID, in: &missing) { $0.lutPath = "/nowhere/missing.cube" }
