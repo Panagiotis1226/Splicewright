@@ -201,7 +201,21 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Media.** Files on disk are imported (matched by resolved path to items already in the project). Missing ones become offline items that Link Media can relink. A video and an audio clip of the same file at the same place are linked.
   - **Not carried:** effects, titles, adjustment layers and keyframes (time-remapped clips are written at their starting speed). Transitions on tracks other than V1 aren't written to FCPXML (the spine). The import and export sheets say what was left out.
 
-Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, and plugins.
+**M16 — Keyframes on the timeline**
+- *As built:*
+  - **Fix.** Clips used to show only a "◆" before their name, at the clip's left edge, which read as a keyframe at the start. Each keyframe of every property and effect parameter now shows at its own sequence frame. Source-timed keyframes go through the clip's speed or remap; speed keyframes are timed from the clip's start.
+  - **Rubber bands.** Opacity on video clips and Volume on audio clips (−60…+15 dB) are drawn as a line sampled from the real curve, so Bezier keyframes show as curves. Drag the line to move the level, ⌘-click or Pen-click to add a keyframe, drag a diamond to move it (⇧ keeps the time; it snaps to the playhead), right-click for interpolation, Delete for selected keyframes. These use the same live-edit actions as Effect Controls, so they're undoable and draw live.
+  - **Visibility.** Show Video/Audio Keyframes in the Timeline's wrench menu, the View menu and the track context menu. It's saved with the workspace layout, and "◆" comes back when keyframes are hidden.
+  - **Also fixed:** a project change delivered a run-loop pass late could switch away from a sequence just created (seen on slow CI machines). Changes now read the document's current project.
+
+**M17 — Color correction and LUTs**
+- *As built:*
+  - **Color Correction** (Lumetri's Basic correction). Exposure and white balance work in linear light. Temperature and tint are channel gains normalized to keep luminance. Contrast, highlights, shadows, whites and blacks work in stops from mid grey, so SDR and HDR respond alike. Saturation and vibrance protect already-saturated colors. Every slider is keyframeable.
+  - **RGB Curves.** An all-channel curve plus red, green and blue curves, each a monotone cubic (Fritsch–Carlson) so it never overshoots. They're baked into a 256 × 3 lookup texture, cached by value. Not keyframeable, as in Premiere (schema 10).
+  - **LUTs.** `.cube` files are parsed in SWCore: TITLE, 1D/3D sizes, DOMAIN_MIN/MAX and comments, with clear errors for bad files. Curves and LUTs work on display-encoded Rec.709 (gamma 2.4), where `.cube` files expect their input, then convert back to the linear Rec.2020 working space. LUT textures (3D with trilinear filtering) are cached by path and modification date. A missing or broken file is logged once, and the clip renders without it.
+  - **Not done yet:** Lumetri's Creative, HSL Secondary, Color Wheels and scopes.
+
+Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: the rest of Lumetri (color wheels, HSL secondaries, scopes), Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, and plugins.
 
 ## Risks and mitigations
 - **Composition track limits.** AVFoundation has a practical cap on how many video layers it can decode at once. Mitigation: reuse composition tracks by packing non-overlapping clips onto the same track (A/B-roll allocation), and warn beyond about 8 simultaneous layers.
