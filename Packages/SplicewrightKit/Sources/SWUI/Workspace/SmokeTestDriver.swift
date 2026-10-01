@@ -55,6 +55,7 @@ enum SmokeTestDriver {
         var loudnessNormalized = ""
         var timelineRoundTrip = ""
         var timelineKeyframes = ""
+        var colorApplied = false
         var errors: [String] = []
     }
 
@@ -240,6 +241,21 @@ enum SmokeTestDriver {
             workspace.updateEffect(effect.id, of: clip.id, "Blurriness") { $0.parameters["blurriness"] = AnimatableProperty([8]) }
         }
         report.effectApplied = workspace.activeSequence?.clip(clip.id)?.effects.map(\.kind) == [.gaussianBlur]
+        // Color Correction and an (identity) LUT, as the Effects panel adds them; the export renders both.
+        workspace.addEffect(.colorCorrection)
+        workspace.addEffect(.lut)
+        let cube = FileManager.default.temporaryDirectory.appending(path: "smoke-identity.cube")
+        try? (["LUT_3D_SIZE 2"] + (0..<8).map { "\($0 & 1) \($0 >> 1 & 1) \($0 >> 2 & 1)" })
+            .joined(separator: "\n").write(to: cube, atomically: true, encoding: .utf8)
+        if let effects = workspace.activeSequence?.clip(clip.id)?.effects, effects.count == 3 {
+            workspace.updateEffect(effects[1].id, of: clip.id, "Exposure") {
+                $0.parameters["exposure"] = AnimatableProperty([0.5])
+            }
+            workspace.updateEffect(effects[2].id, of: clip.id, "Choose LUT") { $0.lutPath = cube.path }
+        }
+        let kinds = workspace.activeSequence?.clip(clip.id)?.effects.map(\.kind)
+        report.colorApplied = kinds == [.gaussianBlur, .colorCorrection, .lut]
+            && workspace.activeSequence?.clip(clip.id)?.effects.last?.lutPath == cube.path
         workspace.program.seek(toFrame: 10)
         workspace.newAdjustmentLayer()
         guard let layer = workspace.timeline.selection.first,

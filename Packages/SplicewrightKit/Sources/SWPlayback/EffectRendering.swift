@@ -33,6 +33,12 @@ enum EffectRendering {
                 let distance = effect["distance"] * pixelScale
                 passes.append(.shadow(opacity: effect["opacity"] / 100, offsetX: sin(angle) * distance,
                                       offsetY: -cos(angle) * distance, softness: effect["softness"] * pixelScale))
+            case .colorCorrection:
+                let grade = ColorGrade(effect)
+                if !grade.isNeutral { passes.append(.color(grade)) }
+                if let curves = effect.curves, !curves.isIdentity { passes.append(.curves(curves)) }
+            case .lut:
+                if let path = effect.lutPath { passes.append(.lut(path: path, intensity: effect["intensity"] / 100)) }
             case .parametricEQ, .compressor, .hardLimiter:
                 break
             }

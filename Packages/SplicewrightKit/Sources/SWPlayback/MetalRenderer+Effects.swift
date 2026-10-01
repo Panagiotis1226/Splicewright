@@ -44,6 +44,10 @@ enum PixelEffect {
     case sharpen(amount: Double)
     /// Offset in render pixels (y down), softness as a blur radius.
     case shadow(opacity: Double, offsetX: Double, offsetY: Double, softness: Double)
+    case color(ColorGrade)
+    case curves(ColorCurves)
+    /// A .cube file, mixed with the original by intensity (0...1).
+    case lut(path: String, intensity: Double)
 }
 
 /// An adjustment layer: its effects applied to everything composited so far.
@@ -189,6 +193,9 @@ extension MetalRenderer {
                 try pass(shadowPipeline, into: output, textures: [current, shadow], commandBuffer: commandBuffer,
                          bytes: &uniforms)
                 current = output
+            case .color, .curves, .lut:
+                let output = free(current)
+                if try runColor(effect, on: current, into: output, commandBuffer: commandBuffer) { current = output }
             }
         }
         return current
@@ -219,8 +226,8 @@ extension MetalRenderer {
     }
 
     /// A full-screen pass of `pipeline` reading `textures`, writing every pixel of `target`.
-    private func pass<Uniforms>(_ pipeline: MTLRenderPipelineState, into target: MTLTexture, textures: [MTLTexture],
-                                commandBuffer: MTLCommandBuffer, bytes: inout Uniforms) throws {
+    func pass<Uniforms>(_ pipeline: MTLRenderPipelineState, into target: MTLTexture, textures: [MTLTexture],
+                        commandBuffer: MTLCommandBuffer, bytes: inout Uniforms) throws {
         let descriptor = MTLRenderPassDescriptor()
         descriptor.colorAttachments[0].texture = target
         descriptor.colorAttachments[0].loadAction = .dontCare

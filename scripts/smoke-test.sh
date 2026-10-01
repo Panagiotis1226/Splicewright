@@ -84,6 +84,7 @@ checks = {
     "export loudness normalized": "-14.0 LUFS" in r.get("loudnessNormalized", ""),
     "timeline exported and imported": r.get("timelineRoundTrip") == "ok",
     "keyframes at their frames on the timeline": r.get("timelineKeyframes") == "ok",
+    "color correction and LUT applied": r.get("colorApplied"),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

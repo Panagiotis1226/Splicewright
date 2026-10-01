@@ -207,10 +207,12 @@ struct MotionControls: View {
         ForEach(Array(clip.effects.enumerated()), id: \.element.id) { index, effect in
             effectHeader(effect, index: index)
             if effect.isEnabled {
+                if effect.kind == .lut { LUTChooser(workspace: workspace, clipID: clip.id, effect: effect) }
                 ForEach(effect.kind.parameters, id: \.key) { parameter in
                     valueRow(.effect(effect.id, parameter.key), title: parameter.displayName, components: [""],
                              unit: parameter.unit, step: parameter.dragStep)
                 }
+                if effect.kind == .colorCorrection { CurvesEditor(workspace: workspace, clipID: clip.id, effect: effect) }
             }
         }
         if clip.effects.isEmpty {

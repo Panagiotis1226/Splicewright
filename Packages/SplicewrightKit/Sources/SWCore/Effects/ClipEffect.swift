@@ -3,6 +3,8 @@ import Foundation
 /// The video and audio effects in the Effects panel. Parameters are keyframeable, like Motion.
 public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Identifiable {
     case crop, gaussianBlur, dropShadow, sharpen, horizontalFlip, verticalFlip, mirror
+    /// Lumetri-style basic correction (with RGB curves) and a .cube look-up table.
+    case colorCorrection, lut
     case parametricEQ, compressor, hardLimiter
 
     public var id: String { rawValue }
@@ -26,6 +28,8 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         case .horizontalFlip: return "Horizontal Flip"
         case .verticalFlip: return "Vertical Flip"
         case .mirror: return "Mirror"
+        case .colorCorrection: return "Color Correction"
+        case .lut: return "LUT"
         case .parametricEQ: return "Parametric EQ"
         case .compressor: return "Compressor"
         case .hardLimiter: return "Hard Limiter"
@@ -51,6 +55,19 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
             return [.init("amount", "Sharpen Amount", unit: "", range: 0...4000, step: 1, default: 25)]
         case .horizontalFlip, .verticalFlip:
             return []
+        case .colorCorrection:
+            return [.init("exposure", "Exposure", unit: "stops", range: -4...4, step: 0.01),
+                    .init("contrast", "Contrast", unit: "", range: -100...100, step: 0.5),
+                    .init("highlights", "Highlights", unit: "", range: -100...100, step: 0.5),
+                    .init("shadows", "Shadows", unit: "", range: -100...100, step: 0.5),
+                    .init("whites", "Whites", unit: "", range: -100...100, step: 0.5),
+                    .init("blacks", "Blacks", unit: "", range: -100...100, step: 0.5),
+                    .init("temperature", "Temperature", unit: "", range: -100...100, step: 0.5),
+                    .init("tint", "Tint", unit: "", range: -100...100, step: 0.5),
+                    .init("saturation", "Saturation", unit: "", range: 0...200, step: 0.5, default: 100),
+                    .init("vibrance", "Vibrance", unit: "", range: -100...100, step: 0.5)]
+        case .lut:
+            return [.init("intensity", "Intensity", unit: "%", range: 0...100, step: 0.5, default: 100)]
         case .mirror:
             return [.init("center", "Reflection Center", unit: "%", range: 0...100, step: 0.2, default: 50),
                     .init("angle", "Reflection Angle", unit: "°", range: -360...360, step: 0.5)]
@@ -83,6 +100,8 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         case .horizontalFlip: return "arrow.left.and.right.righttriangle.left.righttriangle.right"
         case .verticalFlip: return "arrow.up.and.down.righttriangle.up.righttriangle.down"
         case .mirror: return "rectangle.lefthalf.inset.filled"
+        case .colorCorrection: return "camera.filters"
+        case .lut: return "cube"
         case .parametricEQ: return "slider.vertical.3"
         case .compressor: return "arrow.down.right.and.arrow.up.left"
         case .hardLimiter: return "chart.line.flattrend.xyaxis"
@@ -117,6 +136,10 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
     public var isEnabled: Bool
     /// Values by parameter key, in source time like Motion.
     public var parameters: [String: AnimatableProperty]
+    /// LUT: the .cube file it applies. Schema 10.
+    public var lutPath: String?
+    /// Color Correction: its RGB curves (nil is straight). Schema 10.
+    public var curves: ColorCurves?
 
     public init(id: UUID = UUID(), kind: EffectKind, isEnabled: Bool = true) {
         self.id = id
@@ -139,7 +162,10 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
     /// Every parameter's value at `time`, for rendering.
     public func resolved(at time: RationalTime) -> ResolvedEffect {
         let values = kind.parameters.map { ($0.key, value($0.key, at: time)) }
-        return ResolvedEffect(kind: kind, values: Dictionary(uniqueKeysWithValues: values))
+        var resolved = ResolvedEffect(kind: kind, values: Dictionary(uniqueKeysWithValues: values))
+        resolved.lutPath = lutPath
+        resolved.curves = curves
+        return resolved
     }
 
     /// The same effect with its keyframes shifted (for Paste Attributes).
@@ -155,6 +181,8 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
 public struct ResolvedEffect: Sendable, Hashable {
     public var kind: EffectKind
     public var values: [String: Double]
+    public var lutPath: String?
+    public var curves: ColorCurves?
 
     public init(kind: EffectKind, values: [String: Double]) {
         self.kind = kind
@@ -173,6 +201,10 @@ public struct ResolvedEffect: Sendable, Hashable {
         case .horizontalFlip, .verticalFlip, .mirror, .hardLimiter: return false
         case .parametricEQ: return ["lowGain", "midGain", "highGain"].allSatisfy { self[$0] == 0 }
         case .compressor: return self["ratio"] <= 1 && self["makeup"] <= 0
+        case .colorCorrection:
+            let neutral = kind.parameters.allSatisfy { abs(self[$0.key] - $0.defaultValue) < 1e-9 }
+            return neutral && (curves?.isIdentity ?? true)
+        case .lut: return lutPath == nil || self["intensity"] <= 0
         }
     }
 }
