@@ -43,7 +43,7 @@ When the app opens, choose **New Document**, then:
 4. **Play:** press Space or J/K/L with the Timeline or Program monitor active.
 5. **Transitions:** drag one from the **Effects** panel onto a cut (or a clip's free edge for a fade), or press ⌘D (video) / ⇧⌘D (audio) to apply the default at the edit point nearest the playhead. Drag a transition's edge to change its length; select it to edit it in **Effect Controls**.
 6. **Titles:** choose **Graphics ▸ New Title** (⇧⌘T), drag **Title** from the Effects panel onto a video track, or pick the Type tool (T) and click the Program monitor. Edit the text, font, colors, stroke, shadow, box and position in **Effect Controls**.
-7. **Proxies:** select clips in the Project panel, right-click ▸ **Proxy ▸ Create Proxies**, then turn on the **P** button on either monitor (or **View ▸ Use Proxies**). Proxies are ProRes 422 Proxy at 1080p by default (Settings ▸ Media) and are stored in `~/Library/Application Support/Splicewright/Proxies`.
+7. **Proxies:** select clips in the Project panel, right-click ▸ **Proxy ▸ Create Proxies**, then turn on the **P** button on either monitor (or **View ▸ Use Proxies**). Proxies are HEVC at 1080p by default (about 2.7 GB per hour of 4K30, versus about 20 GB for ProRes 422 Proxy, which scrubs most smoothly); change it in Settings ▸ Media. They are stored in `~/Library/Application Support/Splicewright/Proxies`.
 8. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
 
 ### Make targets

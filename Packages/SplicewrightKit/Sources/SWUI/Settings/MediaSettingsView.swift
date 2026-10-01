@@ -14,8 +14,13 @@ struct MediaSettingsView: View {
                     ForEach(ProxyPreset.Resolution.allCases, id: \.self) { Text($0.displayName).tag($0) }
                 }
                 Picker("Format", selection: $preferences.proxyPreset.codec) {
-                    ForEach(ProxyPreset.Codec.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    ForEach(ProxyPreset.Codec.allCases, id: \.self) { codec in
+                        Text("\(codec.displayName): about \(perHour(codec)) per hour of 4K30").tag(codec)
+                    }
                 }
+                Text(preferences.proxyPreset.codec.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Create proxies automatically when importing media larger than this",
                        isOn: $preferences.autoCreateProxies)
                 LabeledContent("Location") {
@@ -32,6 +37,11 @@ struct MediaSettingsView: View {
                         }
                     }
                 }
+                Text("For comparison, iPhone 4K30 HEVC video is about 22 GB per hour. On Apple silicon a single "
+                     + "4K30 HEVC clip usually plays smoothly without proxies; they help most with 4K60, several "
+                     + "layers, HDR with effects, or slower Macs.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text("Proxies are lighter copies of your video for smooth playback. Turn them on with the P button on "
                      + "either monitor (or View ▸ Use Proxies). Export always uses the original media. Proxies made "
                      + "in one location aren't moved when you change it.")
@@ -41,6 +51,13 @@ struct MediaSettingsView: View {
         }
         .formStyle(.grouped)
         .frame(minWidth: 620, minHeight: 360)
+    }
+
+    private func perHour(_ codec: ProxyPreset.Codec) -> String {
+        var preset = preferences.proxyPreset
+        preset.codec = codec
+        let bytes = preset.bytesPerHour(sourceWidth: 3840, sourceHeight: 2160, fps: 30)
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     private func chooseLocation() {

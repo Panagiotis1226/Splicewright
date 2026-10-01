@@ -132,20 +132,48 @@ extension ProxyGenerator {
         do { writer = try AVAssetWriter(outputURL: url, fileType: .mov) } catch {
             throw ProxyError.cannotWrite(error.localizedDescription)
         }
-        let settings: [String: Any] = [
-            AVVideoCodecKey: preset.codec == .proRes422Proxy ? AVVideoCodecType.proRes422Proxy : AVVideoCodecType.proRes422LT,
+        let video = item.info.video
+        let isHDR = video?.dynamicRange.isHDR ?? false
+        let tenBit = isHDR || (video?.bitDepth ?? 8) > 8
+        let codec = preset.effectiveCodec(sourceIsHDR: isHDR)
+        let fps = video?.frameRate?.framesPerSecond ?? video?.nominalFPS ?? 30
+        var settings: [String: Any] = [
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
-            AVVideoColorPropertiesKey: ColorTags.writerProperties(item.info.video?.color ?? .rec709),
+            AVVideoColorPropertiesKey: ColorTags.writerProperties(video?.color ?? .rec709),
         ]
+        let pixelFormat: OSType
+        switch codec {
+        case .proRes422Proxy, .proRes422LT:
+            settings[AVVideoCodecKey] = codec == .proRes422Proxy ? AVVideoCodecType.proRes422Proxy : AVVideoCodecType.proRes422LT
+            pixelFormat = kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
+        case .hevc, .h264:
+            settings[AVVideoCodecKey] = codec == .hevc ? AVVideoCodecType.hevc : AVVideoCodecType.h264
+            let profile: String
+            if codec == .h264 {
+                profile = AVVideoProfileLevelH264HighAutoLevel
+            } else {
+                profile = (tenBit ? kVTProfileLevel_HEVC_Main10_AutoLevel : kVTProfileLevel_HEVC_Main_AutoLevel) as String
+            }
+            settings[AVVideoCompressionPropertiesKey] = [
+                AVVideoAverageBitRateKey: preset.bitRate(width: width, height: height, fps: fps),
+                AVVideoExpectedSourceFrameRateKey: fps,
+                // A key frame every half second and no B-frames keep scrubbing responsive.
+                AVVideoMaxKeyFrameIntervalKey: max(1, Int((fps / 2).rounded())),
+                AVVideoAllowFrameReorderingKey: false,
+                AVVideoProfileLevelKey: profile,
+            ] as [String: Any]
+            pixelFormat = codec == .hevc && tenBit ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+                : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        }
         guard writer.canApply(outputSettings: settings, forMediaType: .video) else {
-            throw ProxyError.cannotWrite("this Mac can't encode \(preset.codec.displayName)")
+            throw ProxyError.cannotWrite("this Mac can't encode \(codec.displayName) at \(width)×\(height)")
         }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
         input.transform = transform
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: NSNumber(value: kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange),
+            kCVPixelBufferPixelFormatTypeKey as String: NSNumber(value: pixelFormat),
             kCVPixelBufferWidthKey as String: width,
             kCVPixelBufferHeightKey as String: height,
             kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
