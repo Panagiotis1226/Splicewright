@@ -114,15 +114,18 @@ final class TransitionRenderTests: XCTestCase {
     func testDipToBlackIsBlackAtTheMiddle() async throws {
         let sequence = try await cutSequence(.dipToBlack)
         // Just past the middle: nearly all black, fading up into black B.
-        XCTAssertLessThan(try level(try await render(sequence, frame: 60)), 20)
+        let middle = try level(try await render(sequence, frame: 60))
+        XCTAssertLessThan(middle, 20)
         let quarter = try level(try await render(sequence, frame: 52))
         XCTAssertGreaterThan(quarter, 60, "still fading from white")
     }
 
     func testDipToWhite() async throws {
         let sequence = try await cutSequence(.dipToWhite)
-        XCTAssertGreaterThan(try level(try await render(sequence, frame: 60)), 240)
-        XCTAssertGreaterThan(try level(try await render(sequence, frame: 68)), 100, "fading from white into black")
+        let middle = try level(try await render(sequence, frame: 60))
+        XCTAssertGreaterThan(middle, 240)
+        let late = try level(try await render(sequence, frame: 68))
+        XCTAssertGreaterThan(late, 100, "fading from white into black")
     }
 
     func testWipeRightRevealsBFromTheLeft() async throws {
@@ -149,7 +152,8 @@ final class TransitionRenderTests: XCTestCase {
                                                    sourceStart: .zero)),
         ])
         sequence.addTransition(.crossDissolve, trackID: v2, at: 60, duration: 30)
-        XCTAssertGreaterThan(try level(try await render(sequence, frame: 60)), 245)
+        let middle = try level(try await render(sequence, frame: 60))
+        XCTAssertGreaterThan(middle, 245)
 
         // A fade out at the end of V2 does reveal V1.
         sequence.addTransition(.crossDissolve, trackID: v2, at: 120, duration: 30)

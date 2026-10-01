@@ -233,8 +233,8 @@ final class ExportTests: XCTestCase {
         try await standardClips()
         for (codec, expected) in [(ExportCodec.proRes422LT, VideoCodec.proRes422LT), (.proRes422Proxy, .proRes422Proxy)] {
             let url = try await export(ExportSettings(preset: .proRes(codec, for: sequence)), name: codec.rawValue)
-            let video = try XCTUnwrap(try await MediaProber().probe(url).video)
-            XCTAssertEqual(video.codec, expected)
+            let probed = try await MediaProber().probe(url)
+            XCTAssertEqual(probed.video?.codec, expected)
         }
     }
 
