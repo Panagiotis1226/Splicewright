@@ -76,6 +76,8 @@ public final class WorkspaceController: ObservableObject {
     @Published public var isTranscribeSheetPresented = false
     /// The Program monitor's background picker (its swatch button, View menu, right-click).
     @Published public var isMonitorBackgroundPickerShown = false
+    /// The outcome of a timeline import or export (what came across and what didn't).
+    @Published public var interchangeMessage: InterchangeMessage?
     @Published public var captionJob: CaptionJob?
     /// Non-nil while the Speed/Duration sheet is shown, for these clips.
     @Published public var speedSheetClipIDs: Set<UUID>?

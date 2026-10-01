@@ -82,10 +82,13 @@ checks = {
     "effect and adjustment layer applied": r.get("effectApplied") and r.get("adjustmentLayerAdded"),
     "mixer fader set": r.get("mixerApplied"),
     "export loudness normalized": "-14.0 LUFS" in r.get("loudnessNormalized", ""),
+    "timeline exported and imported": r.get("timelineRoundTrip") == "ok",
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():
     print(("PASS " if ok else "FAIL ") + name)
+if r.get("timelineRoundTrip") != "ok":
+    print("     timeline: " + str(r.get("timelineRoundTrip")))
 if not r.get("chaptersEmbedded"):
     print("     chapters: " + str(r.get("chapterDetail")))
 sys.exit(0 if all(checks.values()) else 1)

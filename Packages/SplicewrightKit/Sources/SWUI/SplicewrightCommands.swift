@@ -15,6 +15,8 @@ public struct SplicewrightCommands: Commands {
             Button("Import…") { workspace?.isImporterPresented = true }
                 .shortcut(.importMedia, keys)
                 .disabled(workspace == nil)
+            Button("Import Timeline from Premiere Pro, Resolve or Final Cut…") { workspace?.chooseTimelineToImport() }
+                .disabled(workspace == nil)
             Button("New Bin") { workspace?.newBin() }
                 .shortcut(.newBin, keys)
                 .disabled(workspace == nil)
@@ -28,6 +30,11 @@ public struct SplicewrightCommands: Commands {
                 // Not Premiere's ⌘M: that's Window ▸ Minimize on the Mac.
                 Button("Media…") { workspace?.requestExport() }
                     .shortcut(.exportMedia, keys)
+                Divider()
+                Button("Timeline for Premiere Pro (Final Cut Pro 7 XML)…") { workspace?.exportTimeline(.fcp7XML) }
+                Button("Timeline for DaVinci Resolve or Final Cut Pro (FCPXML)…") { workspace?.exportTimeline(.fcpxml) }
+                Button("Timeline for DaVinci Resolve (OpenTimelineIO)…") { workspace?.exportTimeline(.otio) }
+                Divider()
                 Button("Markers as YouTube Chapters…") { workspace?.exportChapters() }
                     .disabled(workspace?.activeSequence?.markers.isEmpty ?? true)
                 Button("Markers as CSV…") { workspace?.exportMarkersCSV() }

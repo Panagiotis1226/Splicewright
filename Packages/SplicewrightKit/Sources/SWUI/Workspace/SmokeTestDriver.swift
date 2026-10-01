@@ -53,6 +53,7 @@ enum SmokeTestDriver {
         var adjustmentLayerAdded = false
         var mixerApplied = false
         var loudnessNormalized = ""
+        var timelineRoundTrip = ""
         var errors: [String] = []
     }
 
@@ -131,6 +132,7 @@ enum SmokeTestDriver {
                                                               errors: &report.errors)
         report.windowSnapshot = saveWindowSnapshot(workspace.window, to: outputDirectory.appending(path: "window.png"))
         await exportClip(workspace, to: outputDirectory.appending(path: "export.mp4"), report: &report)
+        report.timelineRoundTrip = await checkTimelineRoundTrip(workspace, in: outputDirectory)
         // Give the script time to take a real screenshot while the window is still up.
         FileManager.default.createFile(atPath: outputDirectory.appending(path: "snapshot.ready").path, contents: nil)
         try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -322,6 +324,26 @@ enum SmokeTestDriver {
         }
         let log = AppLog.shared.lines().filter { $0.contains("chapter") }.suffix(3)
         return (false, detail + " log=\(Array(log))")
+    }
+
+    /// Writes the sequence as FCPXML and imports it back as a new sequence, as File ▸ Export ▸
+    /// Timeline and File ▸ Import Timeline would. Returns "ok", or what differed.
+    private static func checkTimelineRoundTrip(_ workspace: WorkspaceController, in directory: URL) async -> String {
+        guard let original = workspace.activeSequence else { return "no sequence" }
+        var report = InterchangeReport()
+        let timeline = InterchangeTimeline(original, project: workspace.project, report: &report)
+        let url = directory.appending(path: "timeline.fcpxml")
+        do { try InterchangeFormat.fcpxml.write(timeline).write(to: url) } catch { return "write: \(error)" }
+        await workspace.importTimeline(from: url)
+        workspace.interchangeMessage = nil
+        guard let imported = workspace.activeSequence, imported.id != original.id else { return "not imported" }
+        func media(_ sequence: EditSequence) -> [String] {
+            sequence.videoTracks.flatMap(\.clips).filter { !$0.isGenerated }
+                .map { "\($0.start)-\($0.duration)" }.sorted()
+        }
+        let before = media(original)
+        let after = media(imported)
+        return before == after ? "ok" : "video clips \(before) → \(after)"
     }
 
     /// Makes an edit, then sends Edit ▸ Undo through the responder chain, as ⌘Z does.

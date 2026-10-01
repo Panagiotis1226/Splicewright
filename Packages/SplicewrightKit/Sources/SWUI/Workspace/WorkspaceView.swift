@@ -106,6 +106,9 @@ public struct WorkspaceView: View {
                                     set: { if !$0 { workspace.editingMarkerID = nil } })) {
             if let id = workspace.editingMarkerID { MarkerSheet(workspace: workspace, markerID: id) }
         }
+        .alert(item: $workspace.interchangeMessage) { message in
+            Alert(title: Text(message.title), message: Text(message.text), dismissButton: .default(Text("OK")))
+        }
         .alert(item: $workspace.importReport) { report in
             Alert(
                 title: Text("Some files weren't imported"),
