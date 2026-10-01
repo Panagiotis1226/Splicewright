@@ -12,6 +12,8 @@ struct MotionControls: View {
     let clip: Clip
     let isVideo: Bool
     @State private var selectedKeyframes: Set<UUID> = []
+    /// Properties showing their value graph under the row.
+    @State private var graphs: Set<PropertyRef> = []
 
     init(workspace: WorkspaceController, clip: Clip, isVideo: Bool) {
         self.workspace = workspace
@@ -131,51 +133,70 @@ struct MotionControls: View {
         let time = workspace.keyframeTime(in: clip, for: ref)
         let values = animated.value(at: time)
         let onKeyframe = animated.keyframe(at: time, tolerance: rate.frameDuration) != nil
-        return HStack(spacing: 6) {
-            Button { workspace.setAnimated(!animated.isAnimated, ref, of: clip) } label: {
-                Image(systemName: "stopwatch")
-                    .foregroundStyle(animated.isAnimated ? Theme.accent : Theme.textSecondary)
+        let showsGraph = graphs.contains(ref) && animated.isAnimated
+        return VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Button {
+                    if graphs.contains(ref) { graphs.remove(ref) } else { graphs.insert(ref) }
+                } label: {
+                    Image(systemName: showsGraph ? "chevron.down" : "chevron.right").font(.system(size: 8))
+                }
+                .disabled(!animated.isAnimated)
+                .opacity(animated.isAnimated ? 1 : 0.25)
+                .help(animated.isAnimated ? "Show the value graph to shape the curve between keyframes"
+                                          : "Turn on the stopwatch to animate, then open the graph here")
+                Button { workspace.setAnimated(!animated.isAnimated, ref, of: clip) } label: {
+                    Image(systemName: "stopwatch")
+                        .foregroundStyle(animated.isAnimated ? Theme.accent : Theme.textSecondary)
+                }
+                .buttonStyle(.borderless)
+                .help(animated.isAnimated ? "Turn off animation (removes keyframes)" : "Animate \(title)")
+                Text(title).lineLimit(1).frame(width: 82, alignment: .leading)
+                ForEach(values.indices, id: \.self) { index in
+                    ScrubbableNumber(label: index < components.count ? components[index] : "",
+                                     value: display(values[index], index), step: step, unit: unit) { newValue, live in
+                        var updated = values
+                        updated[index] = stored(newValue, index)
+                        workspace.setValue(ref, of: clip.id, to: updated, actionName: title, live: live)
+                    } onEnd: {
+                        workspace.endLiveEdit(title)
+                    }
+                }
+                Spacer(minLength: 4)
+                if animated.isAnimated {
+                    Button { workspace.goToKeyframe(next: false, ref, of: clip) } label: {
+                        Image(systemName: "arrowtriangle.left.fill").font(.system(size: 7))
+                    }
+                    .help("Previous keyframe")
+                    Button { workspace.toggleKeyframe(ref, of: clip) } label: {
+                        Image(systemName: onKeyframe ? "diamond.fill" : "diamond").font(.system(size: 9))
+                            .foregroundStyle(onKeyframe ? Theme.accent : Theme.textPrimary)
+                    }
+                    .help(onKeyframe ? "Remove keyframe" : "Add keyframe")
+                    Button { workspace.goToKeyframe(next: true, ref, of: clip) } label: {
+                        Image(systemName: "arrowtriangle.right.fill").font(.system(size: 7))
+                    }
+                    .help("Next keyframe")
+                }
+                Button { workspace.resetValue(ref, of: clip.id, actionName: "Reset \(title)") } label: {
+                    Image(systemName: "arrow.uturn.backward").font(.system(size: 9))
+                }
+                .help("Reset \(title)")
+                KeyframeLane(workspace: workspace, engine: engine, clip: clip, property: ref, selection: $selectedKeyframes)
+                    .frame(minWidth: 120, maxWidth: .infinity)
+                    .frame(height: 20)
             }
             .buttonStyle(.borderless)
-            .help(animated.isAnimated ? "Turn off animation (removes keyframes)" : "Animate \(title)")
-            Text(title).lineLimit(1).frame(width: 82, alignment: .leading)
-            ForEach(values.indices, id: \.self) { index in
-                ScrubbableNumber(label: index < components.count ? components[index] : "",
-                                 value: display(values[index], index), step: step, unit: unit) { newValue, live in
-                    var updated = values
-                    updated[index] = stored(newValue, index)
-                    workspace.setValue(ref, of: clip.id, to: updated, actionName: title, live: live)
-                } onEnd: {
-                    workspace.endLiveEdit(title)
-                }
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            if showsGraph {
+                GraphEditor(workspace: workspace, engine: engine, clip: clip, property: ref, display: display, stored: stored,
+                            selection: $selectedKeyframes)
+                    .padding(.leading, 34)
+                    .padding(.trailing, 8)
+                    .padding(.bottom, 4)
             }
-            Spacer(minLength: 4)
-            if animated.isAnimated {
-                Button { workspace.goToKeyframe(next: false, ref, of: clip) } label: {
-                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 7))
-                }
-                .help("Previous keyframe")
-                Button { workspace.toggleKeyframe(ref, of: clip) } label: {
-                    Image(systemName: onKeyframe ? "diamond.fill" : "diamond").font(.system(size: 9))
-                        .foregroundStyle(onKeyframe ? Theme.accent : Theme.textPrimary)
-                }
-                .help(onKeyframe ? "Remove keyframe" : "Add keyframe")
-                Button { workspace.goToKeyframe(next: true, ref, of: clip) } label: {
-                    Image(systemName: "arrowtriangle.right.fill").font(.system(size: 7))
-                }
-                .help("Next keyframe")
-            }
-            Button { workspace.resetValue(ref, of: clip.id, actionName: "Reset \(title)") } label: {
-                Image(systemName: "arrow.uturn.backward").font(.system(size: 9))
-            }
-            .help("Reset \(title)")
-            KeyframeLane(workspace: workspace, engine: engine, clip: clip, property: ref, selection: $selectedKeyframes)
-                .frame(minWidth: 120, maxWidth: .infinity)
-                .frame(height: 20)
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 8)
-        .frame(height: 24)
         .opacity(disabled ? 0.4 : 1)
         .disabled(disabled)
     }
@@ -357,6 +378,16 @@ struct KeyframeLane: View {
         .clipped()
     }
 
+    /// Premiere-like keyframe icons: diamond (linear), hourglass (Bezier), circle (ease), square (hold).
+    static func symbol(_ interpolation: KeyframeInterpolation) -> String {
+        switch interpolation {
+        case .hold: return "square.fill"
+        case .linear: return "diamond.fill"
+        case .autoBezier, .continuousBezier, .bezier: return "hourglass"
+        case .easeIn, .easeOut, .easeInOut: return "circle.fill"
+        }
+    }
+
     private func x(for frame: Int64, width: CGFloat) -> CGFloat {
         CGFloat(frame - clip.start) / CGFloat(max(clip.duration, 1)) * width
     }
@@ -368,8 +399,7 @@ struct KeyframeLane: View {
     private func diamond(_ keyframe: Keyframe, width: CGFloat) -> some View {
         let frame = clip.sequenceFrame(ofKeyframeTime: keyframe.time, for: property, rate: rate)
         let selected = selection.contains(keyframe.id)
-        return Image(systemName: keyframe.interpolation == .hold ? "square.fill"
-                     : keyframe.interpolation == .linear ? "diamond.fill" : "circle.fill")
+        return Image(systemName: Self.symbol(keyframe.interpolation))
             .font(.system(size: 9))
             .foregroundStyle(selected ? Theme.accent : Theme.textPrimary)
             .frame(width: 14, height: 18)

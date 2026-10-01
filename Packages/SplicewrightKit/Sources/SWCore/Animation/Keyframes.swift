@@ -9,6 +9,12 @@ public enum KeyframeInterpolation: String, Sendable, Hashable, Codable, CaseIter
     case easeInOut
     /// The value jumps at the next keyframe instead of changing gradually.
     case hold
+    /// A smooth curve through the neighbouring keyframes, with handles set automatically.
+    case autoBezier
+    /// A curve with handles you drag; both sides stay in line.
+    case continuousBezier
+    /// A curve with handles you drag, each side on its own (a sharp change of direction).
+    case bezier
 
     public var displayName: String {
         switch self {
@@ -17,6 +23,9 @@ public enum KeyframeInterpolation: String, Sendable, Hashable, Codable, CaseIter
         case .easeOut: return "Ease Out"
         case .easeInOut: return "Ease In and Out"
         case .hold: return "Hold"
+        case .autoBezier: return "Auto Bezier"
+        case .continuousBezier: return "Continuous Bezier"
+        case .bezier: return "Bezier"
         }
     }
 
@@ -32,12 +41,18 @@ public struct Keyframe: Sendable, Hashable, Codable, Identifiable {
     /// One number per component (two for Position and Anchor Point).
     public var values: [Double]
     public var interpolation: KeyframeInterpolation
+    /// Dragged handles (Bezier and Continuous Bezier); nil means automatic. Schema 9.
+    public var inHandle: BezierHandle?
+    public var outHandle: BezierHandle?
 
-    public init(id: UUID = UUID(), time: RationalTime, values: [Double], interpolation: KeyframeInterpolation = .linear) {
+    public init(id: UUID = UUID(), time: RationalTime, values: [Double], interpolation: KeyframeInterpolation = .linear,
+                inHandle: BezierHandle? = nil, outHandle: BezierHandle? = nil) {
         self.id = id
         self.time = time
         self.values = values
         self.interpolation = interpolation
+        self.inHandle = inHandle
+        self.outHandle = outHandle
     }
 }
 
@@ -46,7 +61,7 @@ public struct AnimatableProperty: Sendable, Hashable, Codable {
     /// The value when there are no keyframes.
     public var values: [Double]
     /// Sorted by time. Non-empty means the property is animated.
-    public private(set) var keyframes: [Keyframe]
+    public internal(set) var keyframes: [Keyframe]
 
     public init(_ values: [Double], keyframes: [Keyframe] = []) {
         self.values = values
@@ -66,6 +81,9 @@ public struct AnimatableProperty: Sendable, Hashable, Codable {
         let from = keyframes[index]
         let to = keyframes[index + 1]
         if from.interpolation == .hold { return from.values }
+        if from.interpolation.isBezier || to.interpolation.isBezier {
+            return bezierValue(segment: index, seconds: (time - from.time).seconds)
+        }
         let span = (to.time - from.time).seconds
         let linear = span > 0 ? (time - from.time).seconds / span : 1
         let eased = Self.ease(linear, out: from.interpolation.easesOut, in: to.interpolation.easesIn)
@@ -137,9 +155,7 @@ public struct AnimatableProperty: Sendable, Hashable, Codable {
     }
 
     public mutating func setInterpolation(_ interpolation: KeyframeInterpolation, for ids: Set<UUID>) {
-        for index in keyframes.indices where ids.contains(keyframes[index].id) {
-            keyframes[index].interpolation = interpolation
-        }
+        setInterpolationKeepingShape(interpolation, for: ids)
     }
 
     public func next(after time: RationalTime) -> Keyframe? {

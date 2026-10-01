@@ -128,6 +128,41 @@ extension WorkspaceController {
         }
     }
 
+    /// One number of one keyframe: X or Y of a Position keyframe, say.
+    struct KeyframeComponent {
+        var id: UUID
+        var property: PropertyRef
+        var component: Int
+    }
+
+    /// Sets one component of a keyframe's value (dragging its point in the graph editor).
+    func setKeyframeValue(_ value: Double, _ point: KeyframeComponent, of clipID: UUID, live: Bool) {
+        let change: (inout EditSequence) -> Void = { sequence in
+            sequence.updateAnimatable(point.property, of: clipID) {
+                $0.setValue(value, component: point.component, of: point.id)
+            }
+        }
+        if live { liveEdit(change) } else { editSequence("Keyframe Value") { sequence, _ in change(&sequence) } }
+    }
+
+    /// A dragged Bezier handle in the graph editor.
+    struct HandleEdit {
+        var side: HandleSide
+        var slopes: [Double]
+        var influence: Double
+        /// ⌥-drag: the other side stays where it is.
+        var breaking: Bool
+    }
+
+    func setHandle(_ edit: HandleEdit, of id: UUID, _ ref: PropertyRef, of clipID: UUID, live: Bool) {
+        let change: (inout EditSequence) -> Void = { sequence in
+            sequence.updateAnimatable(ref, of: clipID) {
+                $0.setHandle(edit.side, of: id, slopes: edit.slopes, influence: edit.influence, breaking: edit.breaking)
+            }
+        }
+        if live { liveEdit(change) } else { editSequence("Keyframe Handle") { sequence, _ in change(&sequence) } }
+    }
+
     func resetValue(_ ref: PropertyRef, of clipID: UUID, actionName: String) {
         editSequence(actionName) { sequence, _ in sequence.resetAnimatable(ref, of: clipID) }
     }
