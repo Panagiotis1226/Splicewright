@@ -144,9 +144,10 @@ struct AudioTests {
         let decoded = try JSONDecoder().decode(EditSequence.self, from: data)
         #expect(decoded.audioTracks[0].volumeDB == 6 && decoded.audioTracks[0].pan == -100 && decoded.mixVolumeDB == -3)
         // Older files have no mixer settings.
-        let old = try #require(String(bytes: data, encoding: .utf8))
-            .replacingOccurrences(of: #","mixVolumeDB":-3"#, with: "")
-        #expect(try JSONDecoder().decode(EditSequence.self, from: Data(old.utf8)).mixVolumeDB == 0)
+        var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["mixVolumeDB"] = nil
+        let old = try JSONSerialization.data(withJSONObject: object)
+        #expect(try JSONDecoder().decode(EditSequence.self, from: old).mixVolumeDB == 0)
     }
 
     @Test func audioEffectsGoOnAudioClipsOnly() {
