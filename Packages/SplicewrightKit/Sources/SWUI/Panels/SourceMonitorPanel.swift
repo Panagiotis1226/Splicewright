@@ -6,6 +6,7 @@ import SWCore
 struct SourceMonitorPanel: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject var monitor: SourceMonitorModel
+    @ObservedObject private var keys = KeyBindingsStore.shared
 
     init(workspace: WorkspaceController) {
         self.workspace = workspace
@@ -66,26 +67,28 @@ struct SourceMonitorPanel: View {
 
     private var transport: some View {
         HStack(spacing: 14) {
-            transportButton("Mark In (I)", text: "{") { workspace.handle(.markIn) }
-            transportButton("Mark Out (O)", text: "}") { workspace.handle(.markOut) }
-            transportButton("Go to In (⇧I)", systemImage: "arrow.left.to.line") { workspace.handle(.goToIn) }
-            transportButton("Step Back 1 Frame (←)", systemImage: "backward.frame.fill") {
+            transportButton(keys.hint("Mark In", .markIn), text: "{") { workspace.handle(.markIn) }
+            transportButton(keys.hint("Mark Out", .markOut), text: "}") { workspace.handle(.markOut) }
+            transportButton(keys.hint("Go to In", .goToIn), systemImage: "arrow.left.to.line") { workspace.handle(.goToIn) }
+            transportButton(keys.hint("Step Back 1 Frame", .stepBackward1), systemImage: "backward.frame.fill") {
                 workspace.handle(.stepBackward(frames: 1))
             }
-            transportButton(monitor.isPlaying ? "Stop (Space)" : "Play (Space)",
+            transportButton(monitor.isPlaying ? keys.hint("Stop", .togglePlay) : keys.hint("Play", .togglePlay),
                             systemImage: monitor.isPlaying ? "pause.fill" : "play.fill") {
                 workspace.handle(.togglePlay)
             }
-            transportButton("Step Forward 1 Frame (→)", systemImage: "forward.frame.fill") {
+            transportButton(keys.hint("Step Forward 1 Frame", .stepForward1), systemImage: "forward.frame.fill") {
                 workspace.handle(.stepForward(frames: 1))
             }
-            transportButton("Go to Out (⇧O)", systemImage: "arrow.right.to.line") { workspace.handle(.goToOut) }
-            transportButton("Clear In and Out (⌥X)", systemImage: "xmark.circle") { workspace.handle(.clearInAndOut) }
+            transportButton(keys.hint("Go to Out", .goToOut), systemImage: "arrow.right.to.line") { workspace.handle(.goToOut) }
+            transportButton(keys.hint("Clear In and Out", .clearInAndOut), systemImage: "xmark.circle") {
+                workspace.handle(.clearInAndOut)
+            }
             Divider().frame(height: 14)
-            transportButton("Insert (,)", systemImage: "arrow.down.to.line.compact") {
+            transportButton(keys.hint("Insert", .insertEdit), systemImage: "arrow.down.to.line.compact") {
                 workspace.editFromSource(overwrite: false)
             }
-            transportButton("Overwrite (.)", systemImage: "square.and.arrow.down.on.square") {
+            transportButton(keys.hint("Overwrite", .overwriteEdit), systemImage: "square.and.arrow.down.on.square") {
                 workspace.editFromSource(overwrite: true)
             }
         }

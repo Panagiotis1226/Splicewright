@@ -37,7 +37,7 @@ When the app opens, choose **New Document**, then:
    - Press `,` to Insert or `.` to Overwrite at the playhead on the targeted tracks (the blue track names).
    - Drag clips on the timeline to move them, and drag clip edges to trim.
 4. **Play:** press Space or J/K/L with the Timeline or Program monitor active.
-5. **Export:** choose **File ▸ Export ▸ Media…** (⌘M), pick a preset, and choose Entire Sequence or In to Out.
+5. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out.
 
 ### Make targets
 
@@ -92,8 +92,10 @@ These follow Premiere Pro's defaults.
 | S | Toggle snapping |
 | V A B N R C Y U P H Z T | Tools (Selection, Track Select, Ripple, Rolling, Rate Stretch, Razor, Slip, Slide, Pen, Hand, Zoom, Type) |
 | ⌘I | Import |
-| ⌘M | Export media |
+| ⇧⌘E | Export media |
 | ⌘B | New bin |
+
+These are the defaults. To change them, open **Splicewright ▸ Settings… ▸ Keyboard** (⌘,), or choose **Help ▸ Keyboard Shortcuts…**. The editor won't assign a shortcut macOS uses, such as ⌘M (Minimize), ⌘H (Hide) or ⌘Q, so Export Media is ⇧⌘E instead of Premiere's ⌘M. Your shortcuts apply to every project.
 
 Transport keys apply to the active panel, which is outlined in blue. Click a panel to activate it: the Source and Project panels drive the Source monitor, and the Timeline and Program panels drive the sequence.
 

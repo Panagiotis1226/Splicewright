@@ -4,6 +4,7 @@ import SWCore
 /// Premiere's vertical Tools panel. Shortcuts switch tools even before the timeline exists.
 struct ToolsPanel: View {
     @ObservedObject var workspace: WorkspaceController
+    @ObservedObject private var keys = KeyBindingsStore.shared
 
     private let groups: [[EditTool]] = [
         [.selection, .trackSelectForward],
@@ -36,7 +37,7 @@ struct ToolsPanel: View {
                                             in: RoundedRectangle(cornerRadius: 3))
                         }
                         .buttonStyle(.plain)
-                        .help("\(tool.displayName) (\(String(tool.shortcut).uppercased()))")
+                        .help(keys.hint(tool.displayName, CommandID.command(for: tool)))
                     }
                 }
             }

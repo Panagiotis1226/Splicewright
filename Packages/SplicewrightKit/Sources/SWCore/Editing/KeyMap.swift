@@ -1,13 +1,13 @@
 import Foundation
 
 /// A platform-neutral key press, translated from `NSEvent` by the UI layer.
-public struct KeyInput: Sendable, Hashable {
+public struct KeyInput: Sendable, Hashable, Codable {
     public enum Key: Sendable, Hashable {
         case character(Character)
         case space, leftArrow, rightArrow, upArrow, downArrow, home, end, returnKey, delete, escape
     }
 
-    public struct Modifiers: OptionSet, Sendable, Hashable {
+    public struct Modifiers: OptionSet, Sendable, Hashable, Codable {
         public let rawValue: Int
         public init(rawValue: Int) { self.rawValue = rawValue }
         public static let shift = Modifiers(rawValue: 1 << 0)
@@ -27,6 +27,64 @@ public struct KeyInput: Sendable, Hashable {
     /// Letters are matched case-insensitively; shift is carried in `modifiers`.
     public static func character(_ character: Character, _ modifiers: Modifiers = []) -> KeyInput {
         KeyInput(.character(Character(character.lowercased())), modifiers)
+    }
+
+    /// How the shortcut is written in menus: modifiers in macOS order (⌃⌥⇧⌘), then the key.
+    public var displayString: String {
+        var text = ""
+        if modifiers.contains(.control) { text += "⌃" }
+        if modifiers.contains(.option) { text += "⌥" }
+        if modifiers.contains(.shift) { text += "⇧" }
+        if modifiers.contains(.command) { text += "⌘" }
+        return text + key.displayString
+    }
+
+    // MARK: Codable (keys are stored as short strings, e.g. "char:k", "left")
+
+    private enum CodingKeys: String, CodingKey { case key, modifiers }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let name = try container.decode(String.self, forKey: .key)
+        guard let key = Key(storageName: name) else {
+            throw DecodingError.dataCorruptedError(forKey: .key, in: container, debugDescription: "Unknown key \(name)")
+        }
+        self.key = key
+        modifiers = try container.decodeIfPresent(Modifiers.self, forKey: .modifiers) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(key.storageName, forKey: .key)
+        try container.encode(modifiers, forKey: .modifiers)
+    }
+}
+
+extension KeyInput.Key {
+    private static let named: [(String, KeyInput.Key, String)] = [
+        ("space", .space, "Space"), ("left", .leftArrow, "←"), ("right", .rightArrow, "→"),
+        ("up", .upArrow, "↑"), ("down", .downArrow, "↓"), ("home", .home, "↖"), ("end", .end, "↘"),
+        ("return", .returnKey, "↩"), ("delete", .delete, "⌫"), ("escape", .escape, "⎋"),
+    ]
+
+    var storageName: String {
+        if case .character(let char) = self { return "char:\(char)" }
+        return Self.named.first { $0.1 == self }?.0 ?? "space"
+    }
+
+    init?(storageName name: String) {
+        if name.hasPrefix("char:"), let char = name.dropFirst(5).first {
+            self = .character(char)
+        } else if let match = Self.named.first(where: { $0.0 == name }) {
+            self = match.1
+        } else {
+            return nil
+        }
+    }
+
+    public var displayString: String {
+        if case .character(let char) = self { return String(char).uppercased() }
+        return Self.named.first { $0.1 == self }?.2 ?? ""
     }
 }
 
@@ -64,69 +122,11 @@ public enum ShortcutAction: Sendable, Hashable {
     case toggleSnapping
 }
 
+/// The default bindings, for callers that don't have a user's custom set.
 public enum KeyMap {
-    /// The action for a key press, or nil if the key should go to the focused control.
-    /// Command-key combinations are left to the menu bar.
+    /// The panel action for a key press, or nil if the key should go to the focused control or a menu.
     public static func action(for input: KeyInput) -> ShortcutAction? {
-        let mods = input.modifiers
-        if mods.contains(.command) || mods.contains(.control) { return nil }
-
-        switch input.key {
-        case .space where mods.isEmpty: return .togglePlay
-        case .leftArrow where mods.isEmpty: return .stepBackward(frames: 1)
-        case .rightArrow where mods.isEmpty: return .stepForward(frames: 1)
-        case .leftArrow where mods == .shift: return .stepBackward(frames: 5)
-        case .rightArrow where mods == .shift: return .stepForward(frames: 5)
-        case .home where mods.isEmpty: return .goToStart
-        case .end where mods.isEmpty: return .goToEnd
-        case .returnKey where mods.isEmpty: return .openInSource
-        case .upArrow where mods.isEmpty: return .previousEditPoint
-        case .downArrow where mods.isEmpty: return .nextEditPoint
-        case .delete where mods.isEmpty: return .deleteSelection
-        case .delete where mods == .shift || mods == .option: return .rippleDelete
-        case .character(let char):
-            return characterAction(char, mods)
-        default:
-            return nil
-        }
-    }
-
-    private struct Chord: Hashable {
-        var character: Character
-        var modifiers: KeyInput.Modifiers
-
-        init(_ character: Character, _ modifiers: KeyInput.Modifiers = []) {
-            self.character = character
-            self.modifiers = modifiers
-        }
-    }
-
-    private static let characterBindings: [Chord: ShortcutAction] = [
-        Chord("j"): .shuttleReverse,
-        Chord("k"): .shuttleStop,
-        Chord("l"): .shuttleForward,
-        Chord("i"): .markIn,
-        Chord("o"): .markOut,
-        Chord("i", .shift): .goToIn,
-        Chord("o", .shift): .goToOut,
-        Chord("i", .option): .clearIn,
-        Chord("o", .option): .clearOut,
-        Chord("x", .option): .clearInAndOut,
-        Chord(","): .insertEdit,
-        Chord("."): .overwriteEdit,
-        Chord(";"): .liftEdit,
-        Chord("'"): .extractEdit,
-        Chord("="): .zoomIn,
-        Chord("+", .shift): .zoomIn,
-        Chord("-"): .zoomOut,
-        Chord("\\"): .zoomToFit,
-        Chord("s"): .toggleSnapping,
-    ]
-
-    private static func characterAction(_ char: Character, _ mods: KeyInput.Modifiers) -> ShortcutAction? {
-        if let action = characterBindings[Chord(char, mods)] { return action }
-        guard mods.isEmpty else { return nil }
-        return EditTool.allCases.first { $0.shortcut == char }.map { .selectTool($0) }
+        KeyBindings.standard.action(for: input)
     }
 }
 

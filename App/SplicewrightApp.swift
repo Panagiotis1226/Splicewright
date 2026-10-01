@@ -13,6 +13,10 @@ struct SplicewrightApp: App {
         })
         .defaultSize(width: 1600, height: 960)
         .commands { SplicewrightCommands() }
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 

@@ -6,6 +6,7 @@ import SWPlayback
 struct ProgramMonitorPanel: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject var engine: PlaybackEngine
+    @ObservedObject private var keys = KeyBindingsStore.shared
 
     init(workspace: WorkspaceController) {
         self.workspace = workspace
@@ -75,22 +76,22 @@ struct ProgramMonitorPanel: View {
 
     private var transport: some View {
         HStack(spacing: 14) {
-            button("Mark In (I)", text: "{", .markIn)
-            button("Mark Out (O)", text: "}", .markOut)
-            button("Go to Previous Edit (↑)", symbol: "arrow.left.to.line", .previousEditPoint)
-            button("Step Back 1 Frame (←)", symbol: "backward.frame.fill", .stepBackward(frames: 1))
-            button(engine.isPlaying ? "Stop (Space)" : "Play (Space)",
+            button(keys.hint("Mark In", .markIn), text: "{", .markIn)
+            button(keys.hint("Mark Out", .markOut), text: "}", .markOut)
+            button(keys.hint("Go to Previous Edit", .previousEditPoint), symbol: "arrow.left.to.line", .previousEditPoint)
+            button(keys.hint("Step Back 1 Frame", .stepBackward1), symbol: "backward.frame.fill", .stepBackward(frames: 1))
+            button(engine.isPlaying ? keys.hint("Stop", .togglePlay) : keys.hint("Play", .togglePlay),
                    symbol: engine.isPlaying ? "pause.fill" : "play.fill", .togglePlay)
-            button("Step Forward 1 Frame (→)", symbol: "forward.frame.fill", .stepForward(frames: 1))
-            button("Go to Next Edit (↓)", symbol: "arrow.right.to.line", .nextEditPoint)
+            button(keys.hint("Step Forward 1 Frame", .stepForward1), symbol: "forward.frame.fill", .stepForward(frames: 1))
+            button(keys.hint("Go to Next Edit", .nextEditPoint), symbol: "arrow.right.to.line", .nextEditPoint)
             Divider().frame(height: 14)
             Button { workspace.liftOrExtract(extract: false) } label: { Image(systemName: "square.and.arrow.up") }
-                .help("Lift (;)")
+                .help(keys.hint("Lift", .liftEdit))
             Button { workspace.liftOrExtract(extract: true) } label: { Image(systemName: "rectangle.compress.vertical") }
-                .help("Extract (')")
+                .help(keys.hint("Extract", .extractEdit))
             Divider().frame(height: 14)
             Button { workspace.requestExport() } label: { Image(systemName: "square.and.arrow.up.on.square") }
-                .help("Export Media… (⌘M)")
+                .help(keys.hint("Export Media…", .exportMedia))
         }
         .buttonStyle(.borderless)
         .font(.system(size: 13))

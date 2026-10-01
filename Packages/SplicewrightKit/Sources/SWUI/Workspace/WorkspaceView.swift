@@ -103,7 +103,7 @@ public struct WorkspaceView: View {
 extension WorkspaceController {
     /// Entry point for the window's key monitor.
     func handle(keyInput: KeyInput) -> Bool {
-        guard let action = KeyMap.action(for: keyInput) else { return false }
+        guard let action = KeyBindingsStore.shared.bindings.action(for: keyInput) else { return false }
         return handle(action)
     }
 }

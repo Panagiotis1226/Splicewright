@@ -3,6 +3,7 @@ import SwiftUI
 /// Menu bar additions. Items act on the frontmost project window's workspace.
 public struct SplicewrightCommands: Commands {
     @FocusedObject private var workspace: WorkspaceController?
+    @ObservedObject private var keys = KeyBindingsStore.shared
 
     public init() {}
 
@@ -10,22 +11,22 @@ public struct SplicewrightCommands: Commands {
         CommandGroup(after: .newItem) {
             Divider()
             Button("Import…") { workspace?.isImporterPresented = true }
-                .keyboardShortcut("i", modifiers: .command)
+                .shortcut(.importMedia, keys)
                 .disabled(workspace == nil)
             Button("New Bin") { workspace?.newBin() }
-                .keyboardShortcut("b", modifiers: .command)
+                .shortcut(.newBin, keys)
                 .disabled(workspace == nil)
             Divider()
             Menu("Export") {
-                // ⌘M matches Premiere Pro (it takes precedence over Window ▸ Minimize).
+                // Not Premiere's ⌘M: that's Window ▸ Minimize on the Mac.
                 Button("Media…") { workspace?.requestExport() }
-                    .keyboardShortcut("m", modifiers: .command)
+                    .shortcut(.exportMedia, keys)
             }
             .disabled(workspace?.activeSequenceID == nil)
         }
         CommandMenu("Sequence") {
             Button("New Sequence…") { workspace?.requestNewSequence() }
-                .keyboardShortcut("n", modifiers: [.command, .option])
+                .shortcut(.newSequence, keys)
             Button("Sequence Settings…") { workspace?.requestSequenceSettings() }
                 .disabled(workspace?.activeSequenceID == nil)
             Divider()
@@ -35,9 +36,9 @@ public struct SplicewrightCommands: Commands {
             Button("Extract") { workspace?.liftOrExtract(extract: true) }
             Divider()
             Button("Add Edit") { workspace?.addEdit(allTracks: false) }
-                .keyboardShortcut("k", modifiers: .command)
+                .shortcut(.addEdit, keys)
             Button("Add Edit to All Tracks") { workspace?.addEdit(allTracks: true) }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .shortcut(.addEditAllTracks, keys)
             Button("Ripple Delete") { workspace?.deleteSelectedClips(ripple: true) }
             Divider()
             Button("Add Video Track") { workspace?.addTrack(.video) }
@@ -50,6 +51,10 @@ public struct SplicewrightCommands: Commands {
             Divider()
             Button("Go to In") { workspace?.handle(.goToIn) }
             Button("Go to Out") { workspace?.handle(.goToOut) }
+        }
+        CommandGroup(after: .help) {
+            Divider()
+            SettingsLink { Text("Keyboard Shortcuts…") }
         }
     }
 }
