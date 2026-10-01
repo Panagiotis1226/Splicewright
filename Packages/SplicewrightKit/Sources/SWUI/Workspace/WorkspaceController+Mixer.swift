@@ -1,3 +1,4 @@
+import Foundation
 import SWCore
 
 /// The Audio Track Mixer: track faders and pan, and the Mix fader. Drags are live edits (one
