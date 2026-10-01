@@ -134,10 +134,16 @@ public final class WorkspaceController: ObservableObject {
         document.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
-        // `$project` publishes the new value; keep playback and selection in step with it.
+        // Keep playback and selection in step with the project. The change arrives a run-loop
+        // pass later, when the value it carried may already be stale (an import finishing just
+        // before a new sequence is made would otherwise switch away from that sequence), so
+        // read the document's current project instead.
         document.$project
             .receive(on: RunLoop.main)
-            .sink { [weak self] project in self?.projectDidChange(project) }
+            .sink { [weak self, weak document] _ in
+                guard let self, let document else { return }
+                self.projectDidChange(document.project)
+            }
             .store(in: &cancellables)
         if activeSequenceID == nil { activeSequenceID = document.project.sequences.first?.id }
         projectDidChange(document.project)

@@ -392,6 +392,7 @@ enum SmokeTestDriver {
         // Only the track went: the sequence and its clips are still there.
         let intact = workspace.activeSequence?.allTracks.map(\.clips.count) == before.allTracks.map(\.clips.count)
         diagnostics += " sent=\(sent) undone=\(undone) intact=\(intact)"
+            + " sequences=\(workspace.project.sequences.count) active=\(workspace.activeSequence != nil)"
         return (added && undone && intact, diagnostics)
     }
 
