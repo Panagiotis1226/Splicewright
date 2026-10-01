@@ -167,6 +167,7 @@ final class ExportWorker: @unchecked Sendable {
         } else {
             let mixOutput = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: ExportAudio.readerSettings)
             mixOutput.audioMix = output.audioMix
+            mixOutput.audioTimePitchAlgorithm = output.audioTimePitchAlgorithm
             mixOutput.alwaysCopiesSampleData = false
             guard reader.canAdd(mixOutput) else { throw ExportError.message("Couldn't read the sequence's audio.") }
             reader.add(mixOutput)

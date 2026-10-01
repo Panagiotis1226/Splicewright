@@ -32,6 +32,8 @@ final class TimelineCanvas: NSView {
         case transitionDuration(id: UUID, edge: TrimEdge, original: Int64, symmetric: Bool)
         /// Moving a caption, or one of its edges.
         case caption(id: UUID, edge: TrimEdge?)
+        /// Rate Stretch: an edge drag that changes speed with length.
+        case rateStretch(clipID: UUID, edge: TrimEdge)
     }
 
     struct Drag {

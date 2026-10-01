@@ -475,3 +475,106 @@ final class MotionRenderTests: XCTestCase {
         XCTAssertLessThan(original, 10)
     }
 }
+
+/// Speed, reverse and Time Remapping through the real composition. The fixture's frames get
+/// brighter by 1% each, so a frame's level says which source frame is showing.
+final class SpeedRenderTests: XCTestCase {
+    private var project = Project()
+    private var clipID = UUID()
+
+    override func setUp() async throws {
+        guard MTLCreateSystemDefaultDevice() != nil, MetalRenderer.shared != nil else { throw XCTSkip("No Metal device") }
+        guard let url = try await FixtureWriter.writeVideo(
+            FixtureWriter.h264SDR30(frames: 60, width: 160, height: 90), name: "speed-ramp.mov") else {
+            throw XCTSkip("No H.264 encoder")
+        }
+        let imported = await MediaImporter().importMedia(from: [url], into: nil, existingPaths: [])
+        let item = try XCTUnwrap(imported.items.first)
+        project = Project()
+        project.addMedia([item])
+    }
+
+    private func sequence(_ change: (inout Clip) -> Void = { _ in }) throws -> EditSequence {
+        var sequence = EditSequence(name: "S", settings: SequenceSettings(width: 160, height: 90, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        let item = try XCTUnwrap(project.media.first)
+        var clip = Clip(mediaID: item.id, name: "c", start: 0, duration: 60, sourceStart: .zero)
+        change(&clip)
+        clipID = clip.id
+        sequence.overwrite([TrackPlacement(trackID: sequence.videoTracks[0].id, clip: clip)])
+        return sequence
+    }
+
+    private func level(_ sequence: EditSequence, frame: Int64) async throws -> Int {
+        let output = await CompositionBuilder().build(sequence, project: project, cache: MediaAssetCache())
+        let generator = AVAssetImageGenerator(asset: output.composition)
+        generator.videoComposition = output.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let image = try await generator.image(at: RationalTime(frames: frame, rate: .fps30).cmTime).image
+        var bytes = [UInt8](repeating: 0, count: 4)
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        bytes.withUnsafeMutableBytes { raw in
+            let context = CGContext(data: raw.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                    space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            context?.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        return Int(bytes[1])
+    }
+
+    /// The level of source frame `frame` at 100%.
+    private func original(_ frame: Int64) async throws -> Int {
+        try await level(try sequence(), frame: frame)
+    }
+
+    func testDoubleSpeedShowsEveryOtherFrame() async throws {
+        let fast = try sequence { $0.speed = AnimatableProperty([200]); $0.duration = 30 }
+        let shown = try await level(fast, frame: 10)
+        let expected = try await original(20)
+        let unchanged = try await original(10)
+        XCTAssertEqual(shown, expected, accuracy: 2)
+        XCTAssertNotEqual(shown, unchanged, "not the 100% frame")
+    }
+
+    func testHalfSpeedAndReverse() async throws {
+        let slow = try sequence { $0.speed = AnimatableProperty([50]); $0.duration = 120 }
+        let slowLevel = try await level(slow, frame: 40)
+        let slowExpected = try await original(20)
+        XCTAssertEqual(slowLevel, slowExpected, accuracy: 2)
+        let reversed = try sequence { $0.isReversed = true; $0.sourceStart = RationalTime(frames: 59, rate: .fps30) }
+        let first = try await level(reversed, frame: 0)
+        let last = try await level(reversed, frame: 59)
+        let sourceLast = try await original(59)
+        let sourceFirst = try await original(0)
+        XCTAssertEqual(first, sourceLast, accuracy: 2, "starts on the last frame")
+        XCTAssertEqual(last, sourceFirst, accuracy: 2, "ends on the first")
+    }
+
+    func testTimeRemappingHoldsAndRamps() async throws {
+        let remapped = try sequence { clip in
+            // 100% for 20 frames, then held.
+            clip.speed.setAnimated(true, at: .zero)
+            clip.speed.set([0], at: RationalTime(frames: 20, rate: .fps30), tolerance: FrameRate.fps30.frameDuration)
+            clip.speed.setInterpolation(.hold, for: Set(clip.speed.keyframes.map(\.id)))
+        }
+        let early = try await level(remapped, frame: 10)
+        let earlyExpected = try await original(10)
+        XCTAssertEqual(early, earlyExpected, accuracy: 2)
+        let heldA = try await level(remapped, frame: 30)
+        let heldB = try await level(remapped, frame: 50)
+        XCTAssertEqual(heldA, heldB, accuracy: 1, "held")
+        let heldExpected = try await original(20)
+        XCTAssertEqual(heldA, heldExpected, accuracy: 2, "on the frame where the speed dropped to 0%")
+    }
+
+    func testPitchAlgorithmFollowsMaintainPitch() async throws {
+        var edited = try sequence()
+        let item = try XCTUnwrap(project.media.first)
+        var audio = Clip(mediaID: item.id, name: "a", start: 0, duration: 30, sourceStart: .zero)
+        audio.speed = AnimatableProperty([200])
+        audio.maintainsPitch = false
+        edited.overwrite([TrackPlacement(trackID: edited.audioTracks[0].id, clip: audio)])
+        let output = await CompositionBuilder().build(edited, project: project, cache: MediaAssetCache())
+        XCTAssertEqual(output.audioTimePitchAlgorithm, .varispeed)
+    }
+}

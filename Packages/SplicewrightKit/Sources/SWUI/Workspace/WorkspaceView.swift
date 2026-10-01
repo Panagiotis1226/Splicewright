@@ -87,6 +87,10 @@ public struct WorkspaceView: View {
         .sheet(isPresented: $workspace.isTranscribeSheetPresented) {
             TranscribeSheet(workspace: workspace)
         }
+        .sheet(isPresented: Binding(get: { workspace.speedSheetClipIDs != nil },
+                                    set: { if !$0 { workspace.speedSheetClipIDs = nil } })) {
+            if let ids = workspace.speedSheetClipIDs { SpeedDurationSheet(workspace: workspace, ids: ids) }
+        }
         .alert(item: $workspace.importReport) { report in
             Alert(
                 title: Text("Some files weren't imported"),

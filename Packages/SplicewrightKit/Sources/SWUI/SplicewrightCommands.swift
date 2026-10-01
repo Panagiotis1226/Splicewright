@@ -79,6 +79,11 @@ public struct SplicewrightCommands: Commands {
                 .disabled(workspace == nil)
             Divider()
         }
+        CommandMenu("Clip") {
+            Button("Speed/Duration…") { workspace?.requestSpeedDuration() }
+                .shortcut(.speedDuration, keys)
+                .disabled(workspace?.activeSequenceID == nil)
+        }
         CommandMenu("Graphics") {
             Button("New Title") { workspace?.newTitle() }
                 .shortcut(.newTitle, keys)

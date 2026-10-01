@@ -116,31 +116,40 @@ extension TimelineCanvas {
             guard let hit, let edge = hit.edge else { return }
             drag = Drag(kind: .trim(clipID: hit.clip.id, edge: edge, mode: tool == .rippleEdit ? .ripple : .roll),
                         original: sequence, actionName: tool == .rippleEdit ? "Ripple Trim" : "Rolling Edit")
-        case .selection, .rateStretch, .pen, .type:
-            if let transition = transitionHit(at: point, in: sequence) {
-                timeline.selection = []
-                timeline.selectedTransition = transition.transition.id
-                if let edge = transition.edge {
-                    let resolved = transition.transition
-                    drag = Drag(kind: .transitionDuration(id: resolved.id, edge: edge, original: resolved.duration,
-                                                          symmetric: resolved.before > 0 && resolved.after > 0),
-                                original: sequence, actionName: "Transition Duration")
-                }
-                return
-            }
-            timeline.selectedTransition = nil
-            guard let hit else {
-                timeline.selection = []
-                return
-            }
-            if let edge = hit.edge {
-                drag = Drag(kind: .trim(clipID: hit.clip.id, edge: edge, mode: .normal), original: sequence,
-                            actionName: "Trim")
-                return
-            }
+        case .rateStretch where hit?.edge != nil:
+            guard let hit, let edge = hit.edge else { return }
             select(hit.clip, in: sequence, event: event)
-            drag = Drag(kind: .move(ids: timeline.selection, startRow: hit.row), original: sequence, actionName: "Move")
+            drag = Drag(kind: .rateStretch(clipID: hit.clip.id, edge: edge), original: sequence, actionName: "Rate Stretch")
+        case .selection, .rateStretch, .pen, .type:
+            selectionDown(at: point, hit: hit, event: event, sequence: sequence)
         }
+    }
+
+    /// Selection tool: transitions (edges change their length), clip edges trim, clips move.
+    private func selectionDown(at point: CGPoint, hit: ClipHit?, event: NSEvent, sequence: EditSequence) {
+        if let transition = transitionHit(at: point, in: sequence) {
+            timeline.selection = []
+            timeline.selectedTransition = transition.transition.id
+            if let edge = transition.edge {
+                let resolved = transition.transition
+                drag = Drag(kind: .transitionDuration(id: resolved.id, edge: edge, original: resolved.duration,
+                                                      symmetric: resolved.before > 0 && resolved.after > 0),
+                            original: sequence, actionName: "Transition Duration")
+            }
+            return
+        }
+        timeline.selectedTransition = nil
+        guard let hit else {
+            timeline.selection = []
+            return
+        }
+        if let edge = hit.edge {
+            drag = Drag(kind: .trim(clipID: hit.clip.id, edge: edge, mode: .normal), original: sequence,
+                        actionName: "Trim")
+            return
+        }
+        select(hit.clip, in: sequence, event: event)
+        drag = Drag(kind: .move(ids: timeline.selection, startRow: hit.row), original: sequence, actionName: "Move")
     }
 
     /// Premiere selection: click selects the clip and its linked partners; ⇧ toggles;
@@ -248,15 +257,7 @@ extension TimelineCanvas {
             }
             copy.move(ids, by: delta, trackOffset: offset)
         case .trim(let clipID, let edge, let mode):
-            if timeline.isSnapping, let clip = original.clip(clipID) {
-                let excluded = original.expandingLinks([clipID])
-                let snapper = Snapper(sequence: original, excluding: excluded, playhead: playhead, threshold: snapThreshold)
-                let edgeFrame = edge == .start ? clip.start : clip.end
-                if let point = snapper.snap(edgeFrame + delta) {
-                    delta = point - edgeFrame
-                    timeline.snapFrame = point
-                }
-            }
+            delta = snappedEdgeDelta(clipID, edge: edge, delta: delta, in: original, playhead: playhead)
             switch mode {
             case .normal: copy.trim(clipID, edge: edge, by: delta, media: media)
             case .ripple: copy.rippleTrim(clipID, edge: edge, by: delta, media: media)
@@ -269,6 +270,9 @@ extension TimelineCanvas {
             copy.slide(clipID, by: delta, media: media)
         case .caption(let id, let edge):
             return captionPreview(id, edge: edge, original: original, delta: delta)
+        case .rateStretch(let clipID, let edge):
+            delta = snappedEdgeDelta(clipID, edge: edge, delta: delta, in: original, playhead: playhead)
+            copy.rateStretch(clipID, edge: edge, by: delta)
         case .transitionDuration(let id, let edge, let original, let symmetric):
             // Centered transitions grow on both sides, so an edge moves half as far as the duration.
             let change = (symmetric ? 2 : 1) * (edge == .end ? delta : -delta)
@@ -277,6 +281,18 @@ extension TimelineCanvas {
             break
         }
         return copy
+    }
+
+    /// Snaps a dragged clip edge to nearby edit points and the playhead.
+    private func snappedEdgeDelta(_ clipID: UUID, edge: TrimEdge, delta: Int64, in original: EditSequence,
+                                  playhead: Int64) -> Int64 {
+        guard timeline.isSnapping, let clip = original.clip(clipID) else { return delta }
+        let excluded = original.expandingLinks([clipID])
+        let snapper = Snapper(sequence: original, excluding: excluded, playhead: playhead, threshold: snapThreshold)
+        let edgeFrame = edge == .start ? clip.start : clip.end
+        guard let point = snapper.snap(edgeFrame + delta) else { return delta }
+        timeline.snapFrame = point
+        return point - edgeFrame
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -344,7 +360,7 @@ extension TimelineCanvas {
         switch workspace.activeTool {
         case .hand: return .openHand
         case .razor, .zoom: return .crosshair
-        case .selection, .rippleEdit, .rollingEdit:
+        case .selection, .rippleEdit, .rollingEdit, .rateStretch:
             if captionRow(at: point, in: sequence) != nil {
                 return captionHit(at: point, in: sequence)?.edge != nil ? .resizeLeftRight : .arrow
             }

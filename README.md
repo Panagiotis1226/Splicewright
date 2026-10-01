@@ -2,7 +2,7 @@
 
 A native macOS video editor for Apple silicon, laid out like Premiere Pro. It handles SDR (Rec.709) and HDR (HLG, PQ) footage in H.264, HEVC and ProRes, in `.mov` and `.mp4`, up to 4K60.
 
-Status: **M9**. You can:
+Status: **M10**. You can:
 
 - import media into bins and check its format details
 - mark In/Out in the Source monitor
@@ -14,6 +14,7 @@ Status: **M9**. You can:
 - make HEVC, H.264 or ProRes proxies for smooth editing of 4K/HDR footage (export always uses the originals)
 - copy and paste clips and Paste Attributes between them
 - recover from crashes with auto-saved versions, and relink moved or missing files (Link Media)
+- change clip speed (Speed/Duration, Rate Stretch, Reverse) and ramp it with Time Remapping keyframes
 - transcribe speech into an editable subtitle track (on-device, nothing uploaded), then burn it in or export .srt/.vtt
 - see and delete cached files (Settings ▸ Media Cache)
 - switch between workspaces and save your own (Window ▸ Workspaces); layout changes are remembered
@@ -57,7 +58,10 @@ When the app opens, choose **New Document**, then:
     - The **Captions** panel (next to Effect Controls) lists every caption: click a time to jump there, edit text (⏎ saves, ⌥⏎ adds a line), right-click to split at the playhead or merge with the next one, and use Find / Replace All to fix a name everywhere.
     - The ⋯ menu changes the style (re-splitting the lines), imports an existing .srt/.vtt, or exports one. The eye in the track header hides a track.
     - In **Export Media**, choose a track to **Burn In** and/or a **Caption File** (.srt or .vtt, written next to the video and timed to the exported range).
-13. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
+13. **Speed:** select clips and choose **Clip ▸ Speed/Duration…** (⌘R). Set a speed (1%-10000%) or a duration; the clip keeps the source it plays, so its length follows. Reverse Speed plays it backwards; Maintain Audio Pitch keeps voices natural; Ripple Edit shifts later clips instead of stopping at the next one. The **Rate Stretch** tool (R) changes speed by dragging a clip's edge. Clips show their speed after their name, e.g. `[200%]` or `[-100%]`.
+    - **Time Remapping:** in Effect Controls, click the **Speed** stopwatch and add keyframes. Speed ramps between them (Ease for smooth ramps), 0% holds a frame, and the clip keeps its length.
+    - Reversed and time-remapped clips play their video only; their audio is silent in this version.
+14. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
 
 ### Make targets
 
@@ -112,6 +116,7 @@ These follow Premiere Pro's defaults.
 | ⇧⌘T | New title |
 | ⌘C / ⌘X / ⌘V | Copy / cut / paste clips (Timeline active) |
 | ⌥⌘V | Paste Attributes |
+| ⌘R | Speed/Duration |
 | = / - / \\ | Zoom timeline in / out / to fit |
 | S | Toggle snapping |
 | V A B N R C Y U P H Z T | Tools (Selection, Track Select, Ripple, Rolling, Rate Stretch, Razor, Slip, Slide, Pen, Hand, Zoom, Type) |

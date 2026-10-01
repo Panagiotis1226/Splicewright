@@ -13,10 +13,10 @@ extension WorkspaceController {
     }
 
     /// The playhead, clamped into the clip, as the clip's source time (where keyframes go).
-    func keyframeTime(in clip: Clip) -> RationalTime {
+    func keyframeTime(in clip: Clip, for property: ClipProperty = .position) -> RationalTime {
         guard let sequence = activeSequence else { return clip.sourceStart }
         let frame = min(max(playheadFrame, clip.start), clip.end - 1)
-        return clip.sourceTime(atSequenceFrame: frame, rate: sequence.rate)
+        return clip.keyframeTime(for: property, atSequenceFrame: frame, rate: sequence.rate)
     }
 
     // MARK: - Values
@@ -25,6 +25,11 @@ extension WorkspaceController {
     /// an undo step until `endLiveEdit` (used while dragging).
     func setProperty(_ property: ClipProperty, of clipID: UUID, to values: [Double], live: Bool = false) {
         guard let clip = activeSequence?.clip(clipID) else { return }
+        // A constant speed changes the clip's length, as Speed/Duration does.
+        if property == .speed, !clip.speed.isAnimated, let percent = values.first {
+            setConstantSpeed(percent, of: clip, live: live)
+            return
+        }
         let frame = min(max(playheadFrame, clip.start), clip.end - 1)
         let change: (inout EditSequence) -> Void = { $0.setProperty(property, of: clipID, to: values, atFrame: frame) }
         if live {
@@ -53,14 +58,14 @@ extension WorkspaceController {
     // MARK: - Keyframes
 
     func setAnimated(_ animated: Bool, _ property: ClipProperty, of clip: Clip) {
-        let time = keyframeTime(in: clip)
+        let time = keyframeTime(in: clip, for: property)
         editSequence(animated ? "Enable Keyframes" : "Disable Keyframes") { sequence, _ in
             sequence.updateProperty(property, of: clip.id) { $0.setAnimated(animated, at: time) }
         }
     }
 
     func toggleKeyframe(_ property: ClipProperty, of clip: Clip) {
-        let time = keyframeTime(in: clip)
+        let time = keyframeTime(in: clip, for: property)
         let tolerance = activeSequence?.rate.frameDuration ?? RationalTime(value: 1, timescale: 30)
         editSequence("Keyframe") { sequence, _ in
             sequence.updateProperty(property, of: clip.id) { $0.toggleKeyframe(at: time, tolerance: tolerance) }
@@ -70,21 +75,22 @@ extension WorkspaceController {
     /// Moves the playhead to the previous or next keyframe of `property` (all properties if nil).
     func goToKeyframe(next: Bool, _ property: ClipProperty?, of clip: Clip) {
         guard let rate = activeSequence?.rate else { return }
-        let time = keyframeTime(in: clip)
         let properties = property.map { [$0] } ?? ClipProperty.allCases
-        let candidates = properties.compactMap { name -> Keyframe? in
+        // Each property's keyframes in its own time, compared as sequence frames.
+        let frames = properties.compactMap { name -> Int64? in
+            let time = keyframeTime(in: clip, for: name)
             let animated = clip.property(name)
-            return next ? animated.next(after: time) : animated.previous(before: time)
+            guard let keyframe = next ? animated.next(after: time) : animated.previous(before: time) else { return nil }
+            return clip.sequenceFrame(ofKeyframeTime: keyframe.time, for: name, rate: rate)
         }
-        let target = next ? candidates.min { $0.time < $1.time } : candidates.max { $0.time < $1.time }
-        guard let target else { return }
-        program.seek(toFrame: clip.sequenceFrame(atSourceTime: target.time, rate: rate))
+        guard let target = next ? frames.min() : frames.max() else { return }
+        program.seek(toFrame: target)
     }
 
     func moveKeyframe(_ id: UUID, _ property: ClipProperty, of clipID: UUID, toFrame frame: Int64, live: Bool) {
         guard let sequence = activeSequence, let clip = sequence.clip(clipID) else { return }
         let clamped = min(max(frame, clip.start), clip.end - 1)
-        let time = clip.sourceTime(atSequenceFrame: clamped, rate: sequence.rate)
+        let time = clip.keyframeTime(for: property, atSequenceFrame: clamped, rate: sequence.rate)
         let tolerance = sequence.rate.frameDuration
         let change: (inout EditSequence) -> Void = { sequence in
             sequence.updateProperty(property, of: clipID) { $0.move(id, to: time, tolerance: tolerance) }

@@ -24,10 +24,15 @@ struct InstructionLayer {
     var sourceStart: RationalTime = .zero
     /// Sequence pixels → render pixels (below 1 at reduced playback resolution).
     var pixelScale: Double = 1
+    /// For clips not at 100% forwards: how composition time maps to source time.
+    var timing: ClipTiming?
 
     /// The source time shown at a composition time, for evaluating keyframes.
     func sourceTime(at time: CMTime) -> RationalTime {
-        sourceStart + RationalTime(seconds: (time - clipStart).seconds, timescale: 600_000)
+        let elapsed = (time - clipStart).seconds
+        guard let timing else { return sourceStart + RationalTime(seconds: elapsed, timescale: 600_000) }
+        return sourceStart + RationalTime(seconds: timing.sourceOffset(atClipFrame: elapsed * timing.fps),
+                                          timescale: 600_000)
     }
 
     /// Fit, then motion, at a composition time.

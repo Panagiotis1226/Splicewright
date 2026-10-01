@@ -75,6 +75,8 @@ public final class WorkspaceController: ObservableObject {
     @Published public var focusedCaptionID: UUID?
     @Published public var isTranscribeSheetPresented = false
     @Published public var captionJob: CaptionJob?
+    /// Non-nil while the Speed/Duration sheet is shown, for these clips.
+    @Published public var speedSheetClipIDs: Set<UUID>?
     /// Media whose file is missing.
     @Published public internal(set) var offlineMediaIDs: Set<UUID> = []
     var checkedMediaPaths: [String] = []

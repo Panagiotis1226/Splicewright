@@ -45,6 +45,7 @@ enum SmokeTestDriver {
         var logWritten = false
         var captionTrackAdded = false
         var captionFileWritten = false
+        var speedChanged = false
         var errors: [String] = []
     }
 
@@ -197,6 +198,15 @@ enum SmokeTestDriver {
             AutoSavePreferences.store.latestVersions().contains { $0.date > Date().addingTimeInterval(-120) }
         }
         report.logWritten = !AppLog.shared.lines().isEmpty
+
+        // Speed/Duration at 50% with ripple on the last clip of V1: twice as long, same source.
+        if let sequence = workspace.activeSequence,
+           let last = sequence.videoTracks[0].clips.last(where: { !$0.isTitle }) {
+            let ids = sequence.expandingLinks([last.id])
+            workspace.changeSpeed(ids, SpeedChange(percent: 50, ripple: true))
+            let changed = workspace.activeSequence?.clip(last.id)
+            report.speedChanged = changed?.duration == last.duration * 2 && changed?.speedPercent == 50
+        }
     }
 
     /// Exports frames 10...39 as H.264 SDR and probes the result.

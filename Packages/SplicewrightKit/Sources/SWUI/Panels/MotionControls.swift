@@ -39,6 +39,11 @@ struct MotionControls: View {
                         row(.anchorPoint)
                         sectionTitle("Opacity")
                         row(.opacity)
+                        if !clip.isTitle {
+                            sectionTitle(clip.speed.isAnimated ? "Time Remapping" : "Speed")
+                            row(.speed)
+                            speedNote
+                        }
                     } else {
                         sectionTitle("Volume")
                         row(.volume)
@@ -78,6 +83,18 @@ struct MotionControls: View {
             .padding(.bottom, 2)
     }
 
+    /// What the Speed row does, which differs from Premiere's other properties.
+    private var speedNote: some View {
+        Text(clip.speed.isAnimated
+             ? "Speed keyframes ramp the playback; 0% holds a frame. The clip keeps its length."
+             : clip.isReversed ? "Reversed. Change the speed here or with Clip ▸ Speed/Duration (⌘R)."
+             : "Changes the clip's length. Click the stopwatch to ramp the speed with keyframes.")
+            .font(.system(size: 10))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 34)
+            .padding(.bottom, 4)
+    }
+
     private var uniformScaleRow: some View {
         HStack {
             Spacer().frame(width: 26)
@@ -95,7 +112,7 @@ struct MotionControls: View {
 
     private func row(_ property: ClipProperty, disabled: Bool = false) -> some View {
         let animated = clip.property(property)
-        let time = workspace.keyframeTime(in: clip)
+        let time = workspace.keyframeTime(in: clip, for: property)
         let values = animated.value(at: time)
         let onKeyframe = animated.keyframe(at: time, tolerance: rate.frameDuration) != nil
         return HStack(spacing: 6) {
@@ -280,7 +297,7 @@ struct KeyframeLane: View {
     }
 
     private func diamond(_ keyframe: Keyframe, width: CGFloat) -> some View {
-        let frame = clip.sequenceFrame(atSourceTime: keyframe.time, rate: rate)
+        let frame = clip.sequenceFrame(ofKeyframeTime: keyframe.time, for: property, rate: rate)
         let selected = selection.contains(keyframe.id)
         return Image(systemName: keyframe.interpolation == .hold ? "square.fill"
                      : keyframe.interpolation == .linear ? "diamond.fill" : "circle.fill")

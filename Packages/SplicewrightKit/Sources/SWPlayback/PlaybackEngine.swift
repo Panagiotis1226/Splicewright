@@ -104,6 +104,7 @@ public final class PlaybackEngine: ObservableObject {
         let frame = pendingSeekFrame ?? currentFrame
         pendingSeekFrame = nil
         let item = AVPlayerItem(asset: output.composition)
+        item.audioTimePitchAlgorithm = output.audioTimePitchAlgorithm
         item.videoComposition = output.videoComposition
         item.audioMix = output.audioMix
         item.seekingWaitsForVideoCompositionRendering = true

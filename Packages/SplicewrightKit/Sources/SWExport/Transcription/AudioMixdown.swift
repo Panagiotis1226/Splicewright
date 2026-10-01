@@ -38,6 +38,7 @@ public enum AudioMixdown {
         ]
         let mix = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: settings)
         mix.audioMix = output.audioMix
+        mix.audioTimePitchAlgorithm = output.audioTimePitchAlgorithm
         guard reader.canAdd(mix) else { throw Failure.failed("unsupported audio") }
         reader.add(mix)
         reader.timeRange = CMTimeRange(start: RationalTime(frames: range.start, rate: sequence.rate).cmTime,

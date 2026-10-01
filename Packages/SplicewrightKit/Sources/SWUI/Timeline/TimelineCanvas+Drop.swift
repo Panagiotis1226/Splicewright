@@ -235,6 +235,7 @@ extension TimelineCanvas {
             item.submenu = gain
             menu.addItem(item)
         }
+        menu.addItem(ActionMenuItem("Speed/Duration…") { [weak self] in self?.workspace.requestSpeedDuration() })
         menu.addItem(.separator())
         let audio = hit.row.kind == .audio
         menu.addItem(ActionMenuItem("Apply Default Transitions") { [weak self] in

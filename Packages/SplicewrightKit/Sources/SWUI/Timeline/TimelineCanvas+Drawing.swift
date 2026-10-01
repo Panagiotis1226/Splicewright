@@ -182,6 +182,14 @@ extension TimelineCanvas {
         if clip.isAnimated { label = "◆ " + label }
         if clip.opacity < 1 && !clip.motion.opacity.isAnimated { label += "  \(Int((clip.opacity * 100).rounded()))%" }
         if clip.gainDB != 0 { label += String(format: "  %+.1f dB", clip.gainDB) }
+        // Premiere shows the speed after the name.
+        if clip.speed.isAnimated {
+            label += "  [Time Remap]"
+        } else if clip.isRetimed {
+            let percent = clip.speedPercent
+            let text = percent == percent.rounded() ? String(Int(percent)) : String(format: "%.1f", percent)
+            label += "  [\(clip.isReversed ? "-" : "")\(text)%]"
+        }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10, weight: .medium),
             .foregroundColor: NSColor.white.withAlphaComponent(0.9),

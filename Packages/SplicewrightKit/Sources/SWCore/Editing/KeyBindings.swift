@@ -111,6 +111,7 @@ public struct KeyBindings: Sendable, Hashable, Codable {
             .newSequence: [.character("n", [.command, .option])],
             .newTitle: [.character("t", [.command, .shift])],
             .pasteAttributes: [.character("v", [.command, .option])],
+            .speedDuration: [.character("r", .command)],
         ]
         for tool in EditTool.allCases {
             map[CommandID.command(for: tool)] = [.character(tool.shortcut)]

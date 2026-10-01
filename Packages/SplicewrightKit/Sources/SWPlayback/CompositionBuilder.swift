@@ -63,6 +63,9 @@ public struct CompositionOutput {
     public let videoComposition: AVVideoComposition
     public let audioMix: AVAudioMix
     public let durationFrames: Int64
+    /// How sped-up or slowed-down audio is resampled: pitch-corrected unless every retimed
+    /// clip turned Maintain Audio Pitch off. Set it on the player item or reader output.
+    public var audioTimePitchAlgorithm: AVAudioTimePitchAlgorithm = .spectral
 }
 
 /// Compiles an `EditSequence` into an AVFoundation composition. Each timeline track becomes
@@ -144,8 +147,11 @@ public struct CompositionBuilder {
 
         let videoComposition = makeVideoComposition(sequence, clipTracks: clipTracks, loaded: loaded,
                                                     totalFrames: totalFrames, project: project)
-        return CompositionOutput(composition: composition, videoComposition: videoComposition,
-                                 audioMix: audioMix, durationFrames: totalFrames)
+        var output = CompositionOutput(composition: composition, videoComposition: videoComposition,
+                                       audioMix: audioMix, durationFrames: totalFrames)
+        let retimed = sequence.audioTracks.flatMap(\.clips).filter(\.isRetimed)
+        if !retimed.isEmpty, retimed.allSatisfy({ !$0.maintainsPitch }) { output.audioTimePitchAlgorithm = .varispeed }
+        return output
     }
 
     /// Audio tracks (A/B packed where crossfades need it) and their volume automation.
@@ -191,6 +197,10 @@ public struct CompositionBuilder {
 
     private func insert(_ placement: Placement, from sourceTrack: AVAssetTrack, duration: CMTime,
                         into track: AVMutableCompositionTrack, rate: FrameRate) {
+        guard !placement.clip.isRetimed else {
+            insertRetimed(placement, from: sourceTrack, duration: duration, into: track, rate: rate)
+            return
+        }
         func time(_ frames: Int64) -> CMTime { RationalTime(frames: frames, rate: rate).cmTime }
         let (clip, head, tail, freezeMissingHandles) = (placement.clip, placement.head, placement.tail,
                                                         placement.freezeMissingHandles)
@@ -214,6 +224,76 @@ public struct CompositionBuilder {
             let last = CMTimeRange(start: max(start, end - frame), end: end)
             try? track.insertTimeRange(last, of: sourceTrack, at: holdAt)
             track.scaleTimeRange(CMTimeRange(start: holdAt, duration: last.duration), toDuration: missingTail)
+        }
+    }
+
+    /// A clip at another speed. Constant forward speed is one scaled edit (AVFoundation
+    /// resamples audio with the item's pitch algorithm). Reversed and time-remapped video is
+    /// built a frame (or, when remapped, up to four frames) at a time; their audio is silent.
+    private func insertRetimed(_ placement: Placement, from sourceTrack: AVAssetTrack, duration media: CMTime,
+                               into track: AVMutableCompositionTrack, rate: FrameRate) {
+        let (clip, isVideo) = (placement.clip, placement.freezeMissingHandles)
+        let timing = clip.timing(rate: rate)
+        let frame = rate.cmFrameDuration
+        let first = -placement.head
+        let last = clip.duration + placement.tail
+        let source = clip.sourceStart.seconds
+        let mediaSeconds = media.seconds
+        func seconds(_ value: Double) -> CMTime { CMTime(seconds: value, preferredTimescale: 600_000) }
+        /// Exact composition time of a whole clip frame.
+        func at(frame position: Int64) -> CMTime { RationalTime(frames: clip.start + position, rate: rate).cmTime }
+        func at(_ clipFrame: Double) -> CMTime {
+            // Whole frames exactly, so edits meet their neighbours without gaps or overlaps.
+            if abs(clipFrame - clipFrame.rounded()) < 1e-6 { return at(frame: Int64(clipFrame.rounded())) }
+            return RationalTime(frames: clip.start, rate: rate).cmTime + seconds(clipFrame / rate.framesPerSecond)
+        }
+        /// Shows the source frame at `time` for `frames` sequence frames from clip frame `position`.
+        func hold(_ time: Double, from position: Int64, frames: Int64) {
+            let start = min(max(time, 0), max(0, mediaSeconds - frame.seconds))
+            let range = CMTimeRange(start: seconds(start), duration: frame)
+            guard (try? track.insertTimeRange(range, of: sourceTrack, at: at(frame: position))) != nil else { return }
+            track.scaleTimeRange(CMTimeRange(start: at(frame: position), duration: frame),
+                                 toDuration: RationalTime(frames: frames, rate: rate).cmTime)
+        }
+
+        if !timing.isReversed && !timing.isRemapped {
+            // Clamp the wanted source to the media, then scale it onto the timeline.
+            let lower = max(0, source + timing.sourceOffset(atClipFrame: Double(first)))
+            let upper = min(mediaSeconds, source + timing.sourceOffset(atClipFrame: Double(last)))
+            guard upper > lower else { return }
+            let startFrame = timing.clipFrame(atSourceOffset: lower - source)
+            let endFrame = timing.clipFrame(atSourceOffset: upper - source)
+            let sourceRange = CMTimeRange(start: seconds(lower), end: seconds(upper))
+            guard (try? track.insertTimeRange(sourceRange, of: sourceTrack, at: at(startFrame))) != nil else { return }
+            track.scaleTimeRange(CMTimeRange(start: at(startFrame), duration: sourceRange.duration),
+                                 toDuration: at(endFrame) - at(startFrame))
+            if isVideo {
+                // Hold the first or last frame through a transition handle the source can't fill.
+                let headGap = Int64(startFrame.rounded(.down)) - first
+                if headGap > 0 { hold(lower, from: first, frames: headGap) }
+                let tailStart = max(Int64(endFrame.rounded(.up)), clip.duration)
+                if last > tailStart { hold(upper - frame.seconds, from: tailStart, frames: last - tailStart) }
+            }
+            return
+        }
+        guard isVideo else { return }
+        var position = first
+        while position < last {
+            let count = timing.isReversed ? 1 : min(4, last - position)
+            let from = source + timing.sourceOffset(atClipFrame: Double(position))
+            let to = source + timing.sourceOffset(atClipFrame: Double(position + count))
+            if timing.isReversed || to - from < frame.seconds / 4 || from < 0 || to > mediaSeconds {
+                // One frame of source per step (reversed, held, or at the media's edge).
+                for step in 0..<count { hold(source + timing.sourceOffset(atClipFrame: Double(position + step)),
+                                             from: position + step, frames: 1) }
+            } else {
+                let range = CMTimeRange(start: seconds(from), end: seconds(to))
+                if (try? track.insertTimeRange(range, of: sourceTrack, at: at(frame: position))) != nil {
+                    track.scaleTimeRange(CMTimeRange(start: at(frame: position), duration: range.duration),
+                                         toDuration: RationalTime(frames: count, rate: rate).cmTime)
+                }
+            }
+            position += count
         }
     }
 
@@ -273,7 +353,7 @@ public struct CompositionBuilder {
                                         fallbackColor: item?.info.video?.color ?? .untagged,
                                         forcedColor: item?.colorOverride, transition: transition, motion: layer.motion,
                                         clipStart: time(layer.clipStart), sourceStart: layer.sourceStart,
-                                        pixelScale: pixelScale)
+                                        pixelScale: pixelScale, timing: layer.timing)
             }
             let range = CMTimeRange(start: RationalTime(frames: segment.range.start, rate: rate).cmTime,
                                     end: RationalTime(frames: segment.range.end, rate: rate).cmTime)
