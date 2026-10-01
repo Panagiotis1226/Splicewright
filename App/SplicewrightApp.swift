@@ -22,6 +22,7 @@ struct SplicewrightApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        CrashRecovery.appDidLaunch()
         // Smoke tests (scripts/smoke-test.sh) need a project window without user interaction.
         guard ProcessInfo.processInfo.environment["SPLICEWRIGHT_SMOKE_MEDIA"] != nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -32,5 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSDocumentController.shared.newDocument(nil)
             }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        CrashRecovery.appWillTerminate()
     }
 }

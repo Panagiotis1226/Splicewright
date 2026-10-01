@@ -52,9 +52,12 @@ public struct MediaItem: Sendable, Hashable, Codable, Identifiable {
     /// "Interpret Footage": replaces the file's color tags when set. Optional, so older
     /// projects decode without it.
     public var colorOverride: ColorDescription?
+    /// The file's modification date when it was last read, for spotting files that changed.
+    public var fileModifiedAt: Date?
 
     public init(id: UUID = UUID(), name: String, filePath: String, bookmark: Data? = nil,
-                info: MediaInfo, binID: UUID? = nil, marks: SourceMarks = .empty, importedAt: Date = Date()) {
+                info: MediaInfo, binID: UUID? = nil, marks: SourceMarks = .empty, importedAt: Date = Date(),
+                fileModifiedAt: Date? = nil) {
         self.id = id
         self.name = name
         self.filePath = filePath
@@ -63,6 +66,7 @@ public struct MediaItem: Sendable, Hashable, Codable, Identifiable {
         self.binID = binID
         self.marks = marks
         self.importedAt = importedAt
+        self.fileModifiedAt = fileModifiedAt
     }
 
     public var url: URL { URL(fileURLWithPath: filePath) }

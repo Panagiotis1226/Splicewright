@@ -70,6 +70,10 @@ checks = {
     "export used originals, not proxies": r.get("exportedWidth") == r.get("sequenceWidth") and r.get("sequenceWidth", 0) > 0,
     "cache measured and thumbnails deleted": r.get("cacheBytes", 0) > 0 and r.get("thumbnailCacheCleared"),
     "workspace switched": r.get("workspaceApplied"),
+    "keyframes added": r.get("keyframesAdded"),
+    "clips copied and pasted": r.get("clipsPasted"),
+    "auto-save written": r.get("autoSaveWritten"),
+    "log written": r.get("logWritten"),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

@@ -380,7 +380,8 @@ final class MotionRenderTests: XCTestCase {
         return (sequence, clip.id)
     }
 
-    private func green(_ sequence: EditSequence, frame: Int64, x: Double, y: Double, scale: Double = 1) async throws -> Int {
+    private func green(_ sequence: EditSequence, frame: Int64, x: Double, y: Double, scale: Double = 1,
+                       channel: Int = 1) async throws -> Int {
         let output = await CompositionBuilder(renderScale: scale).build(sequence, project: project, cache: MediaAssetCache())
         let generator = AVAssetImageGenerator(asset: output.composition)
         generator.videoComposition = output.videoComposition
@@ -397,7 +398,17 @@ final class MotionRenderTests: XCTestCase {
         }
         let px = min(image.width - 1, Int(Double(image.width) * x))
         let py = min(image.height - 1, Int(Double(image.height) * y))
-        return Int(bytes[(py * image.width + px) * 4 + 1])
+        return Int(bytes[(py * image.width + px) * 4 + channel])
+    }
+
+    func testMissingMediaShowsMediaOffline() async throws {
+        let (sequence, _) = try await whiteClipSequence()
+        let id = try XCTUnwrap(project.media.first?.id)
+        project.relink(id, toPath: "/nonexistent/motion-white.mov", bookmark: nil)
+        let red = try await green(sequence, frame: 10, x: 0.05, y: 0.05, channel: 0)
+        let greenLevel = try await green(sequence, frame: 10, x: 0.05, y: 0.05)
+        XCTAssertGreaterThan(red, 120, "a red Media Offline frame, not black")
+        XCTAssertLessThan(greenLevel, 60)
     }
 
     func testScaleAndPosition() async throws {

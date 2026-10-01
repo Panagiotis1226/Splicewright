@@ -18,6 +18,9 @@ public struct SplicewrightCommands: Commands {
             Button("New Bin") { workspace?.newBin() }
                 .shortcut(.newBin, keys)
                 .disabled(workspace == nil)
+            Button("Link Media…") { workspace?.linkMedia() }
+                .disabled(workspace?.offlineMediaIDs.isEmpty ?? true)
+            Button("Open Auto-Save…") { AutoSaver.chooseVersionToOpen() }
             Divider()
             Menu("Export") {
                 // Not Premiere's ⌘M: that's Window ▸ Minimize on the Mac.
@@ -25,6 +28,11 @@ public struct SplicewrightCommands: Commands {
                     .shortcut(.exportMedia, keys)
             }
             .disabled(workspace?.activeSequenceID == nil)
+        }
+        CommandGroup(after: .pasteboard) {
+            Button("Paste Attributes") { workspace?.pasteAttributes() }
+                .shortcut(.pasteAttributes, keys)
+                .disabled(workspace?.activeSequenceID == nil)
         }
         CommandMenu("Sequence") {
             Button("New Sequence…") { workspace?.requestNewSequence() }
@@ -94,6 +102,7 @@ public struct SplicewrightCommands: Commands {
         CommandGroup(after: .help) {
             Divider()
             OpenSettingsButton(title: "Keyboard Shortcuts…", tab: .keyboard)
+            Button("Show Logs in Finder") { AppLogMenu.reveal() }
         }
     }
 }

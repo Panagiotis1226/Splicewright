@@ -16,6 +16,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
     case insertEdit, overwriteEdit, liftEdit, extractEdit, deleteSelection, rippleDelete
     case addEdit, addEditAllTracks, openInSource
     case applyVideoTransition, applyAudioTransition
+    case pasteAttributes
     // Timeline view
     case zoomIn, zoomOut, zoomToFit, toggleSnapping
     // File
@@ -53,7 +54,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         case .markIn, .markOut, .clearIn, .clearOut, .clearInAndOut, .goToIn, .goToOut:
             return .marking
         case .insertEdit, .overwriteEdit, .liftEdit, .extractEdit, .deleteSelection, .rippleDelete, .addEdit,
-             .addEditAllTracks, .openInSource, .applyVideoTransition, .applyAudioTransition:
+             .addEditAllTracks, .openInSource, .applyVideoTransition, .applyAudioTransition, .pasteAttributes:
             return .editing
         case .zoomIn, .zoomOut, .zoomToFit, .toggleSnapping:
             return .timeline
@@ -88,7 +89,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         .applyVideoTransition: "Apply Video Transition", .applyAudioTransition: "Apply Audio Transition",
         .zoomIn: "Zoom In", .zoomOut: "Zoom Out", .zoomToFit: "Zoom to Sequence", .toggleSnapping: "Snap",
         .importMedia: "Import…", .newBin: "New Bin", .exportMedia: "Export Media…", .newSequence: "New Sequence…",
-        .newTitle: "New Title", .toggleProxies: "Toggle Proxies",
+        .newTitle: "New Title", .toggleProxies: "Toggle Proxies", .pasteAttributes: "Paste Attributes",
     ]
 
     public var tool: EditTool? {

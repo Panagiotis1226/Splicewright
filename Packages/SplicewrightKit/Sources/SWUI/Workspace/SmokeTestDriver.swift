@@ -39,6 +39,10 @@ enum SmokeTestDriver {
         var sequenceWidth = 0
         var undoWorks = false
         var undoDiagnostics = ""
+        var keyframesAdded = false
+        var clipsPasted = false
+        var autoSaveWritten = false
+        var logWritten = false
         var errors: [String] = []
     }
 
@@ -93,6 +97,7 @@ enum SmokeTestDriver {
         await checkProxies(workspace, video: first, report: &report)
         checkCache(&report)
         await checkWorkspaces(workspace, report: &report)
+        await checkHardening(workspace, report: &report)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)
         if let clip = sequence.videoTracks[0].clips.first { workspace.timeline.selection = [clip.id] }
@@ -160,6 +165,36 @@ enum SmokeTestDriver {
         report.workspaceApplied = await waitFor(seconds: 5) { workspace.projectViewMode == .icons }
         store.select(original)
         _ = await waitFor(seconds: 5) { workspace.projectViewMode == ProjectViewMode(rawValue: store.current.projectViewMode) }
+    }
+
+    /// Keyframes, copy/paste, auto-save and the log, as a user would trigger them.
+    private static func checkHardening(_ workspace: WorkspaceController, report: inout Report) async {
+        guard let clip = workspace.activeSequence?.videoTracks[0].clips.first(where: { !$0.isTitle }) else {
+            report.errors.append("No clip to animate")
+            return
+        }
+        // Scale 50% → 100% over the clip's first 10 frames, through the Effect Controls actions.
+        workspace.timeline.selection = [clip.id]
+        workspace.program.seek(toFrame: clip.start)
+        workspace.setAnimated(true, .scale, of: clip)
+        workspace.setProperty(.scale, of: clip.id, to: [50])
+        workspace.program.seek(toFrame: clip.start + min(10, clip.duration - 1))
+        workspace.setProperty(.scale, of: clip.id, to: [100])
+        let scale = workspace.activeSequence?.clip(clip.id)?.motion.scale
+        report.keyframesAdded = scale?.keyframes.map(\.values) == [[50], [100]]
+
+        let before = workspace.activeSequence?.allTracks.reduce(0) { $0 + $1.clips.count } ?? 0
+        workspace.copySelectedClips()
+        workspace.program.seek(toFrame: workspace.activeSequence?.durationFrames ?? 0)
+        workspace.pasteClips()
+        let after = workspace.activeSequence?.allTracks.reduce(0) { $0 + $1.clips.count } ?? 0
+        report.clipsPasted = after > before
+
+        workspace.autoSaveNow()
+        report.autoSaveWritten = await waitFor(seconds: 10) {
+            AutoSavePreferences.store.latestVersions().contains { $0.date > Date().addingTimeInterval(-120) }
+        }
+        report.logWritten = !AppLog.shared.lines().isEmpty
     }
 
     /// Exports frames 10...39 as H.264 SDR and probes the result.

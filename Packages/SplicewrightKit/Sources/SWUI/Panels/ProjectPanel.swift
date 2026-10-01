@@ -109,6 +109,18 @@ struct ProjectPanel: View {
                     .buttonStyle(.borderless)
                     .controlSize(.mini)
             }
+            if let notice = workspace.mediaNotice {
+                Text(notice).lineLimit(1).truncationMode(.tail).help(notice)
+                if !workspace.offlineMediaIDs.isEmpty {
+                    Button("Link Media…") { workspace.linkMedia() }
+                        .buttonStyle(.borderless)
+                        .controlSize(.mini)
+                }
+                Button { workspace.mediaNotice = nil } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless)
+                    .controlSize(.mini)
+                    .help("Dismiss")
+            }
             Spacer()
             let count = workspace.visibleMedia.count
             Text("\(count) item\(count == 1 ? "" : "s")")
@@ -457,6 +469,9 @@ private struct MediaContextMenu: View {
         .disabled(ids.isEmpty)
         Button("Reveal in Finder") { workspace.revealInFinder(ids) }
             .disabled(ids.isEmpty)
+        if !ids.isDisjoint(with: workspace.offlineMediaIDs) {
+            Button("Link Media…") { workspace.linkMedia(ids) }
+        }
         Menu("Proxy") {
             Button("Create Proxies (\(MediaPreferences.shared.proxyPreset.displayName))") { workspace.createProxies(ids) }
             Menu("Create Proxies at") {

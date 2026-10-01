@@ -65,11 +65,14 @@ public struct TitleSpec: Sendable, Hashable, Codable {
     public var shadow: TitleShadow?
     /// A box behind the text.
     public var background: TitleColor?
+    /// A color filling the whole frame behind the text (a color matte).
+    public var backdrop: TitleColor?
 
     public init(text: String = "Title", fontFamily: String = "Helvetica Neue", isBold: Bool = true,
                 isItalic: Bool = false, size: Double = 0.08, color: TitleColor = .white,
                 alignment: TitleAlignment = .center, positionX: Double = 0.5, positionY: Double = 0.5,
-                stroke: TitleStroke? = nil, shadow: TitleShadow? = TitleShadow(), background: TitleColor? = nil) {
+                stroke: TitleStroke? = nil, shadow: TitleShadow? = TitleShadow(), background: TitleColor? = nil,
+                backdrop: TitleColor? = nil) {
         self.text = text
         self.fontFamily = fontFamily
         self.isBold = isBold
@@ -82,6 +85,7 @@ public struct TitleSpec: Sendable, Hashable, Codable {
         self.stroke = stroke
         self.shadow = shadow
         self.background = background
+        self.backdrop = backdrop
     }
 
     /// The clip name shown in the timeline: the first line of text.
@@ -91,6 +95,12 @@ public struct TitleSpec: Sendable, Hashable, Codable {
     }
 
     public static let sizeRange: ClosedRange<Double> = 0.02...0.4
+
+    /// What a clip whose file is missing shows, like Premiere's red Media Offline frame.
+    public static func mediaOffline(_ name: String) -> TitleSpec {
+        TitleSpec(text: "Media Offline\n\(name)", size: 0.06, color: .white, shadow: nil,
+                  backdrop: TitleColor(red: 0.75, green: 0.08, blue: 0.08))
+    }
 }
 
 public extension Clip {

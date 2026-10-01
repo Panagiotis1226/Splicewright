@@ -115,6 +115,11 @@ public final class ProxyQueue: ObservableObject {
 
     private func finish(_ id: UUID, error: String?) {
         running = nil
+        if let error {
+            AppLog.shared.error("Proxy failed for \(id): \(error)", category: "proxy")
+        } else {
+            AppLog.shared.info("Proxy finished for \(id)", category: "proxy")
+        }
         if let error { jobs[id] = .failed(error) } else { jobs[id] = nil }
         changed()
         startNext()

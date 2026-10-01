@@ -194,6 +194,23 @@ public struct Project: Sendable, Hashable, Codable {
         media[index].filePath = path
         if let bookmark { media[index].bookmark = bookmark }
     }
+
+    /// Records a file's new properties after it changed on disk (or was relinked).
+    public mutating func updateMediaInfo(_ id: UUID, info: MediaInfo, modified: Date?) {
+        guard let index = media.firstIndex(where: { $0.id == id }) else { return }
+        media[index].info = info
+        media[index].fileModifiedAt = modified
+    }
+
+    /// Adds media that isn't in the project yet (by ID), e.g. clips pasted from another project.
+    public mutating func addMissingMedia(_ items: [MediaItem]) {
+        let existing = Set(media.map(\.id))
+        for item in items where !existing.contains(item.id) {
+            var copy = item
+            if let bin = copy.binID, self.bin(bin) == nil { copy.binID = nil }
+            media.append(copy)
+        }
+    }
 }
 
 public enum ProjectFileError: Error, Equatable {

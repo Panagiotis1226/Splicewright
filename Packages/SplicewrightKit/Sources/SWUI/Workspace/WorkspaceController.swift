@@ -68,6 +68,14 @@ public final class WorkspaceController: ObservableObject {
     var isApplyingLayout = false
     /// The project before a live edit (a drag in Effect Controls or the Program monitor) began.
     var liveEditOriginal: Project?
+    /// A short message about media (relinked, reloaded) shown at the bottom of the Project panel.
+    @Published public var mediaNotice: String?
+    /// Media whose file is missing.
+    @Published public internal(set) var offlineMediaIDs: Set<UUID> = []
+    var checkedMediaPaths: [String] = []
+    var isCheckingMedia = false
+    private var autoSaver: AutoSaver?
+    private var lastMediaCheck = Date.distantPast
 
     public init() {
         NotificationCenter.default.publisher(for: .splicewrightProxiesChanged)
@@ -79,6 +87,16 @@ public final class WorkspaceController: ObservableObject {
             }
             .store(in: &cancellables)
         observeWorkspace()
+        // Files may have been replaced while another app was in front.
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, Date().timeIntervalSince(self.lastMediaCheck) > 5 else { return }
+                self.lastMediaCheck = Date()
+                self.updateOfflineMedia(force: true)
+                self.refreshChangedMedia()
+            }
+            .store(in: &cancellables)
     }
 
     public func attach(document: ProjectDocument, undoManager: UndoManager?) {
@@ -86,6 +104,18 @@ public final class WorkspaceController: ObservableObject {
         guard self.document !== document else { return }
         self.document = document
         relinkMovedMedia()
+        let offline = document.project.media.filter { !MediaLocator.isOnline($0) }
+        if !offline.isEmpty {
+            AppLog.shared.warning("\(offline.count) offline file(s): "
+                                  + offline.map(\.filePath).joined(separator: ", "), category: "media")
+            mediaNotice = "\(offline.count) file\(offline.count == 1 ? " is" : "s are") offline. "
+                + "Right-click ▸ Link Media… to find \(offline.count == 1 ? "it" : "them")."
+        }
+        lastMediaCheck = Date()
+        refreshChangedMedia()
+        let saver = AutoSaver(workspace: self)
+        saver.noteOpened(document.project)
+        autoSaver = saver
         // Forward document changes so views observing the controller refresh too.
         document.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
@@ -111,9 +141,15 @@ public final class WorkspaceController: ObservableObject {
             timeline.selection = []
         }
         program.update(sequence: sequence, project: project)
+        updateOfflineMedia()
     }
 
     public var project: Project { document?.project ?? Project() }
+
+    /// Takes an auto-save now if the project changed (the timer does this every few minutes).
+    func autoSaveNow() {
+        autoSaver?.saveIfNeeded()
+    }
 
     // MARK: - Project panel
 
@@ -197,8 +233,12 @@ public final class WorkspaceController: ObservableObject {
             if !result.items.isEmpty {
                 let name = result.items.count == 1 ? "Import Clip" : "Import \(result.items.count) Clips"
                 self.document?.perform(name, undoManager: self.undoManager) { $0.addMedia(result.items) }
+                AppLog.shared.info("Imported \(result.items.count) file(s)", category: "import")
                 self.selectedMediaIDs = Set(result.items.map(\.id))
                 self.autoCreateProxies(for: result.items)
+            }
+            for failure in result.failures {
+                AppLog.shared.warning("Couldn't import \(failure.url.path): \(failure.reason)", category: "import")
             }
             if !result.failures.isEmpty || !result.duplicates.isEmpty {
                 self.importReport = ImportReport(failures: result.failures, duplicates: result.duplicates)

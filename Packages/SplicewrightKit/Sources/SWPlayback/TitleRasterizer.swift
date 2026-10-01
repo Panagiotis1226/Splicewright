@@ -101,6 +101,10 @@ final class TitleRasterizer {
         let center = CGPoint(x: CGFloat(spec.positionX) * width, y: (1 - CGFloat(spec.positionY)) * height)
         let rect = CGRect(x: center.x - box.width / 2, y: center.y - box.height / 2, width: box.width, height: box.height)
 
+        if let backdrop = spec.backdrop {
+            context.setFillColor(color(backdrop))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
         if let background = spec.background {
             let padding = fontSize * 0.3
             context.setFillColor(color(background))

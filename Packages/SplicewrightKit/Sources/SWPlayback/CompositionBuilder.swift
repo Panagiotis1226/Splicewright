@@ -23,7 +23,9 @@ public actor MediaAssetCache {
     /// The item's tracks. With `proxy`, video comes from that proxy file (audio always comes
     /// from the original).
     func media(for item: MediaItem, proxy: URL? = nil) async -> LoadedMedia? {
-        let key = "\(item.id)|\(item.filePath)|\(proxy?.path ?? "")"
+        // The size and date are in the key so a file that changed on disk is loaded again.
+        let key = "\(item.id)|\(item.filePath)|\(item.info.fileSize ?? 0)|"
+            + "\(item.fileModifiedAt?.timeIntervalSince1970 ?? 0)|\(proxy?.path ?? "")"
         if let cached = loaded[key] { return cached }
         guard FileManager.default.fileExists(atPath: item.filePath) else { return nil }
         let options = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
@@ -237,8 +239,8 @@ public struct CompositionBuilder {
         func time(_ frames: Int64) -> CMTime { RationalTime(frames: frames, rate: rate).cmTime }
         let pixelScale = renderWidth / Double(max(settings.width, 1))
         let segments = RenderPlan.videoSegments(for: sequence, minimumFrames: totalFrames) { mediaID in
-            // (Title clips render without media.)
-            loaded[mediaID]?.video != nil
+            // (Title clips render without media.) Missing video files show Media Offline.
+            loaded[mediaID]?.video != nil || (loaded[mediaID] == nil && project.item(mediaID)?.info.video != nil)
         }
         videoComposition.instructions = segments.map { segment in
             let layers: [InstructionLayer] = segment.layers.compactMap { layer in
@@ -250,7 +252,16 @@ public struct CompositionBuilder {
                                             title: title, motion: layer.motion, clipStart: time(layer.clipStart),
                                             sourceStart: layer.sourceStart, pixelScale: pixelScale)
                 }
-                guard let media = loaded[layer.mediaID], let trackID = clipTracks[layer.clipID] else { return nil }
+                guard let media = loaded[layer.mediaID] else {
+                    guard let item = project.item(layer.mediaID) else { return nil }
+                    return InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity,
+                                            transform: .identity, sourceWidth: renderWidth, sourceHeight: renderHeight,
+                                            fallbackColor: .rec709, forcedColor: nil, transition: transition,
+                                            title: .mediaOffline(item.name), motion: Motion(),
+                                            clipStart: time(layer.clipStart), sourceStart: layer.sourceStart,
+                                            pixelScale: pixelScale)
+                }
+                guard let trackID = clipTracks[layer.clipID] else { return nil }
                 let orientation = Affine2D(media.preferredTransform)
                 let transform = Affine2D.fit(sourceWidth: media.naturalSize.width, sourceHeight: media.naturalSize.height,
                                              orientation: orientation, renderWidth: renderWidth,

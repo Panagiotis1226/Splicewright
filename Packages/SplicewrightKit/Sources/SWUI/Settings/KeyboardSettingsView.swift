@@ -175,7 +175,7 @@ private struct KeyRecorder: NSViewRepresentable {
 /// The Settings window (Splicewright ▸ Settings…, ⌘,).
 public struct SettingsView: View {
     enum Tab: String {
-        case keyboard, media, cache, workspaces
+        case general, keyboard, media, cache, workspaces
     }
 
     /// The tab to show; menu items set it before opening Settings.
@@ -186,6 +186,9 @@ public struct SettingsView: View {
 
     public var body: some View {
         TabView(selection: $tab) {
+            GeneralSettingsView(preferences: AutoSavePreferences.shared)
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(Tab.general.rawValue)
             KeyboardSettingsView(store: store)
                 .tabItem { Label("Keyboard", systemImage: "keyboard") }
                 .tag(Tab.keyboard.rawValue)

@@ -110,6 +110,7 @@ public struct KeyBindings: Sendable, Hashable, Codable {
             .exportMedia: [.character("e", [.command, .shift])],
             .newSequence: [.character("n", [.command, .option])],
             .newTitle: [.character("t", [.command, .shift])],
+            .pasteAttributes: [.character("v", [.command, .option])],
         ]
         for tool in EditTool.allCases {
             map[CommandID.command(for: tool)] = [.character(tool.shortcut)]
@@ -160,6 +161,7 @@ public enum ReservedShortcuts {
             char("s", [.command, .shift], "Duplicate / Save As"), char("p", cmd, "Print"),
             char("z", cmd, "Undo"), char("z", [.command, .shift], "Redo"), char("x", cmd, "Cut"),
             char("c", cmd, "Copy"), char("v", cmd, "Paste"), char("a", cmd, "Select All"),
+            char("v", [.command, .option, .shift], "Paste and Match Style"),
             char("f", cmd, "Find"), char("g", cmd, "Find Next"), char("e", cmd, "Use Selection for Find"),
             (KeyInput(.space, cmd), "Spotlight"), (KeyInput(.space, .control), "Switch Input Source"),
             (KeyInput(.space, [.command, .control]), "Emoji & Symbols"),

@@ -60,7 +60,8 @@ public struct MediaImporter: Sendable {
                     filePath: url.standardizedFileURL.path,
                     bookmark: try? url.bookmarkData(),
                     info: info,
-                    binID: binID
+                    binID: binID,
+                    fileModifiedAt: FileFingerprint.of(path: url.path)?.modified
                 ))
             case .failure(let error):
                 failures.append(ImportFailure(url: url, reason: error.localizedDescription))
