@@ -7,8 +7,8 @@ import Foundation
 public struct Project: Sendable, Hashable, Codable {
     /// 2: adds `sequences`. 3: adds track transitions and title clips. 4: keyframeable clip
     /// motion, opacity and volume. 5: caption tracks. 6: clip speed, reverse and Time
-    /// Remapping. Older files load unchanged.
-    public static let currentSchemaVersion = 6
+    /// Remapping. 7: markers. Older files load unchanged.
+    public static let currentSchemaVersion = 7
 
     public var schemaVersion: Int
     public var bins: [Bin]
@@ -194,6 +194,13 @@ public struct Project: Sendable, Hashable, Codable {
         guard let index = media.firstIndex(where: { $0.id == id }) else { return }
         media[index].filePath = path
         if let bookmark { media[index].bookmark = bookmark }
+    }
+
+    /// Changes a media item's clip markers (Source monitor).
+    public mutating func updateSourceMarkers(of id: UUID, _ change: (inout [SourceMarker]) -> Void) {
+        guard let index = media.firstIndex(where: { $0.id == id }) else { return }
+        change(&media[index].markers)
+        media[index].markers.sort { $0.time < $1.time }
     }
 
     /// Records a file's new properties after it changed on disk (or was relinked).

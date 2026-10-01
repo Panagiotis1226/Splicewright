@@ -115,6 +115,7 @@ extension TimelineCanvas {
             drawWaveform(peaks, clip: clip, in: rect)
         }
         drawClipLabel(clip, at: CGPoint(x: textX, y: rect.minY + 2), maxX: rect.maxX - 4, online: online)
+        if let rate = sequence?.rate { drawClipMarkers(clip, in: rect, rate: rate) }
         NSGraphicsContext.restoreGraphicsState()
 
         if selected {
@@ -340,6 +341,7 @@ extension TimelineCanvas {
             tick += minor
         }
         drawMarks(sequence.marks, rulerMaxY: ruler.maxY)
+        drawMarkers(sequence, rulerMaxY: ruler.maxY)
 
         drawPlayheadTimecode(rate: rate)
     }

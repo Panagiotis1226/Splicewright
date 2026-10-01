@@ -46,6 +46,8 @@ enum SmokeTestDriver {
         var captionTrackAdded = false
         var captionFileWritten = false
         var speedChanged = false
+        var markerAdded = false
+        var chaptersEmbedded = false
         var errors: [String] = []
     }
 
@@ -219,6 +221,13 @@ enum SmokeTestDriver {
             }
         }
         report.captionTrackAdded = workspace.activeSequence?.captionTracks.first?.captions.count == 1
+        // A marker inside the exported range, as M at the playhead adds it, renamed in the sheet.
+        workspace.program.seek(toFrame: 20)
+        workspace.addMarker()
+        if let id = workspace.selectedMarkerID {
+            workspace.updateMarker(id, "Edit Marker") { $0.name = "Smoke chapter"; $0.isChapter = true }
+        }
+        report.markerAdded = workspace.activeSequence?.markers.first?.name == "Smoke chapter"
         guard var sequence = workspace.activeSequence else { return }
         sequence.marks = SequenceMarks(inFrame: 10, outFrame: 39)
         var settings = ExportSettings(preset: .h264SDR, range: .inToOut)
@@ -247,6 +256,8 @@ enum SmokeTestDriver {
             // Frames 10-39 export; the caption (15-36) starts 5 frames in.
             report.captionFileWritten = written.contains("00:00:00,167 --> ") && written.contains("Smoke test caption")
         }
+        let groups = try? await AVURLAsset(url: url).loadChapterMetadataGroups(bestMatchingPreferredLanguages: ["en"])
+        report.chaptersEmbedded = groups?.first?.items.isEmpty == false
         do {
             let info = try await MediaProber().probe(url)
             report.exportSucceeded = true

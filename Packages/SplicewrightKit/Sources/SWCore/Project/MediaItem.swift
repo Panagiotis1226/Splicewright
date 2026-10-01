@@ -54,6 +54,8 @@ public struct MediaItem: Sendable, Hashable, Codable, Identifiable {
     public var colorOverride: ColorDescription?
     /// The file's modification date when it was last read, for spotting files that changed.
     public var fileModifiedAt: Date?
+    /// Clip markers added in the Source monitor (schema 7).
+    public var markers: [SourceMarker]
 
     public init(id: UUID = UUID(), name: String, filePath: String, bookmark: Data? = nil,
                 info: MediaInfo, binID: UUID? = nil, marks: SourceMarks = .empty, importedAt: Date = Date(),
@@ -67,6 +69,41 @@ public struct MediaItem: Sendable, Hashable, Codable, Identifiable {
         self.marks = marks
         self.importedAt = importedAt
         self.fileModifiedAt = fileModifiedAt
+        markers = []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, filePath, bookmark, info, binID, marks, importedAt, colorOverride, fileModifiedAt, markers
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        filePath = try container.decode(String.self, forKey: .filePath)
+        bookmark = try container.decodeIfPresent(Data.self, forKey: .bookmark)
+        info = try container.decode(MediaInfo.self, forKey: .info)
+        binID = try container.decodeIfPresent(UUID.self, forKey: .binID)
+        marks = try container.decodeIfPresent(SourceMarks.self, forKey: .marks) ?? .empty
+        importedAt = try container.decodeIfPresent(Date.self, forKey: .importedAt) ?? Date(timeIntervalSince1970: 0)
+        colorOverride = try container.decodeIfPresent(ColorDescription.self, forKey: .colorOverride)
+        fileModifiedAt = try container.decodeIfPresent(Date.self, forKey: .fileModifiedAt)
+        markers = try container.decodeIfPresent([SourceMarker].self, forKey: .markers) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(filePath, forKey: .filePath)
+        try container.encodeIfPresent(bookmark, forKey: .bookmark)
+        try container.encode(info, forKey: .info)
+        try container.encodeIfPresent(binID, forKey: .binID)
+        try container.encode(marks, forKey: .marks)
+        try container.encode(importedAt, forKey: .importedAt)
+        try container.encodeIfPresent(colorOverride, forKey: .colorOverride)
+        try container.encodeIfPresent(fileModifiedAt, forKey: .fileModifiedAt)
+        if !markers.isEmpty { try container.encode(markers, forKey: .markers) }
     }
 
     public var url: URL { URL(fileURLWithPath: filePath) }

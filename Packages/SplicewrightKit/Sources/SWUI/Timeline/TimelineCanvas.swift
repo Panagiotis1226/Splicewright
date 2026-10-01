@@ -34,6 +34,8 @@ final class TimelineCanvas: NSView {
         case caption(id: UUID, edge: TrimEdge?)
         /// Rate Stretch: an edge drag that changes speed with length.
         case rateStretch(clipID: UUID, edge: TrimEdge)
+        /// Dragging a marker along the ruler.
+        case marker(id: UUID, startFrame: Int64)
     }
 
     struct Drag {

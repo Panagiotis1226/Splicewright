@@ -96,6 +96,9 @@ public struct KeyBindings: Sendable, Hashable, Codable {
             .clearIn: [.character("i", .option)], .clearOut: [.character("o", .option)],
             .clearInAndOut: [.character("x", .option)],
             .goToIn: [.character("i", .shift)], .goToOut: [.character("o", .shift)],
+            // M, not ⌘M (Minimize); Premiere's ⇧M and ⌘⇧M go to the next and previous marker.
+            .addMarker: [.character("m")], .nextMarker: [.character("m", .shift)],
+            .previousMarker: [.character("m", [.command, .shift])],
             .insertEdit: [.character(",")], .overwriteEdit: [.character(".")],
             .liftEdit: [.character(";")], .extractEdit: [.character("'")],
             .deleteSelection: [KeyInput(.delete)],

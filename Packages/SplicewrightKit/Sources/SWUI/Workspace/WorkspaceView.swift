@@ -27,6 +27,7 @@ public struct WorkspaceView: View {
                         PanelTab(id: .effectControls, title: "Effect Controls"),
                         PanelTab(id: .effects, title: "Effects"),
                         PanelTab(id: .captions, title: "Captions"),
+                        PanelTab(id: .markers, title: "Markers"),
                     ],
                     selectedTab: sourceTab,
                     workspace: workspace
@@ -35,6 +36,7 @@ public struct WorkspaceView: View {
                     case .effectControls: EffectControlsPanel(workspace: workspace)
                     case .effects: EffectsPanel(workspace: workspace)
                     case .captions: CaptionsPanel(workspace: workspace)
+                    case .markers: MarkersPanel(workspace: workspace)
                     default: SourceMonitorPanel(workspace: workspace)
                     }
                 }
@@ -69,7 +71,7 @@ public struct WorkspaceView: View {
         .onAppear { workspace.attach(document: document, undoManager: undoManager) }
         .onChange(of: undoManager) { _, newValue in workspace.undoManager = newValue }
         .onChange(of: workspace.activePanel) { _, panel in
-            if [.source, .effectControls, .effects, .captions].contains(panel) { sourceTab.wrappedValue = panel }
+            if [.source, .effectControls, .effects, .captions, .markers].contains(panel) { sourceTab.wrappedValue = panel }
         }
         .fileImporter(
             isPresented: $workspace.isImporterPresented,
@@ -90,6 +92,10 @@ public struct WorkspaceView: View {
         .sheet(isPresented: Binding(get: { workspace.speedSheetClipIDs != nil },
                                     set: { if !$0 { workspace.speedSheetClipIDs = nil } })) {
             if let ids = workspace.speedSheetClipIDs { SpeedDurationSheet(workspace: workspace, ids: ids) }
+        }
+        .sheet(isPresented: Binding(get: { workspace.editingMarkerID != nil },
+                                    set: { if !$0 { workspace.editingMarkerID = nil } })) {
+            if let id = workspace.editingMarkerID { MarkerSheet(workspace: workspace, markerID: id) }
         }
         .alert(item: $workspace.importReport) { report in
             Alert(

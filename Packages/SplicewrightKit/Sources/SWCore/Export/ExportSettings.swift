@@ -218,6 +218,8 @@ public struct ExportSettings: Sendable, Hashable, Codable {
     public var sidecarCaptions: UUID?
     /// The sidecar file's format (nil is SubRip).
     public var sidecarFormat: SubRip.Format?
+    /// Writes markers as chapter marks in the file (nil means yes when there are markers).
+    public var embedsChapters: Bool?
 
     public static let customMegabitRange: ClosedRange<Double> = 1...800
 
@@ -246,6 +248,12 @@ public struct ExportSettings: Sendable, Hashable, Codable {
         // Times are written in seconds, so the export frame rate doesn't matter.
         return SubRip.write(track.captions, rate: sequence.rate, range: frameRange(for: sequence),
                             format: sidecarFormat ?? .srt)
+    }
+
+    /// Chapter marks for the exported file, timed from the start of the exported range.
+    public func chapters(for sequence: EditSequence) -> [Chapters.Chapter] {
+        guard embedsChapters ?? true else { return [] }
+        return Chapters.chapters(from: sequence.markers, rate: sequence.rate, range: frameRange(for: sequence))
     }
 
     /// Where the sidecar goes: beside the video, with the same name.

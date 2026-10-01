@@ -77,6 +77,8 @@ checks = {
     "caption track added": r.get("captionTrackAdded"),
     "captions burned in and .srt written": r.get("captionFileWritten"),
     "speed changed": r.get("speedChanged"),
+    "marker added": r.get("markerAdded"),
+    "chapter marks in the export": r.get("chaptersEmbedded"),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

@@ -137,6 +137,7 @@ extension TimelineCanvas {
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let sequence = workspace.activeSequence else { return nil }
         let point = convert(event.locationInWindow, from: nil)
+        if let menu = rulerMenu(at: point, in: sequence) { return menu }
         if let menu = captionMenu(at: point, in: sequence) { return menu }
         if point.x < TimelineLayout.headerWidth, let row = row(at: point, in: sequence) {
             return trackMenu(for: row, in: sequence)

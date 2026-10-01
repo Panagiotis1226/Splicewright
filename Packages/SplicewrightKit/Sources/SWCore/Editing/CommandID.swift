@@ -12,6 +12,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
     case goToStart, goToEnd, previousEditPoint, nextEditPoint
     // Marking
     case markIn, markOut, clearIn, clearOut, clearInAndOut, goToIn, goToOut
+    case addMarker, nextMarker, previousMarker
     // Editing
     case insertEdit, overwriteEdit, liftEdit, extractEdit, deleteSelection, rippleDelete
     case addEdit, addEditAllTracks, openInSource
@@ -52,7 +53,8 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         case .togglePlay, .shuttleReverse, .shuttleStop, .shuttleForward, .stepBackward1, .stepForward1,
              .stepBackward5, .stepForward5, .goToStart, .goToEnd, .previousEditPoint, .nextEditPoint:
             return .transport
-        case .markIn, .markOut, .clearIn, .clearOut, .clearInAndOut, .goToIn, .goToOut:
+        case .markIn, .markOut, .clearIn, .clearOut, .clearInAndOut, .goToIn, .goToOut, .addMarker, .nextMarker,
+             .previousMarker:
             return .marking
         case .insertEdit, .overwriteEdit, .liftEdit, .extractEdit, .deleteSelection, .rippleDelete, .addEdit,
              .addEditAllTracks, .openInSource, .applyVideoTransition, .applyAudioTransition, .pasteAttributes, .speedDuration:
@@ -84,6 +86,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         .goToEnd: "Go to End", .previousEditPoint: "Go to Previous Edit Point", .nextEditPoint: "Go to Next Edit Point",
         .markIn: "Mark In", .markOut: "Mark Out", .clearIn: "Clear In", .clearOut: "Clear Out",
         .clearInAndOut: "Clear In and Out", .goToIn: "Go to In", .goToOut: "Go to Out",
+        .addMarker: "Add Marker", .nextMarker: "Go to Next Marker", .previousMarker: "Go to Previous Marker",
         .insertEdit: "Insert", .overwriteEdit: "Overwrite", .liftEdit: "Lift", .extractEdit: "Extract",
         .deleteSelection: "Clear (Delete)", .rippleDelete: "Ripple Delete", .addEdit: "Add Edit",
         .addEditAllTracks: "Add Edit to All Tracks", .openInSource: "Open in Source Monitor",
@@ -142,7 +145,8 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         .stepForward5: .stepForward(frames: 5), .goToStart: .goToStart, .goToEnd: .goToEnd,
         .previousEditPoint: .previousEditPoint, .nextEditPoint: .nextEditPoint, .markIn: .markIn,
         .markOut: .markOut, .clearIn: .clearIn, .clearOut: .clearOut, .clearInAndOut: .clearInAndOut,
-        .goToIn: .goToIn, .goToOut: .goToOut, .insertEdit: .insertEdit, .overwriteEdit: .overwriteEdit,
+        .goToIn: .goToIn, .goToOut: .goToOut, .addMarker: .addMarker, .nextMarker: .nextMarker,
+        .previousMarker: .previousMarker, .insertEdit: .insertEdit, .overwriteEdit: .overwriteEdit,
         .liftEdit: .liftEdit, .extractEdit: .extractEdit, .deleteSelection: .deleteSelection,
         .rippleDelete: .rippleDelete, .openInSource: .openInSource, .zoomIn: .zoomIn, .zoomOut: .zoomOut,
         .zoomToFit: .zoomToFit, .toggleSnapping: .toggleSnapping,

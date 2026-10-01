@@ -39,6 +39,7 @@ private struct ExportSettingsForm: View {
     @State private var burnIn: UUID?
     @State private var sidecar: UUID?
     @State private var sidecarFormat: SubRip.Format = .srt
+    @State private var embedsChapters = true
 
     private var presets: [ExportPreset] { ExportPreset.builtIn(for: sequence) }
     private var preset: ExportPreset { presets.first { $0.id == presetID } ?? presets[0] }
@@ -48,6 +49,7 @@ private struct ExportSettingsForm: View {
         settings.burnInCaptions = burnIn
         settings.sidecarCaptions = sidecar
         settings.sidecarFormat = sidecarFormat
+        settings.embedsChapters = embedsChapters
         return settings
     }
     private var destination: URL {
@@ -105,6 +107,11 @@ private struct ExportSettingsForm: View {
                             ForEach(ExportQuality.allCases, id: \.self) { Text($0.displayName).tag($0) }
                         }
                     }
+                }
+                if !sequence.markers.isEmpty {
+                    let count = Chapters.chapters(from: sequence.markers, rate: sequence.rate).count
+                    Toggle("Chapter marks from markers (\(count))", isOn: $embedsChapters)
+                        .help("Chapter-flagged markers, or all markers when none are flagged, become chapters in the file")
                 }
                 if !sequence.captionTracks.isEmpty {
                     Picker("Burn In Captions", selection: $burnIn) {

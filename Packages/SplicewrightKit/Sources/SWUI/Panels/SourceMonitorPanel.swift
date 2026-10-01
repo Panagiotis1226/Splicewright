@@ -35,7 +35,7 @@ struct SourceMonitorPanel: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             timecodeBar
-            ScrubBar(monitor: monitor, marks: marks)
+            ScrubBar(monitor: monitor, marks: marks, markers: workspace.sourceItem?.markers ?? [])
                 .frame(height: monitor.waveform == nil ? 22 : 40)
                 .padding(.horizontal, 8)
             transport
@@ -152,6 +152,7 @@ struct PlayerSurface: NSViewRepresentable {
 struct ScrubBar: View {
     @ObservedObject var monitor: SourceMonitorModel
     let marks: SourceMarks
+    var markers: [SourceMarker] = []
 
     var body: some View {
         GeometryReader { geometry in
@@ -171,6 +172,13 @@ struct ScrubBar: View {
                         .fill(Theme.markedRange)
                         .frame(width: max(1, (end - start) * width))
                         .offset(x: start * width)
+                }
+                ForEach(markers) { marker in
+                    Image(systemName: "arrowtriangle.down.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(marker.color.swatch)
+                        .offset(x: min(1, marker.time.seconds / duration) * width - 4, y: geometry.size.height / 2 - 6)
+                        .help(marker.name.isEmpty ? "Marker" : marker.name)
                 }
                 let playheadX = min(1, monitor.currentTime.seconds / duration) * width
                 Rectangle()

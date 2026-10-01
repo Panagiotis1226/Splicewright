@@ -106,6 +106,9 @@ public enum ShortcutAction: Sendable, Hashable {
     case clearInAndOut
     case goToIn
     case goToOut
+    case addMarker
+    case nextMarker
+    case previousMarker
     case openInSource
     // Timeline
     case insertEdit

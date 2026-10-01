@@ -28,6 +28,10 @@ public struct SplicewrightCommands: Commands {
                 // Not Premiere's ⌘M: that's Window ▸ Minimize on the Mac.
                 Button("Media…") { workspace?.requestExport() }
                     .shortcut(.exportMedia, keys)
+                Button("Markers as YouTube Chapters…") { workspace?.exportChapters() }
+                    .disabled(workspace?.activeSequence?.markers.isEmpty ?? true)
+                Button("Markers as CSV…") { workspace?.exportMarkersCSV() }
+                    .disabled(workspace?.activeSequence?.markers.isEmpty ?? true)
                 if let track = workspace?.captionTrack {
                     ForEach(SubRip.Format.allCases, id: \.self) { format in
                         Button("Captions as \(format.displayName)…") { workspace?.exportCaptions(track.id, format: format) }
@@ -90,6 +94,12 @@ public struct SplicewrightCommands: Commands {
                 .disabled(workspace == nil)
         }
         CommandMenu("Marker") {
+            Button("Add Marker") { workspace?.handle(.addMarker) }
+            Button("Go to Next Marker") { workspace?.handle(.nextMarker) }
+            Button("Go to Previous Marker") { workspace?.handle(.previousMarker) }
+            Button("Clear All Markers") { workspace?.clearAllMarkers() }
+                .disabled(workspace?.activeSequence?.markers.isEmpty ?? true)
+            Divider()
             Button("Mark In") { workspace?.handle(.markIn) }
             Button("Mark Out") { workspace?.handle(.markOut) }
             Button("Clear In and Out") { workspace?.handle(.clearInAndOut) }

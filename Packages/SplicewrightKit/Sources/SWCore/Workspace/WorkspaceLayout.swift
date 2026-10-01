@@ -30,7 +30,7 @@ public struct WorkspaceLayout: Sendable, Hashable, Codable, Identifiable {
     /// The tab showing in the Source panel group: "source", "effectControls" or "effects".
     public var sourceTab: String = "source"
     /// The tabs of the Source panel group (PanelID raw values in SWUI).
-    public static let sourceTabs: Set<String> = ["source", "effectControls", "effects", "captions"]
+    public static let sourceTabs: Set<String> = ["source", "effectControls", "effects", "captions", "markers"]
     /// "list" or "icons".
     public var projectViewMode: String = "list"
     /// Icon view tile width, in points.

@@ -2,7 +2,7 @@
 
 A native macOS video editor for Apple silicon, laid out like Premiere Pro. It handles SDR (Rec.709) and HDR (HLG, PQ) footage in H.264, HEVC and ProRes, in `.mov` and `.mp4`, up to 4K60.
 
-Status: **M10**. You can:
+Status: **M11**. You can:
 
 - import media into bins and check its format details
 - mark In/Out in the Source monitor
@@ -14,6 +14,7 @@ Status: **M10**. You can:
 - make HEVC, H.264 or ProRes proxies for smooth editing of 4K/HDR footage (export always uses the originals)
 - copy and paste clips and Paste Attributes between them
 - recover from crashes with auto-saved versions, and relink moved or missing files (Link Media)
+- mark the timeline with colored, named markers and export them as YouTube chapters or chapter marks
 - change clip speed (Speed/Duration, Rate Stretch, Reverse) and ramp it with Time Remapping keyframes
 - transcribe speech into an editable subtitle track (on-device, nothing uploaded), then burn it in or export .srt/.vtt
 - see and delete cached files (Settings ▸ Media Cache)
@@ -61,7 +62,8 @@ When the app opens, choose **New Document**, then:
 13. **Speed:** select clips and choose **Clip ▸ Speed/Duration…** (⌘R). Set a speed (1%-10000%) or a duration; the clip keeps the source it plays, so its length follows. Reverse Speed plays it backwards; Maintain Audio Pitch keeps voices natural; Ripple Edit shifts later clips instead of stopping at the next one. The **Rate Stretch** tool (R) changes speed by dragging a clip's edge. Clips show their speed after their name, e.g. `[200%]` or `[-100%]`.
     - **Time Remapping:** in Effect Controls, click the **Speed** stopwatch and add keyframes. Speed ramps between them (Ease for smooth ramps), 0% holds a frame, and the clip keeps its length.
     - Reversed and time-remapped clips play their video only; their audio is silent in this version.
-14. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
+14. **Markers:** press **M** to add a marker at the playhead (M again on it opens it), **⇧M** / **⌘⇧M** to jump to the next or previous one. Drag a marker in the ruler to move it, double-click it to name it, add notes, a color, a duration, or flag it as a chapter. The **Markers** panel lists them all (filter by color, click to jump). In the Source monitor, M adds a clip marker that shows on every clip using that part of the file. **File ▸ Export ▸ Markers as YouTube Chapters…** copies `0:00 Intro` lines for the video description (YouTube needs 3+ chapters, 10 s apart); exports also embed chapter marks that QuickTime and VLC show.
+15. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
 
 ### Make targets
 
@@ -117,6 +119,7 @@ These follow Premiere Pro's defaults.
 | ⌘C / ⌘X / ⌘V | Copy / cut / paste clips (Timeline active) |
 | ⌥⌘V | Paste Attributes |
 | ⌘R | Speed/Duration |
+| M / ⇧M / ⌘⇧M | Add marker / next marker / previous marker |
 | = / - / \\ | Zoom timeline in / out / to fit |
 | S | Toggle snapping |
 | V A B N R C Y U P H Z T | Tools (Selection, Track Select, Ripple, Rolling, Rate Stretch, Razor, Slip, Slide, Pen, Hand, Zoom, Type) |

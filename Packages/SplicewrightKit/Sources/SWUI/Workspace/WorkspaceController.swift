@@ -8,7 +8,7 @@ import SWPlayback
 
 /// The panels of the Premiere-style workspace. The active panel receives transport shortcuts.
 public enum PanelID: String, Sendable {
-    case project, source, program, timeline, effects, effectControls, captions
+    case project, source, program, timeline, effects, effectControls, captions, markers
 }
 
 public enum ProjectViewMode: String, Sendable {
@@ -77,6 +77,9 @@ public final class WorkspaceController: ObservableObject {
     @Published public var captionJob: CaptionJob?
     /// Non-nil while the Speed/Duration sheet is shown, for these clips.
     @Published public var speedSheetClipIDs: Set<UUID>?
+    /// The marker highlighted in the ruler and Markers panel, and the one open in the Marker sheet.
+    @Published public var selectedMarkerID: UUID?
+    @Published public var editingMarkerID: UUID?
     /// Media whose file is missing.
     @Published public internal(set) var offlineMediaIDs: Set<UUID> = []
     var checkedMediaPaths: [String] = []
@@ -322,6 +325,7 @@ public final class WorkspaceController: ObservableObject {
             return true
         }
         if handleEditingShortcut(action) { return true }
+        if handleMarkerShortcut(action) { return true }
         // The Timeline and Program monitor share the sequence's transport; the Source and
         // Project panels drive the Source monitor.
         if activePanel == .timeline || activePanel == .program {

@@ -63,6 +63,7 @@ extension TimelineCanvas {
         guard let sequence = workspace.activeSequence else { return }
 
         if point.y < TimelineLayout.rulerHeight {
+            if markerMouseDown(at: point, event: event, in: sequence) { return }
             if point.x >= TimelineLayout.headerWidth {
                 workspace.program.pause()
                 drag = Drag(kind: .scrub, original: nil, actionName: "")
@@ -270,6 +271,8 @@ extension TimelineCanvas {
             copy.slide(clipID, by: delta, media: media)
         case .caption(let id, let edge):
             return captionPreview(id, edge: edge, original: original, delta: delta)
+        case .marker(let id, let startFrame):
+            return markerPreview(id, startFrame: startFrame, original: original, delta: delta)
         case .rateStretch(let clipID, let edge):
             delta = snappedEdgeDelta(clipID, edge: edge, delta: delta, in: original, playhead: playhead)
             copy.rateStretch(clipID, edge: edge, by: delta)

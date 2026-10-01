@@ -116,6 +116,18 @@ struct ProgramMonitorPanel: View {
     @ViewBuilder
     private func frameOverlay(in rect: CGRect) -> some View {
         ZStack(alignment: .topLeading) {
+            // The marker under the playhead, as Premiere shows it.
+            if let marker = workspace.activeSequence?.markers(at: engine.currentFrame).first {
+                HStack(spacing: 4) {
+                    Circle().fill(marker.color.swatch).frame(width: 8, height: 8)
+                    Text(marker.title).font(.system(size: 11, weight: .semibold))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
+                .position(x: rect.minX + 70, y: rect.minY + 14)
+                .allowsHitTesting(false)
+            }
             if workspace.showsSafeMargins {
                 ForEach([0.9, 0.8], id: \.self) { fraction in
                     Rectangle()

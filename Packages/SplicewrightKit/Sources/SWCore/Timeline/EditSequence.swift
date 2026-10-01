@@ -323,6 +323,8 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
     public var marks: SequenceMarks
     /// Subtitle tracks, drawn above all video. Schema 5.
     public var captionTracks: [CaptionTrack]
+    /// Sequence markers, sorted by frame. Schema 7.
+    public var markers: [Marker]
 
     public init(id: UUID = UUID(), name: String, settings: SequenceSettings,
                 videoTrackCount: Int = 3, audioTrackCount: Int = 3) {
@@ -333,10 +335,11 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
         audioTracks = (0..<max(1, audioTrackCount)).map { Track(kind: .audio, isTargeted: $0 == 0) }
         marks = SequenceMarks()
         captionTracks = []
+        markers = []
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, settings, videoTracks, audioTracks, marks, captionTracks
+        case id, name, settings, videoTracks, audioTracks, marks, captionTracks, markers
     }
 
     /// Sequences saved before schema 5 have no caption tracks.
@@ -349,6 +352,7 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
         audioTracks = try container.decode([Track].self, forKey: .audioTracks)
         marks = try container.decodeIfPresent(SequenceMarks.self, forKey: .marks) ?? SequenceMarks()
         captionTracks = try container.decodeIfPresent([CaptionTrack].self, forKey: .captionTracks) ?? []
+        markers = try container.decodeIfPresent([Marker].self, forKey: .markers) ?? []
     }
 
     public var rate: FrameRate { settings.frameRate }

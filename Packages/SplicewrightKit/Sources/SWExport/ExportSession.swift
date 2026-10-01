@@ -108,7 +108,8 @@ public final class ExportSession: ObservableObject, Identifiable {
         let range = CMTimeRange(start: RationalTime(frames: frames.start, rate: rate).cmTime,
                                 end: RationalTime(frames: frames.end, rate: rate).cmTime)
         try? FileManager.default.removeItem(at: outputURL)
-        return try await ExportWorker(output: output, settings: settings, range: range, width: width, height: height,
+        return try await ExportWorker(output: output, settings: settings, chapters: settings.chapters(for: sequence),
+                                      range: range, width: width, height: height,
                                       fps: outputRate.framesPerSecond, url: outputURL)
     }
 
@@ -136,12 +137,15 @@ final class ExportWorker: @unchecked Sendable {
     private let videoInput: AVAssetWriterInput
     private let audioOutput: AVAssetReaderAudioMixOutput?
     private let audioInput: AVAssetWriterInput?
+    /// Chapter marks: a metadata track the video track points to as its chapter list.
+    private let chapterAdaptor: AVAssetWriterInputMetadataAdaptor?
+    private let chapterGroups: [AVTimedMetadataGroup]
     private let range: CMTimeRange
     private let lock = NSLock()
     private var cancelled = false
 
-    init(output: CompositionOutput, settings: ExportSettings, range: CMTimeRange, width: Int, height: Int,
-         fps: Double, url: URL) async throws {
+    init(output: CompositionOutput, settings: ExportSettings, chapters: [Chapters.Chapter] = [], range: CMTimeRange,
+         width: Int, height: Int, fps: Double, url: URL) async throws {
         self.range = range
         let preset = settings.preset
         let colorProperties = ExportColor.properties(for: preset.colorSpace)
@@ -190,6 +194,39 @@ final class ExportWorker: @unchecked Sendable {
         } else {
             audioInput = nil
         }
+        (chapterAdaptor, chapterGroups) = Self.makeChapters(chapters, range: range, writer: writer, video: videoInput)
+    }
+
+    /// A QuickTime chapter track: one timed text sample per chapter, until the next one.
+    private static func makeChapters(_ chapters: [Chapters.Chapter], range: CMTimeRange, writer: AVAssetWriter,
+                                     video: AVAssetWriterInput) -> (AVAssetWriterInputMetadataAdaptor?, [AVTimedMetadataGroup]) {
+        guard !chapters.isEmpty else { return (nil, []) }
+        let specification = [
+            kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier as String:
+                AVMetadataIdentifier.quickTimeUserDataChapter.rawValue,
+            kCMMetadataFormatDescriptionMetadataSpecificationKey_DataType as String: kCMMetadataBaseDataType_UTF8 as String,
+        ]
+        var description: CMFormatDescription?
+        CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
+            allocator: nil, metadataType: kCMMetadataFormatType_Boxed, metadataSpecifications: [specification] as CFArray,
+            formatDescriptionOut: &description)
+        let input = AVAssetWriterInput(mediaType: .metadata, outputSettings: nil, sourceFormatHint: description)
+        input.expectsMediaDataInRealTime = false
+        guard writer.canAdd(input) else { return (nil, []) }
+        writer.add(input)
+        video.addTrackAssociation(withTrackOf: input, type: AVAssetTrack.AssociationType.chapterList.rawValue)
+        let groups = chapters.enumerated().map { index, chapter -> AVTimedMetadataGroup in
+            let start = range.start + CMTime(seconds: chapter.seconds, preferredTimescale: 600)
+            let end = index + 1 < chapters.count
+                ? range.start + CMTime(seconds: chapters[index + 1].seconds, preferredTimescale: 600) : range.end
+            let item = AVMutableMetadataItem()
+            item.identifier = .quickTimeUserDataChapter
+            item.dataType = kCMMetadataBaseDataType_UTF8 as String
+            item.value = chapter.title as NSString
+            let safeEnd = max(end, start + CMTime(value: 1, timescale: 600))
+            return AVTimedMetadataGroup(items: [item], timeRange: CMTimeRange(start: start, end: safeEnd))
+        }
+        return (AVAssetWriterInputMetadataAdaptor(assetWriterInput: input), groups)
     }
 
     struct VideoFormat {
@@ -289,6 +326,9 @@ final class ExportWorker: @unchecked Sendable {
             if let audioOutput, let audioInput {
                 group.addTask { [self] in await pump(audioOutput, into: audioInput, queue: "audio", onSample: nil) }
             }
+            if let chapterAdaptor {
+                group.addTask { [self] in await pumpChapters(into: chapterAdaptor) }
+            }
         }
 
         if isCancelled {
@@ -303,6 +343,30 @@ final class ExportWorker: @unchecked Sendable {
         await writer.finishWriting()
         if writer.status != .completed {
             throw writer.error ?? ExportError.message("Writing the file failed.")
+        }
+    }
+
+    /// Writes the chapter samples when the writer wants them (it interleaves them with the video).
+    private func pumpChapters(into adaptor: AVAssetWriterInputMetadataAdaptor) async {
+        let input = adaptor.assetWriterInput
+        let queue = DispatchQueue(label: "com.splicewright.export.chapters")
+        let completion = PumpCompletion()
+        lock.lock()
+        pumps.append(completion)
+        lock.unlock()
+        let next = ChapterCursor()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            completion.wait(continuation)
+            input.requestMediaDataWhenReady(on: queue) { [self] in
+                while !completion.isFinished && input.isReadyForMoreMediaData {
+                    guard !isCancelled, next.index < chapterGroups.count, adaptor.append(chapterGroups[next.index]) else {
+                        input.markAsFinished()
+                        completion.finish()
+                        return
+                    }
+                    next.index += 1
+                }
+            }
         }
     }
 
@@ -421,4 +485,9 @@ enum ExportAudio {
                     AVLinearPCMIsNonInterleaved: false, AVChannelLayoutKey: layoutData]
         }
     }
+}
+
+/// The next chapter to write; touched only on the chapter input's queue.
+private final class ChapterCursor: @unchecked Sendable {
+    var index = 0
 }
