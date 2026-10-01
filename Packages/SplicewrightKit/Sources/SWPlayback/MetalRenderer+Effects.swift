@@ -48,6 +48,10 @@ enum PixelEffect {
     case curves(ColorCurves)
     /// A .cube file, mixed with the original by intensity (0...1).
     case lut(path: String, intensity: Double)
+    /// Only what's inside the masks shows (masks on Opacity).
+    case mask([RenderMask])
+    /// These passes apply only inside the masks (masks on an effect).
+    case masked([PixelEffect], [RenderMask])
 }
 
 /// An adjustment layer: its effects applied to everything composited so far.
@@ -196,6 +200,8 @@ extension MetalRenderer {
             case .color, .curves, .lut:
                 let output = free(current)
                 if try runColor(effect, on: current, into: output, commandBuffer: commandBuffer) { current = output }
+            case .mask, .masked:
+                current = try runMask(effect, on: current, temps: temps, commandBuffer: commandBuffer)
             }
         }
         return current
@@ -210,8 +216,8 @@ extension MetalRenderer {
     }
 
     /// Sigma is radius / 2, with at most 48 taps each side (wider blurs skip pixels).
-    private func blur(_ source: MTLTexture, into target: MTLTexture, _ blurPass: BlurPass,
-                      commandBuffer: MTLCommandBuffer) throws {
+    func blur(_ source: MTLTexture, into target: MTLTexture, _ blurPass: BlurPass,
+              commandBuffer: MTLCommandBuffer) throws {
         let (radius, vertical) = (blurPass.radius, blurPass.vertical)
         let offset = blurPass.shadowOffset ?? .zero
         let alphaOnly = blurPass.shadowOffset != nil

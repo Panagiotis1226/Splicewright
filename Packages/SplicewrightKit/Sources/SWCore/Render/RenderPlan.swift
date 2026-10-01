@@ -102,6 +102,8 @@ public struct RenderLayer: Sendable, Hashable {
     public var effects: [ClipEffect] = []
     /// An adjustment layer: its effects apply to everything composited below it.
     public var isAdjustment = false
+    /// Masks on the clip's Opacity: only what's inside them shows.
+    public var opacityMasks: [Mask] = []
 
     public init(trackIndex: Int, clipID: UUID, mediaID: UUID, opacity: Double, transition: LayerTransition? = nil,
                 title: TitleSpec? = nil, motion: Motion = Motion(), clipStart: Int64 = 0, sourceStart: RationalTime = .zero) {
@@ -199,6 +201,7 @@ public enum RenderPlan {
                     if clip.isRetimed { layer.timing = clip.timing(rate: sequence.rate) }
                     layer.effects = clip.effects.filter(\.isEnabled)
                     layer.isAdjustment = clip.isAdjustment
+                    layer.opacityMasks = clip.opacityMasks
                     // An adjustment layer with nothing to apply draws nothing.
                     if clip.isAdjustment && layer.effects.isEmpty { return nil }
                     return layer

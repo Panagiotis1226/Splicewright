@@ -97,6 +97,7 @@ final class MetalRenderer {
     let lut3DPipeline: MTLRenderPipelineState
     let lut1DPipeline: MTLRenderPipelineState
     let colorResources: ColorResources
+    let maskResources: MaskResources
     let overPipeline: MTLRenderPipelineState
     /// Mixes a texture into the target by the blend color (adjustment layers replace what's below).
     let replacePipeline: MTLRenderPipelineState
@@ -115,7 +116,8 @@ final class MetalRenderer {
         self.queue = queue
         let library: MTLLibrary
         do {
-            library = try device.makeLibrary(source: Shaders.source + Shaders.colorSource, options: nil)
+            library = try device.makeLibrary(source: Shaders.source + Shaders.colorSource + Shaders.maskSource,
+                                             options: nil)
         } catch {
             throw RenderError.shaderCompilation(error.localizedDescription)
         }
@@ -180,6 +182,7 @@ final class MetalRenderer {
         lut3DPipeline = try pass("lut3DFragment")
         lut1DPipeline = try pass("lut1DFragment")
         colorResources = ColorResources(device: device)
+        maskResources = try MaskResources(device: device, library: library)
 
         var cache: CVMetalTextureCache?
         guard CVMetalTextureCacheCreate(nil, nil, device, nil, &cache) == kCVReturnSuccess, let cache else {

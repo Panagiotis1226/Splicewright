@@ -31,13 +31,24 @@ struct InstructionLayer {
     /// An adjustment layer: no source; its effects apply to the layers below.
     var isAdjustment = false
 
+    /// Masks on Opacity: only what's inside them shows.
+    var opacityMasks: [Mask] = []
+
     /// The effects at a composition time, split into what the layer draw does itself (Crop,
-    /// Flip, Mirror) and what needs passes of its own (in render pixels).
-    func effects(at time: CMTime, renderWidth: Double) -> (LayerGeometry, [PixelEffect]) {
-        guard !effects.isEmpty else { return (.none, []) }
+    /// Flip, Mirror) and what needs passes of its own (in render pixels), masks included.
+    func effects(at time: CMTime, renderWidth: Double, renderHeight: Double) -> (LayerGeometry, [PixelEffect]) {
+        guard !effects.isEmpty || !opacityMasks.isEmpty else { return (.none, []) }
+        let source = sourceTime(at: time)
+        let space = MaskSpace(transform: transform(at: time, renderWidth: renderWidth, renderHeight: renderHeight),
+                              width: sourceWidth, height: sourceHeight, pixelScale: pixelScale)
         let resolved = effects.filter { $0.isEnabled && !$0.kind.isAudio }
-            .map { $0.resolved(at: sourceTime(at: time)) }.filter { !$0.isNoOp }
-        return EffectRendering.split(resolved, pixelScale: pixelScale)
+            .map { $0.resolved(at: source) }.filter { !$0.isNoOp }
+        let (geometry, split) = EffectRendering.split(resolved, pixelScale: pixelScale, maskSpace: space)
+        let masks = space.place(opacityMasks.map { $0.resolved(at: source) })
+        guard !masks.isEmpty else { return (geometry, split) }
+        // An adjustment layer's masks limit where its effects apply; a clip's cut it out.
+        if isAdjustment { return (geometry, split.isEmpty ? [] : [.masked(split, masks)]) }
+        return (geometry, split + [.mask(masks)])
     }
 
     /// The source time shown at a composition time, for evaluating keyframes.
@@ -116,6 +127,7 @@ final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProto
         self.overlay = overlay
         containsTweening = everyFrame || layers.contains {
             $0.transition != nil || $0.motion.isAnimated || $0.isAdjustment || $0.effects.contains(where: \.isAnimated)
+                || $0.opacityMasks.contains(where: \.isAnimated)
         }
         let ids = Array(Set(layers.map(\.trackID).filter { $0 != kCMPersistentTrackID_Invalid })).sorted()
         requiredSourceTrackIDs = ids.isEmpty ? nil : ids.map { NSNumber(value: $0) }
@@ -199,7 +211,8 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
                                      geometry: geometry))
         }
         func item(_ layer: InstructionLayer) -> RenderItem? {
-            let (geometry, passes) = layer.effects(at: time, renderWidth: renderSize.width)
+            let (geometry, passes) = layer.effects(at: time, renderWidth: renderSize.width,
+                                                       renderHeight: renderSize.height)
             if layer.isAdjustment {
                 guard !geometry.isIdentity || !passes.isEmpty else { return nil }
                 return .adjustment(AdjustmentFrame(geometry: geometry, effects: passes, opacity: layer.opacity(at: time)))
@@ -222,7 +235,8 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
             while index < instruction.layers.endIndex, let side = instruction.layers[index].transition,
                   side.id == transition.id {
                 let sideLayer = instruction.layers[index]
-                let (geometry, passes) = sideLayer.effects(at: time, renderWidth: renderSize.width)
+                let (geometry, passes) = sideLayer.effects(at: time, renderWidth: renderSize.width,
+                                                                 renderHeight: renderSize.height)
                 switch side.role {
                 case .outgoing:
                     mix.outgoing = frame(sideLayer, geometry: geometry)

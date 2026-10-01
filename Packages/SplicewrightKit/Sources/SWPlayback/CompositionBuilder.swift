@@ -372,6 +372,7 @@ public struct CompositionBuilder {
                 var built = instructionLayer(for: layer)
                 built?.effects = layer.effects
                 built?.isAdjustment = layer.isAdjustment
+                built?.opacityMasks = layer.opacityMasks
                 return built
             }
             let range = CMTimeRange(start: RationalTime(frames: segment.range.start, rate: rate).cmTime,

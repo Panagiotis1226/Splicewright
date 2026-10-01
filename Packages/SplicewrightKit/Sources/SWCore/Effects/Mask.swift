@@ -169,7 +169,7 @@ public struct Mask: Sendable, Hashable, Codable, Identifiable {
                      expansion: expansion.value(at: time).first ?? 0)
     }
 
-    var isAnimated: Bool { [path, feather, opacity, expansion].contains(where: \.isAnimated) }
+    public var isAnimated: Bool { [path, feather, opacity, expansion].contains(where: \.isAnimated) }
 
     /// The same mask with its keyframes shifted and a new identity (Paste Attributes).
     func retimed(by offset: RationalTime) -> Mask {
