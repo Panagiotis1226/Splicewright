@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreVideo
 import SWCore
 
@@ -38,5 +39,31 @@ public enum ColorTags {
 
     public static func matrix(_ value: String?) -> YCbCrMatrix {
         value.flatMap { matrixByTag[$0] } ?? .unknown
+    }
+
+    /// `AVVideoColorPropertiesKey` values that describe `color` to AVAssetWriter, using only
+    /// tags the writer accepts. Unknown parts fall back to Rec.709.
+    public static func writerProperties(_ color: ColorDescription) -> [String: String] {
+        let primaries: String
+        switch color.primaries {
+        case .bt2020: primaries = AVVideoColorPrimaries_ITU_R_2020
+        case .displayP3, .dciP3: primaries = AVVideoColorPrimaries_P3_D65
+        case .bt601NTSC, .bt601PAL: primaries = AVVideoColorPrimaries_SMPTE_C
+        case .bt709, .unknown: primaries = AVVideoColorPrimaries_ITU_R_709_2
+        }
+        let transfer: String
+        switch color.transfer {
+        case .hlg: transfer = AVVideoTransferFunction_ITU_R_2100_HLG
+        case .pq: transfer = AVVideoTransferFunction_SMPTE_ST_2084_PQ
+        case .linear: transfer = AVVideoTransferFunction_Linear
+        case .bt709, .bt2020, .sRGB, .unknown: transfer = AVVideoTransferFunction_ITU_R_709_2
+        }
+        let matrix: String
+        switch color.matrix {
+        case .bt2020: matrix = AVVideoYCbCrMatrix_ITU_R_2020
+        case .bt601: matrix = AVVideoYCbCrMatrix_ITU_R_601_4
+        case .bt709, .unknown: matrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        }
+        return [AVVideoColorPrimariesKey: primaries, AVVideoTransferFunctionKey: transfer, AVVideoYCbCrMatrixKey: matrix]
     }
 }

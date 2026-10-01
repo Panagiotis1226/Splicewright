@@ -5,6 +5,8 @@ import SWMedia
 /// Source tracks for one media item, loaded once and reused across rebuilds.
 struct LoadedMedia {
     var asset: AVURLAsset
+    /// Keeps the proxy asset alive while its video track is in use (tracks don't retain assets).
+    var proxyAsset: AVURLAsset?
     var video: AVAssetTrack?
     var audio: AVAssetTrack?
     var naturalSize: CGSize
@@ -18,21 +20,32 @@ public actor MediaAssetCache {
 
     public init() {}
 
-    func media(for item: MediaItem) async -> LoadedMedia? {
-        let key = "\(item.id)|\(item.filePath)"
+    /// The item's tracks. With `proxy`, video comes from that proxy file (audio always comes
+    /// from the original).
+    func media(for item: MediaItem, proxy: URL? = nil) async -> LoadedMedia? {
+        let key = "\(item.id)|\(item.filePath)|\(proxy?.path ?? "")"
         if let cached = loaded[key] { return cached }
         guard FileManager.default.fileExists(atPath: item.filePath) else { return nil }
-        let asset = AVURLAsset(url: item.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+        let options = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+        let asset = AVURLAsset(url: item.url, options: options)
         do {
             let duration = try await asset.load(.duration)
-            let video = try await asset.loadTracks(withMediaType: .video).first
+            var video = try await asset.loadTracks(withMediaType: .video).first
+            var proxyAsset: AVURLAsset?
+            if let proxy, FileManager.default.fileExists(atPath: proxy.path) {
+                let candidate = AVURLAsset(url: proxy, options: options)
+                if let proxyTrack = try? await candidate.loadTracks(withMediaType: .video).first {
+                    video = proxyTrack
+                    proxyAsset = candidate
+                }
+            }
             let audio = try await asset.loadTracks(withMediaType: .audio).first
             var size = CGSize.zero
             var transform = CGAffineTransform.identity
             if let video {
                 (size, transform) = try await video.load(.naturalSize, .preferredTransform)
             }
-            let media = LoadedMedia(asset: asset, video: video, audio: audio, naturalSize: size,
+            let media = LoadedMedia(asset: asset, proxyAsset: proxyAsset, video: video, audio: audio, naturalSize: size,
                                     preferredTransform: transform, duration: duration)
             loaded[key] = media
             return media
@@ -66,14 +79,21 @@ public struct CompositionBuilder {
     /// Render at this rate instead of the sequence's (export). Frames are taken at real
     /// composition times, so 120 fps sources exported at 120 keep every frame.
     public var frameRate: FrameRate?
+    /// Play clips' proxies instead of their full-resolution video where proxies exist.
+    /// Export never sets this.
+    public var useProxies: Bool
+    public var proxyStore: ProxyStore
 
     public init(renderScale: Double = 1, renderSize: CGSize? = nil, outputColorSpace: SequenceColorSpace? = nil,
-                overlay: OverlayMode = .none, frameRate: FrameRate? = nil) {
+                overlay: OverlayMode = .none, frameRate: FrameRate? = nil, useProxies: Bool = false,
+                proxyStore: ProxyStore = .shared) {
         self.renderScale = renderScale
         self.renderSize = renderSize
         self.outputColorSpace = outputColorSpace
         self.overlay = overlay
         self.frameRate = frameRate
+        self.useProxies = useProxies
+        self.proxyStore = proxyStore
     }
 
     public func build(_ sequence: EditSequence, project: Project, cache: MediaAssetCache) async -> CompositionOutput {
@@ -83,7 +103,9 @@ public struct CompositionBuilder {
         var loaded: [UUID: LoadedMedia] = [:]
         let usedMedia = Set(sequence.allTracks.flatMap { $0.clips.map(\.mediaID) })
         for id in usedMedia {
-            if let item = project.item(id), let media = await cache.media(for: item) { loaded[id] = media }
+            guard let item = project.item(id) else { continue }
+            let proxy = useProxies ? proxyStore.proxy(for: item) : nil
+            if let media = await cache.media(for: item, proxy: proxy) { loaded[id] = media }
         }
 
         let composition = AVMutableComposition()

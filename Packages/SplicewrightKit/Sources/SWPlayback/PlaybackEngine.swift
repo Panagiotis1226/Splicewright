@@ -23,6 +23,10 @@ public final class PlaybackEngine: ObservableObject {
     @Published public var showsClipping = false {
         didSet { if showsClipping != oldValue { scheduleRebuild(immediately: true) } }
     }
+    /// Plays proxies where clips have them.
+    @Published public var useProxies = false {
+        didSet { if useProxies != oldValue { scheduleRebuild(immediately: true) } }
+    }
 
     public private(set) var frameRate: FrameRate = .fps30
     private var sequence: EditSequence?
@@ -69,6 +73,11 @@ public final class PlaybackEngine: ObservableObject {
         scheduleRebuild(immediately: previous?.id != newSequence?.id)
     }
 
+    /// Rebuilds after proxies or caches change outside the project (e.g. a proxy finished).
+    public func refresh() {
+        scheduleRebuild(immediately: true)
+    }
+
     private func scheduleRebuild(immediately: Bool) {
         buildTask?.cancel()
         guard let sequence else {
@@ -78,7 +87,8 @@ public final class PlaybackEngine: ObservableObject {
         }
         let project = self.project
         let cache = self.cache
-        let builder = CompositionBuilder(renderScale: renderScale, overlay: showsClipping ? .clipping : .none)
+        let builder = CompositionBuilder(renderScale: renderScale, overlay: showsClipping ? .clipping : .none,
+                                         useProxies: useProxies)
         isBuilding = true
         buildTask = Task { [weak self] in
             if !immediately { try? await Task.sleep(nanoseconds: 120_000_000) }

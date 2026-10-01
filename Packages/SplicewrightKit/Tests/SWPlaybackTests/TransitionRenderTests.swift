@@ -314,3 +314,45 @@ final class TitleRenderTests: XCTestCase {
         return sign * (1 + fraction / 1024) * pow(2, Float(exponent - 15))
     }
 }
+
+/// Proxies replace a clip's video in playback, never in export.
+final class ProxyPlaybackTests: XCTestCase {
+    func testProxiesReplaceVideoOnlyWhenAsked() async throws {
+        guard MTLCreateSystemDefaultDevice() != nil, MetalRenderer.shared != nil else { throw XCTSkip("No Metal device") }
+        let root = FileManager.default.temporaryDirectory.appending(path: "proxy-playback-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ProxyStore(root: root)
+        guard let url = try await FixtureWriter.writeVideo(
+            FixtureWriter.h264SDR30(frames: 30, width: 1280, height: 720, fill: .grey(0.5, tenBit: false)),
+            name: "proxy-playback.mov") else { throw XCTSkip("No H.264 encoder") }
+        let imported = await MediaImporter().importMedia(from: [url], into: nil, existingPaths: [])
+        let item = try XCTUnwrap(imported.items.first)
+        var project = Project()
+        project.addMedia([item])
+        try await ProxyGenerator(store: store).makeProxy(for: item, preset: ProxyPreset(resolution: .half))
+
+        var sequence = EditSequence(name: "P", settings: SequenceSettings(width: 1280, height: 720, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        sequence.overwrite([TrackPlacement(trackID: sequence.videoTracks[0].id, clip: Clip(
+            mediaID: item.id, name: "P", start: 0, duration: 30, sourceStart: .zero))])
+
+        func sourceWidth(useProxies: Bool) async throws -> Double {
+            let output = await CompositionBuilder(useProxies: useProxies, proxyStore: store)
+                .build(sequence, project: project, cache: MediaAssetCache())
+            let instruction = try XCTUnwrap(output.videoComposition.instructions.first as? CompositionInstruction)
+            return try XCTUnwrap(instruction.layers.first).sourceWidth
+        }
+        let original = try await sourceWidth(useProxies: false)
+        let proxied = try await sourceWidth(useProxies: true)
+        XCTAssertEqual(original, 1280, "without proxies (and in export) the original is used")
+        XCTAssertEqual(proxied, 640, "with proxies on, video comes from the half-size proxy")
+
+        // The proxy still fills the frame with the clip's picture.
+        let output = await CompositionBuilder(useProxies: true, proxyStore: store)
+            .build(sequence, project: project, cache: MediaAssetCache())
+        let generator = AVAssetImageGenerator(asset: output.composition)
+        generator.videoComposition = output.videoComposition
+        let image = try await generator.image(at: CMTime(value: 10, timescale: 30)).image
+        XCTAssertEqual(image.width, 1280)
+    }
+}
