@@ -329,19 +329,25 @@ enum SmokeTestDriver {
         guard let before = workspace.activeSequence else { return (false, "no sequence") }
         NSApp.activate(ignoringOtherApps: true)
         workspace.window?.makeKeyAndOrderFront(nil)
+        let manager = workspace.undoManager
+        // Edits made in one pass of the run loop share an undo group. On a busy machine the
+        // group holding the new sequence can still be open here, and undoing would then
+        // remove the whole sequence. Wait for it to close first, and again after the edit.
+        let closedBefore = await waitFor(seconds: 10) { (manager?.groupingLevel ?? 0) == 0 }
         try? await Task.sleep(nanoseconds: 300_000_000)
         workspace.addTrack(.video)
         let added = workspace.activeSequence?.videoTracks.count == before.videoTracks.count + 1
-        // Let the run loop close the automatic undo group before undoing.
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        let manager = workspace.undoManager
+        let closedAfter = await waitFor(seconds: 10) { (manager?.groupingLevel ?? 0) == 0 }
         var diagnostics = "added=\(added) env=\(manager != nil) canUndo=\(manager?.canUndo ?? false) "
-            + "level=\(manager?.groupingLevel ?? -1) windowUndo=\(workspace.window?.undoManager === manager)"
+            + "closed=\(closedBefore)/\(closedAfter) windowUndo=\(workspace.window?.undoManager === manager)"
         let sent = NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        let undone = workspace.activeSequence?.videoTracks.count == before.videoTracks.count
-        diagnostics += " sent=\(sent) undone=\(undone)"
-        return (added && undone, diagnostics)
+        let undone = await waitFor(seconds: 5) {
+            workspace.activeSequence?.videoTracks.count == before.videoTracks.count
+        }
+        // Only the track went: the sequence and its clips are still there.
+        let intact = workspace.activeSequence?.allTracks.map(\.clips.count) == before.allTracks.map(\.clips.count)
+        diagnostics += " sent=\(sent) undone=\(undone) intact=\(intact)"
+        return (added && undone && intact, diagnostics)
     }
 
     private static func saveProgramFrame(_ workspace: WorkspaceController, to url: URL,

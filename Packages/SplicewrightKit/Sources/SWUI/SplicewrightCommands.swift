@@ -81,6 +81,8 @@ public struct SplicewrightCommands: Commands {
                                                 set: { workspace?.useProxies = $0 }))
                 .shortcut(.toggleProxies, keys)
                 .disabled(workspace == nil)
+            Button("Program Monitor Background…") { workspace?.isMonitorBackgroundPickerShown = true }
+                .disabled(workspace == nil)
             Divider()
         }
         CommandMenu("Clip") {

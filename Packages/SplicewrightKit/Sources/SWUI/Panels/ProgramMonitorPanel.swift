@@ -7,6 +7,7 @@ struct ProgramMonitorPanel: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject var engine: PlaybackEngine
     @ObservedObject private var keys = KeyBindingsStore.shared
+    @ObservedObject private var appearance = MonitorAppearance.shared
 
     init(workspace: WorkspaceController) {
         self.workspace = workspace
@@ -18,11 +19,26 @@ struct ProgramMonitorPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                Color.black
+                appearance.background.swiftUI
                 if workspace.activeSequence == nil {
-                    Text("No sequence").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                    Text("No sequence").font(.system(size: 11))
+                        .foregroundStyle(appearance.background.contrasting.swiftUI.opacity(0.6))
                 } else {
-                    PlayerSurface(player: engine.player)
+                    // The player fills exactly the sequence frame, so the background shows
+                    // around it at any frame size or aspect ratio (vertical included).
+                    GeometryReader { geometry in
+                        let rect = fittedRect(geometry.size)
+                        PlayerSurface(player: engine.player)
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                        if appearance.outlinesFrame {
+                            Rectangle()
+                                .stroke(appearance.background.contrasting.swiftUI.opacity(0.55), lineWidth: 1)
+                                .frame(width: rect.width + 2, height: rect.height + 2)
+                                .position(x: rect.midX, y: rect.midY)
+                                .allowsHitTesting(false)
+                        }
+                    }
                     if workspace.showsSafeMargins || workspace.activeTool == .type {
                         GeometryReader { geometry in
                             frameOverlay(in: fittedRect(geometry.size))
@@ -44,6 +60,7 @@ struct ProgramMonitorPanel: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contextMenu { backgroundMenu }
             timecodeBar
             ProgramScrubBar(workspace: workspace, engine: engine)
                 .frame(height: 16)
@@ -64,6 +81,17 @@ struct ProgramMonitorPanel: View {
                 .controlSize(.small)
                 .help(keys.hint("Toggle Proxies", .toggleProxies)
                       + ": play proxies where clips have them (export always uses originals)")
+            Button { workspace.isMonitorBackgroundPickerShown.toggle() } label: {
+                Image(systemName: "square.fill")
+                    .foregroundStyle(appearance.background.swiftUI)
+                    .overlay(Image(systemName: "square").foregroundStyle(Theme.textSecondary))
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Monitor background: the color around the video frame (not exported)")
+            .popover(isPresented: $workspace.isMonitorBackgroundPickerShown, arrowEdge: .bottom) {
+                MonitorBackgroundPicker()
+            }
             Toggle(isOn: $workspace.showsSafeMargins) { Image(systemName: "rectangle.dashed") }
                 .toggleStyle(.button)
                 .buttonStyle(.borderless)
@@ -97,6 +125,18 @@ struct ProgramMonitorPanel: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 28)
+    }
+
+    /// Right-click on the monitor: background presets and the full picker.
+    @ViewBuilder private var backgroundMenu: some View {
+        Menu("Background") {
+            ForEach(MonitorColor.presets) { preset in
+                Button(preset.name) { appearance.background = preset.color }
+            }
+            Divider()
+            Button("Choose Any Color…") { workspace.isMonitorBackgroundPickerShown = true }
+        }
+        Toggle("Outline the Frame", isOn: $appearance.outlinesFrame)
     }
 
     /// The selected video clip, if it's on screen at the playhead (for the transform box).

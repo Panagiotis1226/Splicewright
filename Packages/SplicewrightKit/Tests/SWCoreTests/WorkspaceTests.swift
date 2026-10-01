@@ -96,3 +96,24 @@ struct WorkspaceTests {
         #expect(library.layout(review)?.name == "Review")
     }
 }
+
+@Suite("Monitor background")
+struct MonitorBackgroundTests {
+    @Test func hexRoundTripsAndRejectsJunk() throws {
+        let color = try #require(MonitorColor(hex: "#1A2B3C"))
+        #expect(color.hex == "#1A2B3C")
+        #expect(MonitorColor(hex: "ff8000")?.hex == "#FF8000")
+        #expect(MonitorColor(hex: "#12345") == nil && MonitorColor(hex: "zzzzzz") == nil)
+        #expect(MonitorColor(red: 2, green: -1, blue: 0.5).hex == "#FF0080", "components are clamped")
+    }
+
+    @Test func outlineContrastsWithAnyBackground() {
+        #expect(MonitorColor.black.contrasting == MonitorColor(white: 1))
+        #expect(MonitorColor.charcoal.contrasting == MonitorColor(white: 1))
+        #expect(MonitorColor(white: 1).contrasting == MonitorColor(white: 0))
+        #expect(MonitorColor(red: 1, green: 1, blue: 0).contrasting == MonitorColor(white: 0), "yellow is light")
+        #expect(MonitorColor(red: 0, green: 0, blue: 0.6).contrasting == MonitorColor(white: 1), "navy is dark")
+        // Every preset differs from the black of an empty frame, except Black itself.
+        #expect(MonitorColor.presets.filter { $0.color.luminance < 0.01 }.map(\.name) == ["Black"])
+    }
+}
