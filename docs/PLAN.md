@@ -181,7 +181,13 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Normalization** is two passes. The first reads the exported range's mix and measures it (the first 15% of the progress bar). The second scales the audio as it's written, with a limiter at -1.5 dBFS only when the gain would push the true peak over -1 dBTP. The result goes to the log and the finished sheet.
   - **Not done yet:** audio effects are per clip only (no track effects), and there's no surround weighting (mono and stereo only).
 
-Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), bezier keyframe curves, nested sequences, multicam, dockable workspaces, OTIO/XML interchange, and plugins.
+**M14 — Bezier keyframes and the graph editor**
+- *As built:*
+  - **Model.** Auto Bezier, Continuous Bezier and Bezier join Linear, the eases and Hold (schema 9). Each Bezier keyframe has an incoming and an outgoing handle, stored as a slope (value per second, per component) and an influence (share of the neighbouring segment). This is After Effects' speed and influence model, so a curve keeps its shape when keyframes move or clips are trimmed. Auto Bezier computes Catmull-Rom tangents, flat at the ends. A segment with a Bezier end is a cubic in time and value: Newton's method solves the time curve, with bisection as a fallback, and influences adding up past 1 are scaled down so time can't run backwards. Segments with no Bezier end use the same ease formulas as before, so existing projects render the same.
+  - **Editing.** Dragging an Auto Bezier handle makes the keyframe Continuous (both sides mirror); ⌥ breaks it into plain Bezier. Switching interpolation to Bezier keeps the curve's current shape. Speed keyframes go through the same evaluation, so Time Remapping ramps smoothly.
+  - **Graph editor.** Every keyframed row in Effect Controls opens a value graph spanning the clip. It shows a curve per component, keyframe points you drag in time and value, and handles on selected keyframes. It's built in SwiftUI over the same keyframe actions as the lanes, so it's undoable and live while dragging.
+
+Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, OTIO/XML interchange, and plugins.
 
 ## Risks and mitigations
 - **Composition track limits.** AVFoundation has a practical cap on how many video layers it can decode at once. Mitigation: reuse composition tracks by packing non-overlapping clips onto the same track (A/B-roll allocation), and warn beyond about 8 simultaneous layers.
