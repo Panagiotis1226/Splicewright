@@ -215,6 +215,13 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **LUTs.** `.cube` files are parsed in SWCore: TITLE, 1D/3D sizes, DOMAIN_MIN/MAX and comments, with clear errors for bad files. Curves and LUTs work on display-encoded Rec.709 (gamma 2.4), where `.cube` files expect their input, then convert back to the linear Rec.2020 working space. LUT textures (3D with trilinear filtering) are cached by path and modification date. A missing or broken file is logged once, and the clip renders without it.
   - **Not done yet:** Lumetri's Creative, HSL Secondary, Color Wheels and scopes.
 
+**M18 — Masks**
+- *As built:*
+  - **Model.** A mask is a closed Bezier path in the clip's own picture (fractions of its media, so it follows Motion and any frame size). Feather, opacity and expansion are keyframeable, with Add/Subtract and Inverted. The path is one keyframeable value of six numbers per point (the point and both handles), so it animates point by point. Adding a point (a de Casteljau split, so the shape doesn't change) or removing one changes every keyframe alike. Masks sit on a clip's Opacity or on an effect, and are written only when present, so older projects load unchanged.
+  - **Rendering.** Each mask is rasterized with Core Graphics in render pixels, through the layer's transform. Expansion strokes the edge, or clears inside it. Rasters are cached while the shape doesn't change. Feather runs the effects' separable blur on the mask. Masks fold into one coverage texture with blend states: add is a screen, subtract multiplies by what's left, and inverted and opacity apply per mask. Opacity masks multiply the layer, effect masks mix the effect's result with the picture before it, and an adjustment layer's masks limit where its effects apply.
+  - **Editing.** Effect Controls rows (Mask Path stopwatch and keyframes, Feather, Opacity, Expansion, mode, Inverted) plus Program monitor handles mapped through the same picture mapping as Crop, with live, undoable drags. The Pen draws new masks point by point.
+  - **Not done yet:** mask tracking, and masks on titles' individual layers; masks aren't written to FCP7 XML, FCPXML or OTIO.
+
 Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: the rest of Lumetri (color wheels, HSL secondaries, scopes), Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, and plugins.
 
 ## Risks and mitigations
