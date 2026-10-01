@@ -31,6 +31,10 @@ struct ProgramMonitorPanel: View {
                     if workspace.activeTool == .selection, let selected = transformTarget {
                         GeometryReader { geometry in
                             TransformHandles(workspace: workspace, clip: selected, pictureRect: fittedRect(geometry.size))
+                            if let crop = selected.effects.first(where: { $0.kind == .crop && $0.isEnabled }) {
+                                CropHandles(workspace: workspace, clip: selected, crop: crop,
+                                            pictureRect: fittedRect(geometry.size))
+                            }
                         }
                     }
                     if engine.isBuilding {
@@ -97,7 +101,8 @@ struct ProgramMonitorPanel: View {
 
     /// The selected video clip, if it's on screen at the playhead (for the transform box).
     private var transformTarget: Clip? {
-        guard let selected = workspace.effectControlsClip, selected.isVideo,
+        // Adjustment layers have nothing to move (Premiere ignores their Motion).
+        guard let selected = workspace.effectControlsClip, selected.isVideo, !selected.clip.isAdjustment,
               selected.clip.range.contains(engine.currentFrame) else { return nil }
         return selected.clip
     }

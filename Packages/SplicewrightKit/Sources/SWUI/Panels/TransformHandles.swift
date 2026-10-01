@@ -68,23 +68,8 @@ struct TransformHandles: View {
 
     /// The clip's picture, fitted to the frame, after its motion at the playhead.
     private func corners() -> [CGPoint]? {
-        guard let settings else { return nil }
-        let width = Double(settings.width)
-        let height = Double(settings.height)
-        var mediaWidth = width
-        var mediaHeight = height
-        if !clip.isTitle, let video = workspace.project.item(clip.mediaID)?.info.video, video.width > 0, video.height > 0 {
-            mediaWidth = Double(video.width)
-            mediaHeight = Double(video.height)
-        }
-        let fit = min(width / mediaWidth, height / mediaHeight)
-        let halfWidth = mediaWidth * fit / 2
-        let halfHeight = mediaHeight * fit / 2
-        let transform = clip.motion.transform(at: workspace.keyframeTime(in: clip), renderWidth: width,
-                                              renderHeight: height, scale: 1)
-        return [(-1, -1), (1, -1), (1, 1), (-1, 1)].map { corner in
-            toView(transform.apply(x: width / 2 + corner.0 * halfWidth, y: height / 2 + corner.1 * halfHeight))
-        }
+        guard let mapping = PictureMapping(workspace: workspace, clip: clip, pictureRect: pictureRect) else { return nil }
+        return [(0, 0), (1, 0), (1, 1), (0, 1)].map { mapping.point(u: $0.0, v: $0.1) }
     }
 
     /// Where the anchor point lands: the Position.
@@ -143,5 +128,40 @@ struct TransformHandles: View {
         }
         drag = nil
         workspace.endLiveEdit(name)
+    }
+}
+
+/// Maps a point on a clip's picture (u, v from 0 to 1 across its media, fitted to the frame) to
+/// the monitor, through the clip's motion at the playhead.
+struct PictureMapping {
+    private let transform: Affine2D
+    private let size: (width: Double, height: Double)
+    private let half: (width: Double, height: Double)
+    private let pictureRect: CGRect
+
+    @MainActor
+    init?(workspace: WorkspaceController, clip: Clip, pictureRect: CGRect) {
+        guard let settings = workspace.activeSequence?.settings, settings.width > 0, settings.height > 0 else { return nil }
+        let width = Double(settings.width)
+        let height = Double(settings.height)
+        var mediaWidth = width
+        var mediaHeight = height
+        if !clip.isGenerated, let video = workspace.project.item(clip.mediaID)?.info.video, video.width > 0, video.height > 0 {
+            mediaWidth = Double(video.width)
+            mediaHeight = Double(video.height)
+        }
+        let fit = min(width / mediaWidth, height / mediaHeight)
+        size = (width, height)
+        half = (mediaWidth * fit / 2, mediaHeight * fit / 2)
+        transform = clip.motion.transform(at: workspace.keyframeTime(in: clip), renderWidth: width, renderHeight: height,
+                                          scale: 1)
+        self.pictureRect = pictureRect
+    }
+
+    func point(u: Double, v: Double) -> CGPoint {
+        let mapped = transform.apply(x: size.width / 2 + (2 * u - 1) * half.width,
+                                     y: size.height / 2 + (2 * v - 1) * half.height)
+        let scale = pictureRect.width / CGFloat(size.width)
+        return CGPoint(x: pictureRect.minX + CGFloat(mapped.x) * scale, y: pictureRect.minY + CGFloat(mapped.y) * scale)
     }
 }

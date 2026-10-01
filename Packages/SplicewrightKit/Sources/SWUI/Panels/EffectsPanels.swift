@@ -2,7 +2,8 @@ import SwiftUI
 import SWCore
 
 /// The Effects browser: drag a transition onto a cut or clip edge in the timeline, or
-/// double-click it to apply it at the edit point nearest the playhead.
+/// double-click it to apply it at the edit point nearest the playhead. Video effects drop onto
+/// clips (or apply to the selection on a double-click).
 struct EffectsPanel: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject private var defaults = EffectDefaults.shared
@@ -12,6 +13,10 @@ struct EffectsPanel: View {
     static let transitionPrefix = "splicewright.transition:"
     /// Pasteboard string for dragging a new title.
     static let titlePayload = "splicewright.title"
+    /// Pasteboard prefix for video effect drags (the rest is the kind's raw value).
+    static let effectPrefix = "splicewright.effect:"
+    /// Pasteboard string for dragging a new adjustment layer.
+    static let adjustmentPayload = "splicewright.adjustment"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,21 +30,50 @@ struct EffectsPanel: View {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     section("Video Transitions", TransitionKind.video)
                     section("Audio Transitions", TransitionKind.audio)
-                    if search.isEmpty || "title".localizedCaseInsensitiveContains(search) {
-                        header("Graphics")
-                        EffectRow(symbol: "textformat", title: "Title", isDefault: false, payload: Self.titlePayload,
-                                  onDoubleClick: { workspace.newTitle() })
-                            .help("Drag onto a video track, or double-click to add a title at the playhead")
-                    }
+                    videoEffects
+                    graphics
                 }
                 .padding(.horizontal, 6)
                 .padding(.bottom, 6)
             }
-            Text("Drag onto a clip or cut, or double-click to apply at the playhead. Right-click to set the default "
-                 + "(⌘D, ⇧⌘D).")
+            Text("Drag onto a clip or cut. Double-click a transition to apply it at the playhead, or an effect to apply "
+                 + "it to the selection. Right-click a transition to set the default (⌘D, ⇧⌘D).")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(6)
+        }
+    }
+
+    @ViewBuilder
+    private var videoEffects: some View {
+        let matching = VideoEffectKind.allCases.filter {
+            search.isEmpty || $0.displayName.localizedCaseInsensitiveContains(search)
+        }
+        if !matching.isEmpty {
+            header("Video Effects")
+            ForEach(matching) { kind in
+                EffectRow(symbol: kind.symbol, title: kind.displayName, isDefault: false,
+                          payload: Self.effectPrefix + kind.rawValue, onDoubleClick: { workspace.addEffect(kind) })
+                    .help("Drag onto a clip or adjustment layer, or double-click to apply to the selected clips")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var graphics: some View {
+        let title = search.isEmpty || "title".localizedCaseInsensitiveContains(search)
+        let adjustment = search.isEmpty || "adjustment layer".localizedCaseInsensitiveContains(search)
+        if title || adjustment { header("Graphics") }
+        if title {
+            EffectRow(symbol: "textformat", title: "Title", isDefault: false, payload: Self.titlePayload,
+                      onDoubleClick: { workspace.newTitle() })
+                .help("Drag onto a video track, or double-click to add a title at the playhead")
+        }
+        if adjustment {
+            EffectRow(symbol: "square.stack.3d.down.forward", title: "Adjustment Layer", isDefault: false,
+                      payload: Self.adjustmentPayload, onDoubleClick: { workspace.newAdjustmentLayer() })
+                .help("Drag onto a video track, or double-click to add one at the playhead. Its effects apply to "
+                      + "every track below it.")
         }
     }
 

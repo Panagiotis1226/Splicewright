@@ -29,7 +29,12 @@ struct MotionControls: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if isVideo {
+                    if clip.isAdjustment {
+                        // Adjustment layers: their effects, blended in with Opacity.
+                        sectionTitle("Opacity")
+                        row(.opacity)
+                        effectSections
+                    } else if isVideo {
                         sectionTitle("Motion")
                         row(.position)
                         row(.scale)
@@ -39,11 +44,12 @@ struct MotionControls: View {
                         row(.anchorPoint)
                         sectionTitle("Opacity")
                         row(.opacity)
-                        if !clip.isTitle {
+                        if !clip.isGenerated {
                             sectionTitle(clip.speed.isAnimated ? "Time Remapping" : "Speed")
                             row(.speed)
                             speedNote
                         }
+                        effectSections
                     } else {
                         sectionTitle("Volume")
                         row(.volume)
@@ -111,50 +117,58 @@ struct MotionControls: View {
     // MARK: - Property rows
 
     private func row(_ property: ClipProperty, disabled: Bool = false) -> some View {
-        let animated = clip.property(property)
-        let time = workspace.keyframeTime(in: clip, for: property)
+        valueRow(.clip(property), title: property.displayName, components: property.components, unit: property.unit,
+                 step: property.dragStep, disabled: disabled,
+                 display: { display($0, property, $1) }, stored: { stored($0, property, $1) })
+    }
+
+    /// One keyframeable number (or pair): stopwatch, values, keyframe buttons, reset and lane.
+    private func valueRow(_ ref: PropertyRef, title: String, components: [String], unit: String, step: Double,
+                          disabled: Bool = false, display: @escaping (Double, Int) -> Double = { value, _ in value },
+                          stored: @escaping (Double, Int) -> Double = { value, _ in value }) -> some View {
+        let animated = clip.animatable(ref) ?? AnimatableProperty([0])
+        let time = workspace.keyframeTime(in: clip, for: ref)
         let values = animated.value(at: time)
         let onKeyframe = animated.keyframe(at: time, tolerance: rate.frameDuration) != nil
         return HStack(spacing: 6) {
-            Button { workspace.setAnimated(!animated.isAnimated, property, of: clip) } label: {
+            Button { workspace.setAnimated(!animated.isAnimated, ref, of: clip) } label: {
                 Image(systemName: "stopwatch")
                     .foregroundStyle(animated.isAnimated ? Theme.accent : Theme.textSecondary)
             }
             .buttonStyle(.borderless)
-            .help(animated.isAnimated ? "Turn off animation (removes keyframes)" : "Animate \(property.displayName)")
-            Text(property.displayName).frame(width: 82, alignment: .leading)
+            .help(animated.isAnimated ? "Turn off animation (removes keyframes)" : "Animate \(title)")
+            Text(title).lineLimit(1).frame(width: 82, alignment: .leading)
             ForEach(values.indices, id: \.self) { index in
-                ScrubbableNumber(label: property.components[index], value: display(values[index], property, index),
-                                 step: property.dragStep, unit: property.unit) { newValue, live in
+                ScrubbableNumber(label: index < components.count ? components[index] : "",
+                                 value: display(values[index], index), step: step, unit: unit) { newValue, live in
                     var updated = values
-                    updated[index] = stored(newValue, property, index)
-                    workspace.setProperty(property, of: clip.id, to: updated, live: live)
+                    updated[index] = stored(newValue, index)
+                    workspace.setValue(ref, of: clip.id, to: updated, actionName: title, live: live)
                 } onEnd: {
-                    workspace.endLiveEdit(property.displayName)
+                    workspace.endLiveEdit(title)
                 }
             }
             Spacer(minLength: 4)
             if animated.isAnimated {
-                Button { workspace.goToKeyframe(next: false, property, of: clip) } label: {
+                Button { workspace.goToKeyframe(next: false, ref, of: clip) } label: {
                     Image(systemName: "arrowtriangle.left.fill").font(.system(size: 7))
                 }
                 .help("Previous keyframe")
-                Button { workspace.toggleKeyframe(property, of: clip) } label: {
+                Button { workspace.toggleKeyframe(ref, of: clip) } label: {
                     Image(systemName: onKeyframe ? "diamond.fill" : "diamond").font(.system(size: 9))
                         .foregroundStyle(onKeyframe ? Theme.accent : Theme.textPrimary)
                 }
                 .help(onKeyframe ? "Remove keyframe" : "Add keyframe")
-                Button { workspace.goToKeyframe(next: true, property, of: clip) } label: {
+                Button { workspace.goToKeyframe(next: true, ref, of: clip) } label: {
                     Image(systemName: "arrowtriangle.right.fill").font(.system(size: 7))
                 }
                 .help("Next keyframe")
             }
-            Button { workspace.resetProperty(property, of: clip.id) } label: {
+            Button { workspace.resetValue(ref, of: clip.id, actionName: "Reset \(title)") } label: {
                 Image(systemName: "arrow.uturn.backward").font(.system(size: 9))
             }
-            .help("Reset \(property.displayName)")
-            KeyframeLane(workspace: workspace, engine: engine, clip: clip, property: property,
-                         selection: $selectedKeyframes)
+            .help("Reset \(title)")
+            KeyframeLane(workspace: workspace, engine: engine, clip: clip, property: ref, selection: $selectedKeyframes)
                 .frame(minWidth: 120, maxWidth: .infinity)
                 .frame(height: 20)
         }
@@ -163,6 +177,59 @@ struct MotionControls: View {
         .frame(height: 24)
         .opacity(disabled ? 0.4 : 1)
         .disabled(disabled)
+    }
+
+    // MARK: - Effects
+
+    @ViewBuilder private var effectSections: some View {
+        ForEach(Array(clip.effects.enumerated()), id: \.element.id) { index, effect in
+            effectHeader(effect, index: index)
+            if effect.isEnabled {
+                ForEach(effect.kind.parameters, id: \.key) { parameter in
+                    valueRow(.effect(effect.id, parameter.key), title: parameter.displayName, components: [""],
+                             unit: parameter.unit, step: parameter.dragStep)
+                }
+            }
+        }
+        if clip.effects.isEmpty && (isVideo || clip.isAdjustment) {
+            Text("Drag a video effect here from the Effects panel, or double-click one to add it.")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 8)
+                .padding(.top, 10)
+        }
+    }
+
+    private func effectHeader(_ effect: VideoEffect, index: Int) -> some View {
+        HStack(spacing: 6) {
+            Button { workspace.updateEffect(effect.id, of: clip.id, effect.isEnabled ? "Disable Effect" : "Enable Effect") {
+                $0.isEnabled.toggle()
+            } } label: {
+                Text("fx").font(.system(size: 10, weight: .bold, design: .serif))
+                    .foregroundStyle(effect.isEnabled ? Theme.accent : Theme.textSecondary)
+                    .strikethrough(!effect.isEnabled)
+            }
+            .help(effect.isEnabled ? "Turn the effect off" : "Turn the effect on")
+            Text(effect.kind.displayName).font(.system(size: 10, weight: .semibold))
+            Spacer()
+            Button { workspace.moveEffect(effect.id, of: clip.id, by: -1) } label: { Image(systemName: "chevron.up") }
+                .disabled(index == 0)
+                .help("Move up (applied earlier)")
+            Button { workspace.moveEffect(effect.id, of: clip.id, by: 1) } label: { Image(systemName: "chevron.down") }
+                .disabled(index == clip.effects.count - 1)
+                .help("Move down")
+            Button { workspace.resetEffect(effect.id, of: clip.id) } label: {
+                Image(systemName: "arrow.uturn.backward").font(.system(size: 9))
+            }
+            .help("Reset \(effect.kind.displayName)")
+            Button { workspace.removeEffect(effect.id, from: clip.id) } label: { Image(systemName: "trash") }
+                .help("Remove \(effect.kind.displayName)")
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(Theme.textSecondary)
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .frame(height: 24)
     }
 
     /// Effect Controls shows Position and Anchor Point as frame coordinates (0,0 is the top left).
@@ -177,9 +244,9 @@ struct MotionControls: View {
     }
 
     private func deleteSelected() {
-        for property in ClipProperty.allCases {
-            let ids = Set(clip.property(property).keyframes.map(\.id)).intersection(selectedKeyframes)
-            if !ids.isEmpty { workspace.deleteKeyframes(ids, property, of: clip.id) }
+        for ref in workspace.allRefs(of: clip) {
+            let ids = Set((clip.animatable(ref)?.keyframes ?? []).map(\.id)).intersection(selectedKeyframes)
+            if !ids.isEmpty { workspace.deleteKeyframes(ids, ref, of: clip.id) }
         }
         selectedKeyframes = []
     }
@@ -260,7 +327,7 @@ struct KeyframeLane: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject var engine: PlaybackEngine
     let clip: Clip
-    let property: ClipProperty
+    let property: PropertyRef
     @Binding var selection: Set<UUID>
     /// The keyframe being dragged and where it started (live edits move it under the drag).
     @State private var dragging: (id: UUID, startFrame: Int64)?
@@ -280,7 +347,7 @@ struct KeyframeLane: View {
                     .frame(width: 1)
                     .offset(x: x(for: engine.currentFrame, width: width))
                     .allowsHitTesting(false)
-                ForEach(clip.property(property).keyframes) { keyframe in
+                ForEach(clip.animatable(property)?.keyframes ?? []) { keyframe in
                     diamond(keyframe, width: width)
                 }
             }

@@ -312,8 +312,16 @@ public struct CompositionBuilder {
             loaded[mediaID]?.video != nil || (loaded[mediaID] == nil && project.item(mediaID)?.info.video != nil)
         }
         videoComposition.instructions = segments.map { segment in
-            let layers: [InstructionLayer] = segment.layers.compactMap { layer in
+            func instructionLayer(for layer: RenderLayer) -> InstructionLayer? {
                 let transition = layer.transition.map { InstructionTransition($0, rate: rate) }
+                if layer.isAdjustment {
+                    // No source: its effects work on what's below. Opacity blends the result.
+                    return InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity,
+                                            transform: .identity, sourceWidth: renderWidth, sourceHeight: renderHeight,
+                                            fallbackColor: .rec709, forcedColor: nil, transition: transition,
+                                            motion: layer.motion, clipStart: time(layer.clipStart),
+                                            sourceStart: layer.sourceStart, pixelScale: pixelScale)
+                }
                 if let title = layer.title {
                     return InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity,
                                             transform: .identity, sourceWidth: renderWidth, sourceHeight: renderHeight,
@@ -343,6 +351,12 @@ public struct CompositionBuilder {
                                         forcedColor: item?.colorOverride, transition: transition, motion: layer.motion,
                                         clipStart: time(layer.clipStart), sourceStart: layer.sourceStart,
                                         pixelScale: pixelScale, timing: layer.timing)
+            }
+            let layers: [InstructionLayer] = segment.layers.compactMap { layer -> InstructionLayer? in
+                var built = instructionLayer(for: layer)
+                built?.effects = layer.effects
+                built?.isAdjustment = layer.isAdjustment
+                return built
             }
             let range = CMTimeRange(start: RationalTime(frames: segment.range.start, rate: rate).cmTime,
                                     end: RationalTime(frames: segment.range.end, rate: rate).cmTime)

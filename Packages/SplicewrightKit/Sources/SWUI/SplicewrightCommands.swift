@@ -92,6 +92,8 @@ public struct SplicewrightCommands: Commands {
             Button("New Title") { workspace?.newTitle() }
                 .shortcut(.newTitle, keys)
                 .disabled(workspace == nil)
+            Button("New Adjustment Layer") { workspace?.newAdjustmentLayer() }
+                .disabled(workspace == nil)
         }
         CommandMenu("Marker") {
             Button("Add Marker") { workspace?.handle(.addMarker) }

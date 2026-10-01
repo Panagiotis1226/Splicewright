@@ -98,6 +98,10 @@ public struct RenderLayer: Sendable, Hashable {
     public var sourceStart: RationalTime
     /// Set for clips not at 100% forwards, to map sequence time to source time.
     public var timing: ClipTiming?
+    /// The clip's effect stack (resolved per frame by the compositor).
+    public var effects: [VideoEffect] = []
+    /// An adjustment layer: its effects apply to everything composited below it.
+    public var isAdjustment = false
 
     public init(trackIndex: Int, clipID: UUID, mediaID: UUID, opacity: Double, transition: LayerTransition? = nil,
                 title: TitleSpec? = nil, motion: Motion = Motion(), clipStart: Int64 = 0, sourceStart: RationalTime = .zero) {
@@ -186,13 +190,17 @@ public enum RenderPlan {
             var layers: [RenderLayer] = []
             for (index, track) in sequence.videoTracks.enumerated() where track.isOutputEnabled {
                 func layer(_ clip: Clip?, _ transition: LayerTransition? = nil) -> RenderLayer? {
-                    guard let clip, clip.isEnabled, clip.isVisible, clip.isTitle || isAvailable(clip.mediaID) else {
+                    guard let clip, clip.isEnabled, clip.isVisible, clip.isGenerated || isAvailable(clip.mediaID) else {
                         return nil
                     }
                     var layer = RenderLayer(trackIndex: index, clipID: clip.id, mediaID: clip.mediaID,
                                             opacity: min(1, clip.opacity), transition: transition, title: clip.title,
                                             motion: clip.motion, clipStart: clip.start, sourceStart: clip.sourceStart)
                     if clip.isRetimed { layer.timing = clip.timing(rate: sequence.rate) }
+                    layer.effects = clip.effects.filter(\.isEnabled)
+                    layer.isAdjustment = clip.isAdjustment
+                    // An adjustment layer with nothing to apply draws nothing.
+                    if clip.isAdjustment && layer.effects.isEmpty { return nil }
                     return layer
                 }
                 if let active = transitions[index].first(where: { $0.range.contains(start) }) {

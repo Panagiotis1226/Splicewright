@@ -7,7 +7,7 @@ extension WorkspaceController {
     public func requestSpeedDuration() {
         guard let sequence = activeSequence else { return }
         let ids = sequence.expandingLinks(timeline.selection).filter { id in
-            sequence.clip(id).map { !$0.isTitle } ?? false
+            sequence.clip(id).map { !$0.isGenerated } ?? false
         }
         guard !ids.isEmpty else {
             NSSound.beep()

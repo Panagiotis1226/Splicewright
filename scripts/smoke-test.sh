@@ -79,6 +79,7 @@ checks = {
     "speed changed": r.get("speedChanged"),
     "marker added": r.get("markerAdded"),
     "chapter marks in the export": r.get("chaptersEmbedded"),
+    "effect and adjustment layer applied": r.get("effectApplied") and r.get("adjustmentLayerAdded"),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

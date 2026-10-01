@@ -136,6 +136,11 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     public var isReversed: Bool
     /// Keeps the pitch of sped-up or slowed-down audio.
     public var maintainsPitch: Bool
+    /// Video effects, applied in order (schema 7).
+    public var effects: [VideoEffect]
+    /// An adjustment layer: no media; its effects apply to the tracks below (`mediaID` is
+    /// `Clip.generatedMediaID`).
+    public var isAdjustment: Bool
 
     public init(id: UUID = UUID(), mediaID: UUID, name: String, start: Int64, duration: Int64,
                 sourceStart: RationalTime, linkID: UUID? = nil, isEnabled: Bool = true,
@@ -155,6 +160,8 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         speed = AnimatableProperty([100])
         isReversed = false
         maintainsPitch = true
+        effects = []
+        isAdjustment = false
         self.opacity = opacity
     }
 
@@ -186,7 +193,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaID, name, start, duration, sourceStart, linkID, isEnabled, gainDB, title, motion, volume
-        case speed, isReversed, maintainsPitch
+        case speed, isReversed, maintainsPitch, effects, isAdjustment
         /// Schema 3 and earlier stored a constant opacity (0...1).
         case opacity
     }
@@ -208,6 +215,8 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         speed = try container.decodeIfPresent(AnimatableProperty.self, forKey: .speed) ?? AnimatableProperty([100])
         isReversed = try container.decodeIfPresent(Bool.self, forKey: .isReversed) ?? false
         maintainsPitch = try container.decodeIfPresent(Bool.self, forKey: .maintainsPitch) ?? true
+        effects = try container.decodeIfPresent([VideoEffect].self, forKey: .effects) ?? []
+        isAdjustment = try container.decodeIfPresent(Bool.self, forKey: .isAdjustment) ?? false
         if try container.decodeIfPresent(Motion.self, forKey: .motion) == nil,
            let legacy = try container.decodeIfPresent(Double.self, forKey: .opacity) {
             opacity = legacy
@@ -232,6 +241,8 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         if speed != AnimatableProperty([100]) { try container.encode(speed, forKey: .speed) }
         if isReversed { try container.encode(isReversed, forKey: .isReversed) }
         if !maintainsPitch { try container.encode(maintainsPitch, forKey: .maintainsPitch) }
+        if !effects.isEmpty { try container.encode(effects, forKey: .effects) }
+        if isAdjustment { try container.encode(isAdjustment, forKey: .isAdjustment) }
     }
 }
 

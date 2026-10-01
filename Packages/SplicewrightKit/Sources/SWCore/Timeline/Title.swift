@@ -109,6 +109,9 @@ public extension Clip {
     static let generatedMediaID = UUID(uuidString: "5F1CE000-0000-4000-8000-000000000001")!
 
     var isTitle: Bool { title != nil }
+
+    /// A clip without media: a title or an adjustment layer.
+    var isGenerated: Bool { isTitle || isAdjustment }
 }
 
 public extension EditSequence {

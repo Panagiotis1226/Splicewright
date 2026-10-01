@@ -14,9 +14,13 @@ extension WorkspaceController {
 
     /// The playhead, clamped into the clip, as the clip's source time (where keyframes go).
     func keyframeTime(in clip: Clip, for property: ClipProperty = .position) -> RationalTime {
+        keyframeTime(in: clip, for: .clip(property))
+    }
+
+    func keyframeTime(in clip: Clip, for ref: PropertyRef) -> RationalTime {
         guard let sequence = activeSequence else { return clip.sourceStart }
         let frame = min(max(playheadFrame, clip.start), clip.end - 1)
-        return clip.keyframeTime(for: property, atSequenceFrame: frame, rate: sequence.rate)
+        return clip.keyframeTime(for: ref, atSequenceFrame: frame, rate: sequence.rate)
     }
 
     // MARK: - Values
@@ -24,18 +28,22 @@ extension WorkspaceController {
     /// Sets a property at the playhead. With `live`, the change shows immediately but isn't
     /// an undo step until `endLiveEdit` (used while dragging).
     func setProperty(_ property: ClipProperty, of clipID: UUID, to values: [Double], live: Bool = false) {
+        setValue(.clip(property), of: clipID, to: values, actionName: property.displayName, live: live)
+    }
+
+    func setValue(_ ref: PropertyRef, of clipID: UUID, to values: [Double], actionName: String, live: Bool = false) {
         guard let clip = activeSequence?.clip(clipID) else { return }
         // A constant speed changes the clip's length, as Speed/Duration does.
-        if property == .speed, !clip.speed.isAnimated, let percent = values.first {
+        if ref == .clip(.speed), !clip.speed.isAnimated, let percent = values.first {
             setConstantSpeed(percent, of: clip, live: live)
             return
         }
         let frame = min(max(playheadFrame, clip.start), clip.end - 1)
-        let change: (inout EditSequence) -> Void = { $0.setProperty(property, of: clipID, to: values, atFrame: frame) }
+        let change: (inout EditSequence) -> Void = { $0.setAnimatable(ref, of: clipID, to: values, atFrame: frame) }
         if live {
             liveEdit(change)
         } else {
-            editSequence(property.displayName) { sequence, _ in change(&sequence) }
+            editSequence(actionName) { sequence, _ in change(&sequence) }
         }
     }
 
@@ -58,61 +66,70 @@ extension WorkspaceController {
     // MARK: - Keyframes
 
     func setAnimated(_ animated: Bool, _ property: ClipProperty, of clip: Clip) {
-        let time = keyframeTime(in: clip, for: property)
+        setAnimated(animated, .clip(property), of: clip)
+    }
+
+    func setAnimated(_ animated: Bool, _ ref: PropertyRef, of clip: Clip) {
+        let time = keyframeTime(in: clip, for: ref)
         editSequence(animated ? "Enable Keyframes" : "Disable Keyframes") { sequence, _ in
-            sequence.updateProperty(property, of: clip.id) { $0.setAnimated(animated, at: time) }
+            sequence.updateAnimatable(ref, of: clip.id) { $0.setAnimated(animated, at: time) }
         }
     }
 
-    func toggleKeyframe(_ property: ClipProperty, of clip: Clip) {
-        let time = keyframeTime(in: clip, for: property)
+    func toggleKeyframe(_ ref: PropertyRef, of clip: Clip) {
+        let time = keyframeTime(in: clip, for: ref)
         let tolerance = activeSequence?.rate.frameDuration ?? RationalTime(value: 1, timescale: 30)
         editSequence("Keyframe") { sequence, _ in
-            sequence.updateProperty(property, of: clip.id) { $0.toggleKeyframe(at: time, tolerance: tolerance) }
+            sequence.updateAnimatable(ref, of: clip.id) { $0.toggleKeyframe(at: time, tolerance: tolerance) }
         }
     }
 
-    /// Moves the playhead to the previous or next keyframe of `property` (all properties if nil).
-    func goToKeyframe(next: Bool, _ property: ClipProperty?, of clip: Clip) {
+    /// Every keyframeable number of a clip: its properties and its effects' parameters.
+    func allRefs(of clip: Clip) -> [PropertyRef] {
+        ClipProperty.allCases.map { PropertyRef.clip($0) }
+            + clip.effects.flatMap { effect in effect.kind.parameters.map { PropertyRef.effect(effect.id, $0.key) } }
+    }
+
+    /// Moves the playhead to the previous or next keyframe of `ref` (of everything if nil).
+    func goToKeyframe(next: Bool, _ ref: PropertyRef?, of clip: Clip) {
         guard let rate = activeSequence?.rate else { return }
-        let properties = property.map { [$0] } ?? ClipProperty.allCases
+        let refs = ref.map { [$0] } ?? allRefs(of: clip)
         // Each property's keyframes in its own time, compared as sequence frames.
-        let frames = properties.compactMap { name -> Int64? in
-            let time = keyframeTime(in: clip, for: name)
-            let animated = clip.property(name)
-            guard let keyframe = next ? animated.next(after: time) : animated.previous(before: time) else { return nil }
-            return clip.sequenceFrame(ofKeyframeTime: keyframe.time, for: name, rate: rate)
+        let frames = refs.compactMap { ref -> Int64? in
+            let time = keyframeTime(in: clip, for: ref)
+            guard let animated = clip.animatable(ref),
+                  let keyframe = next ? animated.next(after: time) : animated.previous(before: time) else { return nil }
+            return clip.sequenceFrame(ofKeyframeTime: keyframe.time, for: ref, rate: rate)
         }
         guard let target = next ? frames.min() : frames.max() else { return }
         program.seek(toFrame: target)
     }
 
-    func moveKeyframe(_ id: UUID, _ property: ClipProperty, of clipID: UUID, toFrame frame: Int64, live: Bool) {
+    func moveKeyframe(_ id: UUID, _ ref: PropertyRef, of clipID: UUID, toFrame frame: Int64, live: Bool) {
         guard let sequence = activeSequence, let clip = sequence.clip(clipID) else { return }
         let clamped = min(max(frame, clip.start), clip.end - 1)
-        let time = clip.keyframeTime(for: property, atSequenceFrame: clamped, rate: sequence.rate)
+        let time = clip.keyframeTime(for: ref, atSequenceFrame: clamped, rate: sequence.rate)
         let tolerance = sequence.rate.frameDuration
         let change: (inout EditSequence) -> Void = { sequence in
-            sequence.updateProperty(property, of: clipID) { $0.move(id, to: time, tolerance: tolerance) }
+            sequence.updateAnimatable(ref, of: clipID) { $0.move(id, to: time, tolerance: tolerance) }
         }
         if live { liveEdit(change) } else { editSequence("Move Keyframe") { sequence, _ in change(&sequence) } }
     }
 
-    func setInterpolation(_ interpolation: KeyframeInterpolation, ids: Set<UUID>, _ property: ClipProperty,
-                          of clipID: UUID) {
+    func setInterpolation(_ interpolation: KeyframeInterpolation, ids: Set<UUID>, _ ref: PropertyRef, of clipID: UUID) {
         editSequence("Keyframe Interpolation") { sequence, _ in
-            sequence.updateProperty(property, of: clipID) { $0.setInterpolation(interpolation, for: ids) }
+            sequence.updateAnimatable(ref, of: clipID) { $0.setInterpolation(interpolation, for: ids) }
         }
     }
 
-    func deleteKeyframes(_ ids: Set<UUID>, _ property: ClipProperty, of clipID: UUID) {
+    func deleteKeyframes(_ ids: Set<UUID>, _ ref: PropertyRef, of clipID: UUID) {
         editSequence("Delete Keyframes") { sequence, _ in
-            sequence.updateProperty(property, of: clipID) { animated in ids.forEach { animated.remove($0) } }
+            sequence.updateAnimatable(ref, of: clipID) { animated in ids.forEach { animated.remove($0) } }
         }
     }
 
-    func resetProperty(_ property: ClipProperty, of clipID: UUID) {
-        editSequence("Reset \(property.displayName)") { sequence, _ in sequence.resetProperty(property, of: clipID) }
+    func resetValue(_ ref: PropertyRef, of clipID: UUID, actionName: String) {
+        editSequence(actionName) { sequence, _ in sequence.resetAnimatable(ref, of: clipID) }
     }
 
     func setUniformScale(_ uniform: Bool, of clipID: UUID) {

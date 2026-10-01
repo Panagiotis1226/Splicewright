@@ -81,8 +81,8 @@ extension TimelineCanvas {
             return
         }
         if event.clickCount == 2, let hit = clipHit(at: point, in: sequence), hit.edge == nil {
-            if hit.clip.isTitle {
-                // Titles are edited in Effect Controls.
+            if hit.clip.isGenerated {
+                // Titles and adjustment layers are edited in Effect Controls.
                 timeline.selection = [hit.clip.id]
                 workspace.activePanel = .effectControls
                 return

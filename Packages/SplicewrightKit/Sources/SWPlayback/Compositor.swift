@@ -26,6 +26,18 @@ struct InstructionLayer {
     var pixelScale: Double = 1
     /// For clips not at 100% forwards: how composition time maps to source time.
     var timing: ClipTiming?
+    /// The clip's effect stack, evaluated each frame.
+    var effects: [VideoEffect] = []
+    /// An adjustment layer: no source; its effects apply to the layers below.
+    var isAdjustment = false
+
+    /// The effects at a composition time, split into what the layer draw does itself (Crop,
+    /// Flip, Mirror) and what needs passes of its own (in render pixels).
+    func effects(at time: CMTime, renderWidth: Double) -> (LayerGeometry, [PixelEffect]) {
+        guard !effects.isEmpty else { return (.none, []) }
+        let resolved = effects.filter(\.isEnabled).map { $0.resolved(at: sourceTime(at: time)) }.filter { !$0.isNoOp }
+        return EffectRendering.split(resolved, pixelScale: pixelScale)
+    }
 
     /// The source time shown at a composition time, for evaluating keyframes.
     func sourceTime(at time: CMTime) -> RationalTime {
@@ -101,7 +113,9 @@ final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProto
         self.layers = layers
         self.outputSpace = outputSpace
         self.overlay = overlay
-        containsTweening = everyFrame || layers.contains { $0.transition != nil || $0.motion.isAnimated }
+        containsTweening = everyFrame || layers.contains {
+            $0.transition != nil || $0.motion.isAnimated || $0.isAdjustment || $0.effects.contains(where: \.isAnimated)
+        }
         let ids = Array(Set(layers.map(\.trackID).filter { $0 != kCMPersistentTrackID_Invalid })).sorted()
         requiredSourceTrackIDs = ids.isEmpty ? nil : ids.map { NSNumber(value: $0) }
     }
@@ -171,23 +185,33 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
         }
         let time = request.compositionTime
         let renderSize = request.renderContext.size
-        func frame(_ layer: InstructionLayer) -> LayerSource? {
+        func frame(_ layer: InstructionLayer, geometry: LayerGeometry) -> LayerSource? {
             let transform = layer.transform(at: time, renderWidth: renderSize.width, renderHeight: renderSize.height)
             let opacity = layer.opacity(at: time)
             if let title = layer.title {
-                return .title(TitleFrame(spec: title, opacity: opacity, transform: transform))
+                return .title(TitleFrame(spec: title, opacity: opacity, transform: transform, geometry: geometry))
             }
             guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { return nil }
             return .video(LayerFrame(pixelBuffer: buffer, transform: transform, sourceWidth: layer.sourceWidth,
                                      sourceHeight: layer.sourceHeight, opacity: opacity,
-                                     fallbackColor: layer.fallbackColor, forcedColor: layer.forcedColor))
+                                     fallbackColor: layer.fallbackColor, forcedColor: layer.forcedColor,
+                                     geometry: geometry))
+        }
+        func item(_ layer: InstructionLayer) -> RenderItem? {
+            let (geometry, passes) = layer.effects(at: time, renderWidth: renderSize.width)
+            if layer.isAdjustment {
+                guard !geometry.isIdentity || !passes.isEmpty else { return nil }
+                return .adjustment(AdjustmentFrame(geometry: geometry, effects: passes, opacity: layer.opacity(at: time)))
+            }
+            guard let source = frame(layer, geometry: geometry) else { return nil }
+            return passes.isEmpty ? .layer(source) : .effected(source, passes)
         }
         var items: [RenderItem] = []
         var index = instruction.layers.startIndex
         while index < instruction.layers.endIndex {
             let layer = instruction.layers[index]
             guard let transition = layer.transition else {
-                if let frame = frame(layer) { items.append(.layer(frame)) }
+                if let item = item(layer) { items.append(item) }
                 index += 1
                 continue
             }
@@ -196,9 +220,15 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
                                       progress: transition.progress(at: request.compositionTime))
             while index < instruction.layers.endIndex, let side = instruction.layers[index].transition,
                   side.id == transition.id {
+                let sideLayer = instruction.layers[index]
+                let (geometry, passes) = sideLayer.effects(at: time, renderWidth: renderSize.width)
                 switch side.role {
-                case .outgoing: mix.outgoing = frame(instruction.layers[index])
-                case .incoming: mix.incoming = frame(instruction.layers[index])
+                case .outgoing:
+                    mix.outgoing = frame(sideLayer, geometry: geometry)
+                    mix.outgoingEffects = passes
+                case .incoming:
+                    mix.incoming = frame(sideLayer, geometry: geometry)
+                    mix.incomingEffects = passes
                 }
                 index += 1
             }

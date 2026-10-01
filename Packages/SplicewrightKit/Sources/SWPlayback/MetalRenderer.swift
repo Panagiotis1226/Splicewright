@@ -12,11 +12,9 @@ struct LayerUniforms {
     var ycbcr: SIMD4<Float>
     var color: SIMD4<Float>
     var tone: SIMD4<Float>
-}
-
-/// Must match `OutputUniforms` in Shaders.swift.
-struct OutputUniforms {
-    var params: SIMD4<Float>
+    var crop: SIMD4<Float> = .zero
+    var feather: SIMD4<Float> = .zero
+    var mirror: SIMD4<Float> = .zero
 }
 
 /// One decoded source frame to draw, bottom layer first.
@@ -30,6 +28,7 @@ struct LayerFrame {
     var fallbackColor: ColorDescription
     /// Interpret Footage override; wins over the frame's attachments.
     var forcedColor: ColorDescription?
+    var geometry: LayerGeometry = .none
 }
 
 /// Must match `TransitionUniforms` in Shaders.swift.
@@ -44,6 +43,7 @@ struct TitleFrame {
     var opacity: Double
     /// Frame-sized texture → render pixels (identity unless the title has motion).
     var transform: Affine2D = .identity
+    var geometry: LayerGeometry = .none
 }
 
 /// One layer's pixels: a decoded video frame or a rasterized title.
@@ -58,12 +58,17 @@ struct TransitionFrame {
     var incoming: LayerSource?
     var kind: TransitionKind
     var progress: Double
+    var outgoingEffects: [PixelEffect] = []
+    var incomingEffects: [PixelEffect] = []
 }
 
 /// What to draw, bottom first.
 enum RenderItem {
     case layer(LayerSource)
+    /// A layer drawn off to the side, run through blur/sharpen/shadow, then composited.
+    case effected(LayerSource, [PixelEffect])
     case transition(TransitionFrame)
+    case adjustment(AdjustmentFrame)
 }
 
 enum RenderError: Error {
@@ -79,10 +84,17 @@ final class MetalRenderer {
 
     let device: MTLDevice
     private let queue: MTLCommandQueue
-    private let layerPipeline: MTLRenderPipelineState
+    let layerPipeline: MTLRenderPipelineState
     private let outputPipeline: MTLRenderPipelineState
-    private let transitionPipeline: MTLRenderPipelineState
+    let transitionPipeline: MTLRenderPipelineState
     private let titlePipeline: MTLRenderPipelineState
+    let blurPipeline: MTLRenderPipelineState
+    let sharpenPipeline: MTLRenderPipelineState
+    let shadowPipeline: MTLRenderPipelineState
+    let geometryPipeline: MTLRenderPipelineState
+    let overPipeline: MTLRenderPipelineState
+    /// Mixes a texture into the target by the blend color (adjustment layers replace what's below).
+    let replacePipeline: MTLRenderPipelineState
     private let titles: TitleRasterizer
     private let textureCache: CVMetalTextureCache
     private var workingTexture: MTLTexture?
@@ -136,6 +148,28 @@ final class MetalRenderer {
         mix.colorAttachments[0].sourceAlphaBlendFactor = .one
         mix.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
         transitionPipeline = try device.makeRenderPipelineState(descriptor: mix)
+        // A premultiplied texture over the target (effected layers).
+        mix.fragmentFunction = library.makeFunction(name: "overFragment")
+        overPipeline = try device.makeRenderPipelineState(descriptor: mix)
+        // target × (1 − opacity) + texture × opacity, with the opacity as the blend color.
+        mix.colorAttachments[0].sourceRGBBlendFactor = .blendColor
+        mix.colorAttachments[0].destinationRGBBlendFactor = .oneMinusBlendColor
+        mix.colorAttachments[0].sourceAlphaBlendFactor = .blendAlpha
+        mix.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusBlendAlpha
+        replacePipeline = try device.makeRenderPipelineState(descriptor: mix)
+
+        // Effect passes write every pixel of their target; no blending.
+        func pass(_ name: String) throws -> MTLRenderPipelineState {
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.vertexFunction = library.makeFunction(name: "fullScreenVertex")
+            descriptor.fragmentFunction = library.makeFunction(name: name)
+            descriptor.colorAttachments[0].pixelFormat = .rgba16Float
+            return try device.makeRenderPipelineState(descriptor: descriptor)
+        }
+        blurPipeline = try pass("blurFragment")
+        sharpenPipeline = try pass("sharpenFragment")
+        shadowPipeline = try pass("shadowFragment")
+        geometryPipeline = try pass("geometryFragment")
 
         var cache: CVMetalTextureCache?
         guard CVMetalTextureCacheCreate(nil, nil, device, nil, &cache) == kCVReturnSuccess, let cache else {
@@ -169,26 +203,25 @@ final class MetalRenderer {
             switch item {
             case .layer(let layer):
                 try draw(layer, with: encoder, space: space, size: (width, height), keepAlive: &keepAlive)
+            case .effected(let layer, let effects):
+                encoder.endEncoding()
+                let textures = try scratch(width: width, height: height)
+                let temps = Array(textures[2...])
+                try drawAside(layer, into: temps[0], DrawContext(commandBuffer: commandBuffer, space: space,
+                                                                 size: (width, height)), keepAlive: &keepAlive)
+                let result = try runEffects(effects, on: temps[0], temps: temps, commandBuffer: commandBuffer)
+                encoder = try layerEncoder(commandBuffer, target: working, clear: nil)
+                composite(result, opacity: 1, with: encoder)
+            case .adjustment(let adjustment):
+                encoder.endEncoding()
+                try applyAdjustment(adjustment, to: working, commandBuffer: commandBuffer, size: (width, height))
+                encoder = try layerEncoder(commandBuffer, target: working, clear: nil)
             case .transition(let transition):
                 encoder.endEncoding()
-                let scratch = try scratch(width: width, height: height)
-                for (side, target) in zip([transition.outgoing, transition.incoming], scratch) {
-                    let sideEncoder = try layerEncoder(commandBuffer, target: target,
-                                                       clear: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0))
-                    if let side {
-                        try draw(side, with: sideEncoder, space: space, size: (width, height), keepAlive: &keepAlive)
-                    }
-                    sideEncoder.endEncoding()
-                }
+                try drawTransition(transition, onto: working,
+                                   DrawContext(commandBuffer: commandBuffer, space: space, size: (width, height)),
+                                   keepAlive: &keepAlive)
                 encoder = try layerEncoder(commandBuffer, target: working, clear: nil)
-                encoder.setRenderPipelineState(transitionPipeline)
-                var uniforms = TransitionUniforms(params: SIMD4(Float(Self.transitionIndex(transition.kind)),
-                                                                Float(transition.progress), 0, 0))
-                encoder.setFragmentBytes(&uniforms, length: MemoryLayout<TransitionUniforms>.stride, index: 0)
-                encoder.setFragmentTexture(scratch[0], index: 0)
-                encoder.setFragmentTexture(scratch[1], index: 1)
-                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-                encoder.setRenderPipelineState(layerPipeline)
             }
         }
         encoder.endEncoding()
@@ -213,8 +246,8 @@ final class MetalRenderer {
     }
 
     /// A layer-pipeline encoder on `target`, cleared to `clear` (or keeping its contents if nil).
-    private func layerEncoder(_ commandBuffer: MTLCommandBuffer, target: MTLTexture,
-                              clear: MTLClearColor?) throws -> MTLRenderCommandEncoder {
+    func layerEncoder(_ commandBuffer: MTLCommandBuffer, target: MTLTexture,
+                      clear: MTLClearColor?) throws -> MTLRenderCommandEncoder {
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = target
         pass.colorAttachments[0].loadAction = clear == nil ? .load : .clear
@@ -227,8 +260,8 @@ final class MetalRenderer {
         return encoder
     }
 
-    private func draw(_ source: LayerSource, with encoder: MTLRenderCommandEncoder, space: SequenceColorSpace,
-                      size: (width: Int, height: Int), keepAlive: inout [CVMetalTexture]) throws {
+    func draw(_ source: LayerSource, with encoder: MTLRenderCommandEncoder, space: SequenceColorSpace,
+              size: (width: Int, height: Int), keepAlive: inout [CVMetalTexture]) throws {
         let (width, height) = size
         guard case .video(let layer) = source else {
             if case .title(let title) = source { drawTitle(title, with: encoder, width: width, height: height) }
@@ -238,6 +271,14 @@ final class MetalRenderer {
         let luma = try texture(from: layer.pixelBuffer, plane: 0, format: format.lumaFormat, keepAlive: &keepAlive)
         let chroma = try texture(from: layer.pixelBuffer, plane: 1, format: format.chromaFormat, keepAlive: &keepAlive)
         var uniforms = Self.uniforms(for: layer, format: format, space: space, renderWidth: width, renderHeight: height)
+        if !layer.geometry.isIdentity {
+            // Feather is in render pixels; the shader wants it in the layer's own uv.
+            let t = layer.transform
+            let drawnWidth = max(1, layer.sourceWidth * hypot(t.a, t.b))
+            let drawnHeight = max(1, layer.sourceHeight * hypot(t.c, t.d))
+            uniforms.apply(layer.geometry, featherUV: SIMD2(Float(layer.geometry.featherPixels / drawnWidth),
+                                                            Float(layer.geometry.featherPixels / drawnHeight)))
+        }
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
         encoder.setFragmentTexture(luma, index: 0)
@@ -253,6 +294,8 @@ final class MetalRenderer {
         var uniforms = LayerUniforms(row0: SIMD4(Float(t.a), Float(t.c), Float(t.tx), 0),
                                      row1: SIMD4(Float(t.b), Float(t.d), Float(t.ty), 0), sizes: size, ycbcr: .zero,
                                      color: SIMD4(0, 0, Float(min(max(title.opacity, 0), 1)), 0), tone: .zero)
+        uniforms.apply(title.geometry, featherUV: SIMD2(Float(title.geometry.featherPixels) / Float(width),
+                                                        Float(title.geometry.featherPixels) / Float(height)))
         encoder.setRenderPipelineState(titlePipeline)
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
@@ -354,13 +397,13 @@ final class MetalRenderer {
         return workingTexture
     }
 
-    private func scratch(width: Int, height: Int) throws -> [MTLTexture] {
-        if scratchTextures.count == 2, scratchTextures[0].width == width, scratchTextures[0].height == height {
+    /// Six frame-sized textures: two transition sides, then four for effect passes.
+    func scratch(width: Int, height: Int) throws -> [MTLTexture] {
+        if scratchTextures.count == 6, scratchTextures[0].width == width, scratchTextures[0].height == height {
             return scratchTextures
         }
-        let textures = [makeRenderTexture(width: width, height: height), makeRenderTexture(width: width, height: height)]
-            .compactMap { $0 }
-        guard textures.count == 2 else { throw RenderError.textureCreationFailed }
+        let textures = (0..<6).compactMap { _ in makeRenderTexture(width: width, height: height) }
+        guard textures.count == 6 else { throw RenderError.textureCreationFailed }
         scratchTextures = textures
         return textures
     }

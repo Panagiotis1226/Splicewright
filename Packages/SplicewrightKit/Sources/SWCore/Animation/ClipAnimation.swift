@@ -29,7 +29,9 @@ public extension Clip {
     }
 
     /// Whether any of the clip's properties are keyframed.
-    var isAnimated: Bool { motion.isAnimated || volume.isAnimated || speed.isAnimated }
+    var isAnimated: Bool {
+        motion.isAnimated || volume.isAnimated || speed.isAnimated || effects.contains(where: \.isAnimated)
+    }
 }
 
 public extension EditSequence {
@@ -64,6 +66,8 @@ public extension EditSequence {
                 clip.motion = source.motion.retimed(by: clip.sourceStart - source.sourceStart)
             }
             if volume { clip.volume = source.volume.retimed(by: clip.sourceStart - source.sourceStart) }
+            // Effects are pasted with the picture attributes (video clips and adjustment layers).
+            if motion { clip.effects = source.effects.map { $0.retimed(by: clip.sourceStart - source.sourceStart) } }
         }
     }
 }

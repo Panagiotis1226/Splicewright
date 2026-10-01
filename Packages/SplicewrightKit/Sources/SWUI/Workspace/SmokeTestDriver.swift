@@ -49,6 +49,8 @@ enum SmokeTestDriver {
         var markerAdded = false
         var chaptersEmbedded = false
         var chapterDetail = ""
+        var effectApplied = false
+        var adjustmentLayerAdded = false
         var errors: [String] = []
     }
 
@@ -104,6 +106,7 @@ enum SmokeTestDriver {
         checkCache(&report)
         await checkWorkspaces(workspace, report: &report)
         await checkHardening(workspace, report: &report)
+        addEffects(workspace, report: &report)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)
         if let clip = sequence.videoTracks[0].clips.first { workspace.timeline.selection = [clip.id] }
@@ -214,6 +217,27 @@ enum SmokeTestDriver {
             let changed = workspace.activeSequence?.clip(last.id)
             report.speedChanged = changed?.duration == last.duration * 2 && changed?.speedPercent == 50
         }
+    }
+
+    /// A Gaussian Blur on V1's first clip and a cropping adjustment layer over the exported range,
+    /// as the Effects panel applies them (the export then renders both).
+    private static func addEffects(_ workspace: WorkspaceController, report: inout Report) {
+        guard let clip = workspace.activeSequence?.videoTracks[0].clips.first(where: { !$0.isGenerated }) else { return }
+        workspace.timeline.selection = [clip.id]
+        workspace.addEffect(.gaussianBlur)
+        if let effect = workspace.activeSequence?.clip(clip.id)?.effects.first {
+            workspace.updateEffect(effect.id, of: clip.id, "Blurriness") { $0.parameters["blurriness"] = AnimatableProperty([8]) }
+        }
+        report.effectApplied = workspace.activeSequence?.clip(clip.id)?.effects.map(\.kind) == [.gaussianBlur]
+        workspace.program.seek(toFrame: 10)
+        workspace.newAdjustmentLayer()
+        guard let layer = workspace.timeline.selection.first,
+              workspace.activeSequence?.clip(layer)?.isAdjustment == true else { return }
+        workspace.addEffect(.crop)
+        if let crop = workspace.activeSequence?.clip(layer)?.effects.first {
+            workspace.updateEffect(crop.id, of: layer, "Crop") { $0.parameters["left"] = AnimatableProperty([10]) }
+        }
+        report.adjustmentLayerAdded = workspace.activeSequence?.clip(layer)?.effects.map(\.kind) == [.crop]
     }
 
     /// Exports frames 10...39 as H.264 SDR and probes the result.

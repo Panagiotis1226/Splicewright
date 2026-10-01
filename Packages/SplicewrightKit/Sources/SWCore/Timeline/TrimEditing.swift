@@ -241,7 +241,8 @@ public extension EditSequence {
     }
 
     internal func framesBefore(_ clip: Clip, _ media: MediaDurations) -> Int64 {
-        clip.framesBefore(media: media[clip.mediaID], rate: rate)
+        // Titles and adjustment layers have no source to run out of.
+        clip.isGenerated ? Int64(Int32.max) : clip.framesBefore(media: media[clip.mediaID], rate: rate)
     }
 
     /// The longest `clip` can be before its source runs out, or nil if unknown.

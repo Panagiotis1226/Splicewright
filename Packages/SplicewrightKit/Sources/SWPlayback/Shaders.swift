@@ -21,6 +21,14 @@ enum Shaders {
         // opacity, tone map (0/1)
         float4 color;
         float4 tone;    // source peak (relative to ref white), unused...
+        float4 crop;    // left, top, right, bottom as fractions of the layer (Crop effect)
+        float4 feather; // feather in uv (x, y), flip horizontal (0/1), flip vertical (0/1)
+        float4 mirror;  // enabled (0/1), reflection center (uv x), angle (radians), unused
+    };
+
+    struct EffectUniforms {
+        float4 a;       // per pass: see each fragment
+        float4 b;
     };
 
     struct OutputUniforms {
@@ -154,6 +162,35 @@ enum Shaders {
         return float3(y + 1.5748 * cr, y - 0.1873 * cb - 0.4681 * cr, y + 1.8556 * cb);
     }
 
+    // --- Geometric effects (Crop, Flip, Mirror), applied while a layer is drawn ------------
+
+    /// Flip and mirror move where a layer samples its own pixels.
+    float2 effectUV(float2 uv, constant LayerUniforms& u, float aspect) {
+        if (u.feather.z > 0.5) { uv.x = 1.0 - uv.x; }
+        if (u.feather.w > 0.5) { uv.y = 1.0 - uv.y; }
+        if (u.mirror.x > 0.5) {
+            // Reflect across a line through (center, 0.5) at the angle (0 = vertical; the
+            // left side is reflected onto the right), in square pixels.
+            float2 p = float2(uv.x * aspect, uv.y);
+            float2 c = float2(u.mirror.y * aspect, 0.5);
+            float2 n = float2(cos(u.mirror.z), sin(u.mirror.z));
+            float d = dot(p - c, n);
+            if (d > 0.0) { p -= 2.0 * d * n; }
+            uv = float2(p.x / aspect, p.y);
+        }
+        return uv;
+    }
+
+    /// 1 inside the crop, 0 outside, soft across the feather.
+    float cropMask(float2 uv, constant LayerUniforms& u) {
+        float2 low = u.crop.xy;
+        float2 high = 1.0 - u.crop.zw;
+        if (high.x <= low.x || high.y <= low.y) { return 0.0; }
+        float2 f = max(u.feather.xy, float2(1e-5));
+        float2 inside = smoothstep(low, low + f, uv) * (1.0 - smoothstep(high - f, high, uv));
+        return inside.x * inside.y;
+    }
+
     // --- Layer pass ---------------------------------------------------------------------
 
     vertex VertexOut layerVertex(uint vid [[vertex_id]], constant LayerUniforms& u [[buffer(0)]]) {
@@ -175,8 +212,9 @@ enum Shaders {
         float codeScale = u.ycbcr.x;
         float maxCode = u.ycbcr.y;
         float depthScale = (maxCode + 1.0) / 256.0;
-        float yCode = lumaTexture.sample(s, in.uv).r * codeScale;
-        float2 cCode = chromaTexture.sample(s, in.uv).rg * codeScale;
+        float2 uv = effectUV(in.uv, u, u.sizes.x / max(u.sizes.y, 1.0));
+        float yCode = lumaTexture.sample(s, uv).r * codeScale;
+        float2 cCode = chromaTexture.sample(s, uv).rg * codeScale;
         float y, cb, cr;
         if (u.ycbcr.z > 0.5) {
             y = yCode / maxCode;
@@ -190,7 +228,7 @@ enum Shaders {
         float3 rgb = ycbcrToRGB(y, cb, cr, int(u.ycbcr.w));
         float3 lin = toRec2020(toLinear(rgb, int(u.color.x)), int(u.color.y));
         if (u.color.w > 0.5) { lin = toneMapToSDR(lin, u.tone.x); }
-        return float4(lin, u.color.z);
+        return float4(lin, u.color.z * cropMask(in.uv, u));
     }
 
     // --- Titles ----------------------------------------------------------------------------
@@ -200,10 +238,68 @@ enum Shaders {
                                   texture2d<float> title [[texture(0)]],
                                   constant LayerUniforms& u [[buffer(0)]]) {
         constexpr sampler s(filter::linear, address::clamp_to_edge);
-        float4 c = title.sample(s, in.uv);
+        float4 c = title.sample(s, effectUV(in.uv, u, u.sizes.x / max(u.sizes.y, 1.0)));
         if (c.a <= 0.0) { return float4(0.0); }
         float3 lin = toRec2020(srgbToLinear(clamp(c.rgb / c.a, 0.0, 1.0)), 0);
-        return float4(lin, c.a * u.color.z);
+        return float4(lin, c.a * u.color.z * cropMask(in.uv, u));
+    }
+
+    // --- Pixel effects (premultiplied textures, one full-screen pass each) ----------------
+
+    /// Separable Gaussian. a: direction (x, y) in pixels per tap, sigma in taps, taps each side.
+    /// b: offset (x, y) in pixels to sample from (drop shadow), alpha only (0/1).
+    fragment float4 blurFragment(VertexOut in [[stage_in]], texture2d<float> source [[texture(0)]],
+                                 constant EffectUniforms& u [[buffer(0)]]) {
+        constexpr sampler s(filter::linear, address::clamp_to_zero, coord::pixel);
+        float2 center = in.position.xy - u.b.xy;
+        int taps = int(u.a.w);
+        float sigma = max(u.a.z, 1e-3);
+        float4 sum = float4(0.0);
+        float weights = 0.0;
+        for (int i = -taps; i <= taps; i++) {
+            float w = exp(-0.5 * float(i * i) / (sigma * sigma));
+            sum += source.sample(s, center + u.a.xy * float(i)) * w;
+            weights += w;
+        }
+        float4 c = sum / max(weights, 1e-6);
+        return u.b.z > 0.5 ? float4(0.0, 0.0, 0.0, c.a) : c;
+    }
+
+    /// Unsharp mask: original + amount × (original − blurred). a.x: amount.
+    fragment float4 sharpenFragment(VertexOut in [[stage_in]], texture2d<float> original [[texture(0)]],
+                                    texture2d<float> blurred [[texture(1)]], constant EffectUniforms& u [[buffer(0)]]) {
+        uint2 p = uint2(in.position.xy);
+        float4 o = original.read(p);
+        float4 b = blurred.read(p);
+        float4 c = o + u.a.x * (o - b);
+        c.a = clamp(c.a, 0.0, 1.0);
+        c.rgb = max(c.rgb, 0.0);
+        return c;
+    }
+
+    /// The layer over its (blurred, offset) shadow. a: shadow color rgb (linear), opacity.
+    fragment float4 shadowFragment(VertexOut in [[stage_in]], texture2d<float> layer [[texture(0)]],
+                                   texture2d<float> shadow [[texture(1)]], constant EffectUniforms& u [[buffer(0)]]) {
+        uint2 p = uint2(in.position.xy);
+        float4 l = layer.read(p);
+        float alpha = shadow.read(p).a * u.a.w;
+        float4 s = float4(u.a.rgb * alpha, alpha);
+        return l + (1.0 - l.a) * s;
+    }
+
+    /// Copies a texture through Crop, Flip and Mirror (adjustment layers apply them to the
+    /// picture below). Uses the LayerUniforms crop/feather/mirror fields; sizes.zw is the size.
+    fragment float4 geometryFragment(VertexOut in [[stage_in]], texture2d<float> source [[texture(0)]],
+                                     constant LayerUniforms& u [[buffer(0)]]) {
+        constexpr sampler s(filter::linear, address::clamp_to_edge);
+        float2 uv = effectUV(in.uv, u, u.sizes.z / max(u.sizes.w, 1.0));
+        return source.sample(s, uv) * cropMask(in.uv, u);
+    }
+
+    /// A premultiplied texture composited over the target. a.x: opacity.
+    fragment float4 overFragment(VertexOut in [[stage_in]], texture2d<float> source [[texture(0)]],
+                                 constant EffectUniforms& u [[buffer(0)]]) {
+        return source.read(uint2(in.position.xy)) * u.a.x;
     }
 
     // --- Transition pass ----------------------------------------------------------------

@@ -2,7 +2,7 @@ import AppKit
 import SWCore
 import SWPlayback
 
-/// Drops from the Project panel and the timeline's context menus.
+/// Drops from the Project and Effects panels, and the timeline's context menus.
 extension TimelineCanvas {
     // MARK: - Drag and drop
 
@@ -35,7 +35,7 @@ extension TimelineCanvas {
         return (row.trackID, edge, range)
     }
 
-    private func dropLocation(_ info: NSDraggingInfo) -> (frame: Int64, trackID: UUID?) {
+    func dropLocation(_ info: NSDraggingInfo) -> (frame: Int64, trackID: UUID?) {
         let point = convert(info.draggingLocation, from: nil)
         guard let sequence = workspace.activeSequence else { return (0, nil) }
         var frame = frame(at: max(point.x, TimelineLayout.headerWidth))
@@ -53,6 +53,7 @@ extension TimelineCanvas {
     }
 
     private func updateDropTarget(_ info: NSDraggingInfo) -> NSDragOperation {
+        if let operation = updateEffectDropTarget(info) { return operation }
         if isTitleDrop(info) {
             let location = dropLocation(info)
             guard let sequence = workspace.activeSequence, let trackID = location.trackID,
@@ -108,6 +109,10 @@ extension TimelineCanvas {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         defer { timeline.dropTarget = nil }
+        if let handled = performEffectDrop(sender) {
+            if handled { window?.makeFirstResponder(self) }
+            return handled
+        }
         if isTitleDrop(sender) {
             let location = dropLocation(sender)
             let isVideo = workspace.activeSequence?.videoTracks.contains { $0.id == location.trackID } ?? true
