@@ -187,7 +187,21 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Editing.** Dragging an Auto Bezier handle makes the keyframe Continuous (both sides mirror); ⌥ breaks it into plain Bezier. Switching interpolation to Bezier keeps the curve's current shape. Speed keyframes go through the same evaluation, so Time Remapping ramps smoothly.
   - **Graph editor.** Every keyframed row in Effect Controls opens a value graph spanning the clip. It shows a curve per component, keyframe points you drag in time and value, and handles on selected keyframes. It's built in SwiftUI over the same keyframe actions as the lanes, so it's undoable and live while dragging.
 
-Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, OTIO/XML interchange, and plugins.
+**M15 — Timeline interchange**
+- *As built:*
+  - **Formats.** FCP7 XML (`xmeml` v4) is what Premiere Pro exports and imports, and Resolve reads and writes it. FCPXML (1.10 written; 1.8 and later read, including `.fcpxmld` bundles) is for Final Cut Pro and Resolve. OpenTimelineIO JSON is for Resolve 18.5+. Native project files (`.prproj`, `.drp`) are undocumented and change between versions, so they're out of scope. These exchange files are what the editors themselves use.
+  - **Model.** Every format converts through one neutral timeline (tracks of clips that point at media paths, plus transitions and markers), which converts to and from an `EditSequence`. Pure Swift with a small XMLParser-based tree, so it's tested on Linux.
+  - **Format quirks handled.**
+    - Premiere's `-1` start/end at transitions resolves to the transition's cut.
+    - Premiere's one-clip-per-channel stereo audio is merged into one clip.
+    - NTSC `timebase`/`ntsc` rates are read.
+    - FCPXML's lanes become tracks, connected clips are positioned through their parent's local time, `tcStart` 01:00:00:00 maps to frame 0, and asset start timecodes are subtracted from source in-points.
+    - OTIO's sequential items, gaps and overlapping transitions are read, `available_range` starts are subtracted, and rates are floats like 23.976.
+    - OTIO has no clip volume or opacity, so Splicewright keeps them in its own clip metadata, which Resolve ignores.
+  - **Media.** Files on disk are imported (matched by resolved path to items already in the project). Missing ones become offline items that Link Media can relink. A video and an audio clip of the same file at the same place are linked.
+  - **Not carried:** effects, titles, adjustment layers and keyframes (time-remapped clips are written at their starting speed). Transitions on tracks other than V1 aren't written to FCPXML (the spine). The import and export sheets say what was left out.
+
+Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, and plugins.
 
 ## Risks and mitigations
 - **Composition track limits.** AVFoundation has a practical cap on how many video layers it can decode at once. Mitigation: reuse composition tracks by packing non-overlapping clips onto the same track (A/B-roll allocation), and warn beyond about 8 simultaneous layers.

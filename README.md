@@ -16,6 +16,7 @@ Status: **M11**. You can:
 - make HEVC, H.264 or ProRes proxies for smooth editing of 4K/HDR footage (export always uses the originals)
 - copy and paste clips and Paste Attributes between them
 - recover from crashes with auto-saved versions, and relink moved or missing files (Link Media)
+- bring timelines in from Premiere Pro, DaVinci Resolve (free or Studio) and Final Cut Pro, and send them back (FCP7 XML, FCPXML, OpenTimelineIO)
 - mark the timeline with colored, named markers and export them as YouTube chapters or chapter marks
 - change clip speed (Speed/Duration, Rate Stretch, Reverse) and ramp it with Time Remapping keyframes
 - transcribe speech into an editable subtitle track (on-device, nothing uploaded), then burn it in or export .srt/.vtt
@@ -71,7 +72,13 @@ When the app opens, choose **New Document**, then:
 15. **Effects:** drag a video effect from the **Effects** panel onto a clip (onto any selected clip to apply it to all of them), or select clips and double-click the effect. Each effect shows in **Effect Controls** under Motion and Opacity, with a stopwatch on every value: **fx** turns it off, the arrows change the order they apply in, and ↶ resets it. Clips with effects show `fx` on the timeline. With Crop applied, drag the handles on the crop's edges in the Program monitor.
     - **Adjustment layers:** choose **Graphics ▸ New Adjustment Layer** or drag **Adjustment Layer** from the Effects panel onto a video track. Its effects apply to every track below it for as long as it lasts; tracks above it aren't affected. Lower its Opacity to blend the result with the original. Trim and move it like any clip.
 16. **Audio mixing:** the **Audio Track Mixer** tab sits next to Project. Each audio track has a pan knob (drag up/down), M (mute) and S (solo), a fader (⌥ for fine control) and a meter with peak hold. The Mix strip on the right sets the overall level. Double-click a fader or knob to reset it. Faders change what you hear during playback right away and are saved with the sequence. Audio effects come from the **Effects** panel's Audio Effects section: drag one onto an audio clip and set it in Effect Controls (every value has a stopwatch). The level meters next to the timeline show the real Mix.
-17. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens. **Normalize Loudness** measures the mix first, then sets it to -14 LUFS (YouTube, Spotify), -16 (Apple Podcasts) or -23 (EBU R128), limiting peaks under -1 dBTP when needed; the finished sheet shows the before and after.
+17. **Premiere Pro, Resolve and Final Cut timelines:** Splicewright can't open `.prproj` or `.drp` project files (they're closed formats that even those apps can't exchange), but it reads and writes the timeline files they export for exactly this:
+    - From **Premiere Pro**: select the sequence, **File ▸ Export ▸ Final Cut Pro XML…**
+    - From **DaVinci Resolve** (free or Studio): right-click the timeline ▸ **Timelines ▸ Export ▸ FCPXML**, **XML** or **OpenTimelineIO** (or File ▸ Export ▸ Timeline…).
+    - From **Final Cut Pro**: **File ▸ Export XML…**
+    - Then in Splicewright: **File ▸ Import Timeline from Premiere Pro, Resolve or Final Cut…** It opens as a new sequence with its clips, source in/out points, tracks, cuts, dissolves and fades, constant speed, opacity, volume and markers. The media is imported from where the timeline says it is; anything not found comes in offline (red), ready for **File ▸ Link Media…**. Effects, titles, color grades and keyframes from the other app don't carry over, the same as between those apps.
+    - To go the other way: **File ▸ Export ▸ Timeline for Premiere Pro (Final Cut Pro 7 XML)…**, **…for DaVinci Resolve or Final Cut Pro (FCPXML)…** or **…for DaVinci Resolve (OpenTimelineIO)…**, then import that file there.
+18. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens. **Normalize Loudness** measures the mix first, then sets it to -14 LUFS (YouTube, Spotify), -16 (Apple Podcasts) or -23 (EBU R128), limiting peaks under -1 dBTP when needed; the finished sheet shows the before and after.
 
 ### Make targets
 
