@@ -229,7 +229,7 @@ public struct CompositionBuilder {
 
     /// A clip at another speed. Constant forward speed is one scaled edit (AVFoundation
     /// resamples audio with the item's pitch algorithm). Reversed and time-remapped video is
-    /// built a frame (or, when remapped, up to four frames) at a time; their audio is silent.
+    /// built a frame at a time; their audio is silent.
     private func insertRetimed(_ placement: Placement, from sourceTrack: AVAssetTrack, duration media: CMTime,
                                into track: AVMutableCompositionTrack, rate: FrameRate) {
         let (clip, isVideo) = (placement.clip, placement.freezeMissingHandles)
@@ -249,7 +249,9 @@ public struct CompositionBuilder {
         }
         /// Shows the source frame at `time` for `frames` sequence frames from clip frame `position`.
         func hold(_ time: Double, from position: Int64, frames: Int64) {
-            let start = min(max(time, 0), max(0, mediaSeconds - frame.seconds))
+            // A little past `time`, so a time that lands just short of a frame boundary in
+            // floating point still shows the frame starting there.
+            let start = min(max(time + frame.seconds / 8, 0), max(0, mediaSeconds - frame.seconds))
             let range = CMTimeRange(start: seconds(start), duration: frame)
             guard (try? track.insertTimeRange(range, of: sourceTrack, at: at(frame: position))) != nil else { return }
             track.scaleTimeRange(CMTimeRange(start: at(frame: position), duration: frame),
@@ -277,23 +279,10 @@ public struct CompositionBuilder {
             return
         }
         guard isVideo else { return }
-        var position = first
-        while position < last {
-            let count = timing.isReversed ? 1 : min(4, last - position)
-            let from = source + timing.sourceOffset(atClipFrame: Double(position))
-            let to = source + timing.sourceOffset(atClipFrame: Double(position + count))
-            if timing.isReversed || to - from < frame.seconds / 4 || from < 0 || to > mediaSeconds {
-                // One frame of source per step (reversed, held, or at the media's edge).
-                for step in 0..<count { hold(source + timing.sourceOffset(atClipFrame: Double(position + step)),
-                                             from: position + step, frames: 1) }
-            } else {
-                let range = CMTimeRange(start: seconds(from), end: seconds(to))
-                if (try? track.insertTimeRange(range, of: sourceTrack, at: at(frame: position))) != nil {
-                    track.scaleTimeRange(CMTimeRange(start: at(frame: position), duration: range.duration),
-                                         toDuration: RationalTime(frames: count, rate: rate).cmTime)
-                }
-            }
-            position += count
+        // One edit per output frame showing the source frame at its mapped time, as Premiere
+        // samples reversed and remapped clips.
+        for position in first..<last {
+            hold(source + timing.sourceOffset(atClipFrame: Double(position)), from: position, frames: 1)
         }
     }
 
