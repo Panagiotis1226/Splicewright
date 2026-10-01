@@ -29,6 +29,8 @@ public struct WorkspaceLayout: Sendable, Hashable, Codable, Identifiable {
     public var projectBinsWidth: Double = 160
     /// The tab showing in the Source panel group: "source", "effectControls" or "effects".
     public var sourceTab: String = "source"
+    /// The tabs of the Source panel group (PanelID raw values in SWUI).
+    public static let sourceTabs: Set<String> = ["source", "effectControls", "effects", "captions"]
     /// "list" or "icons".
     public var projectViewMode: String = "list"
     /// Icon view tile width, in points.
@@ -67,7 +69,7 @@ public struct WorkspaceLayout: Sendable, Hashable, Codable, Identifiable {
         copy.iconSize = clamp(iconSize, Self.iconSizeRange)
         copy.timelineZoom = clamp(timelineZoom, Self.zoomRange)
         if ![1, 0.5, 0.25].contains(programResolution) { copy.programResolution = 1 }
-        if !["source", "effectControls", "effects"].contains(sourceTab) { copy.sourceTab = "source" }
+        if !Self.sourceTabs.contains(sourceTab) { copy.sourceTab = "source" }
         if !["list", "icons"].contains(projectViewMode) { copy.projectViewMode = "list" }
         if let frame = windowFrame, !(frame.width >= 400 && frame.height >= 300) { copy.windowFrame = nil }
         return copy

@@ -28,6 +28,11 @@ struct WorkspaceTests {
         #expect(clamped.rootSplit == 0.9 && clamped.topSplit == 0.1 && clamped.bottomSplit == 0.1)
         #expect(clamped.iconSize == WorkspaceLayout.iconSizeRange.upperBound)
         #expect(clamped.programResolution == 1 && clamped.sourceTab == "source" && clamped.windowFrame == nil)
+        for tab in ["source", "effectControls", "effects", "captions"] {
+            var withTab = WorkspaceLayout.editing
+            withTab.sourceTab = tab
+            #expect(withTab.clamped().sourceTab == tab, "\(tab) is a real tab")
+        }
     }
 
     @Test func codableRoundTripAndMissingKeys() throws {
