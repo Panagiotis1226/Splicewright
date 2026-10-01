@@ -31,6 +31,7 @@ public extension Clip {
     /// Whether any of the clip's properties are keyframed.
     var isAnimated: Bool {
         motion.isAnimated || volume.isAnimated || speed.isAnimated || effects.contains(where: \.isAnimated)
+            || opacityMasks.contains(where: \.isAnimated)
     }
 }
 
@@ -67,7 +68,10 @@ public extension EditSequence {
             }
             if volume { clip.volume = source.volume.retimed(by: clip.sourceStart - source.sourceStart) }
             // Effects are pasted with the picture attributes (video clips and adjustment layers).
-            if motion { clip.effects = source.effects.map { $0.retimed(by: clip.sourceStart - source.sourceStart) } }
+            if motion {
+                clip.effects = source.effects.map { $0.retimed(by: clip.sourceStart - source.sourceStart) }
+                clip.opacityMasks = source.opacityMasks.map { $0.retimed(by: clip.sourceStart - source.sourceStart) }
+            }
         }
     }
 }

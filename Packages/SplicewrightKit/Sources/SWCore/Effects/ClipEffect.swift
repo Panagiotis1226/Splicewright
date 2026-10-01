@@ -140,12 +140,40 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
     public var lutPath: String?
     /// Color Correction: its RGB curves (nil is straight). Schema 10.
     public var curves: ColorCurves?
+    /// The effect applies only inside these (none: everywhere). Schema 10.
+    public var masks: [Mask] = []
 
     public init(id: UUID = UUID(), kind: EffectKind, isEnabled: Bool = true) {
         self.id = id
         self.kind = kind
         self.isEnabled = isEnabled
         parameters = Dictionary(uniqueKeysWithValues: kind.parameters.map { ($0.key, AnimatableProperty([$0.defaultValue])) })
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, isEnabled, parameters, lutPath, curves, masks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(EffectKind.self, forKey: .kind)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        parameters = try container.decodeIfPresent([String: AnimatableProperty].self, forKey: .parameters) ?? [:]
+        lutPath = try container.decodeIfPresent(String.self, forKey: .lutPath)
+        curves = try container.decodeIfPresent(ColorCurves.self, forKey: .curves)
+        masks = try container.decodeIfPresent([Mask].self, forKey: .masks) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(parameters, forKey: .parameters)
+        try container.encodeIfPresent(lutPath, forKey: .lutPath)
+        try container.encodeIfPresent(curves, forKey: .curves)
+        if !masks.isEmpty { try container.encode(masks, forKey: .masks) }
     }
 
     public func parameter(_ key: String) -> AnimatableProperty {
@@ -157,7 +185,7 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
         parameter(key).value(at: time).first ?? 0
     }
 
-    public var isAnimated: Bool { parameters.values.contains(where: \.isAnimated) }
+    public var isAnimated: Bool { parameters.values.contains(where: \.isAnimated) || masks.contains(where: \.isAnimated) }
 
     /// Every parameter's value at `time`, for rendering.
     public func resolved(at time: RationalTime) -> ResolvedEffect {
@@ -165,6 +193,7 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
         var resolved = ResolvedEffect(kind: kind, values: Dictionary(uniqueKeysWithValues: values))
         resolved.lutPath = lutPath
         resolved.curves = curves
+        resolved.masks = masks.map { $0.resolved(at: time) }
         return resolved
     }
 
@@ -173,6 +202,7 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
         var copy = self
         copy.id = UUID()
         copy.parameters = parameters.mapValues { $0.retimed(by: offset) }
+        copy.masks = masks.map { $0.retimed(by: offset) }
         return copy
     }
 }
@@ -183,6 +213,8 @@ public struct ResolvedEffect: Sendable, Hashable {
     public var values: [String: Double]
     public var lutPath: String?
     public var curves: ColorCurves?
+    /// Where the effect applies (none: everywhere).
+    public var masks: [ResolvedMask] = []
 
     public init(kind: EffectKind, values: [String: Double]) {
         self.kind = kind

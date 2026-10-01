@@ -141,6 +141,8 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     /// An adjustment layer: no media; its effects apply to the tracks below (`mediaID` is
     /// `Clip.generatedMediaID`).
     public var isAdjustment: Bool
+    /// Masks on Opacity: the clip shows only inside them (schema 10).
+    public var opacityMasks: [Mask] = []
 
     public init(id: UUID = UUID(), mediaID: UUID, name: String, start: Int64, duration: Int64,
                 sourceStart: RationalTime, linkID: UUID? = nil, isEnabled: Bool = true,
@@ -193,7 +195,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaID, name, start, duration, sourceStart, linkID, isEnabled, gainDB, title, motion, volume
-        case speed, isReversed, maintainsPitch, effects, isAdjustment
+        case speed, isReversed, maintainsPitch, effects, isAdjustment, opacityMasks
         /// Schema 3 and earlier stored a constant opacity (0...1).
         case opacity
     }
@@ -217,6 +219,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         maintainsPitch = try container.decodeIfPresent(Bool.self, forKey: .maintainsPitch) ?? true
         effects = try container.decodeIfPresent([ClipEffect].self, forKey: .effects) ?? []
         isAdjustment = try container.decodeIfPresent(Bool.self, forKey: .isAdjustment) ?? false
+        opacityMasks = try container.decodeIfPresent([Mask].self, forKey: .opacityMasks) ?? []
         if try container.decodeIfPresent(Motion.self, forKey: .motion) == nil,
            let legacy = try container.decodeIfPresent(Double.self, forKey: .opacity) {
             opacity = legacy
@@ -243,6 +246,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         if !maintainsPitch { try container.encode(maintainsPitch, forKey: .maintainsPitch) }
         if !effects.isEmpty { try container.encode(effects, forKey: .effects) }
         if isAdjustment { try container.encode(isAdjustment, forKey: .isAdjustment) }
+        if !opacityMasks.isEmpty { try container.encode(opacityMasks, forKey: .opacityMasks) }
     }
 }
 
