@@ -3,9 +3,9 @@ import SWCore
 
 /// Video effects and adjustment layers.
 extension WorkspaceController {
-    /// Applies `kind` to the selected video clips (a double-click in the Effects panel), or to
-    /// `clipIDs` (a drop on a clip).
-    func addEffect(_ kind: VideoEffectKind, to clipIDs: Set<UUID>? = nil) {
+    /// Applies `kind` to the selected clips of its type (a double-click in the Effects panel), or
+    /// to `clipIDs` (a drop on a clip).
+    func addEffect(_ kind: EffectKind, to clipIDs: Set<UUID>? = nil) {
         let ids = clipIDs ?? timeline.selection
         var added: [UUID: UUID] = [:]
         editSequence("Add \(kind.displayName)") { sequence, _ in added = sequence.addEffect(kind, to: ids) }
@@ -18,7 +18,7 @@ extension WorkspaceController {
     }
 
     func updateEffect(_ effectID: UUID, of clipID: UUID, _ actionName: String,
-                      _ change: @escaping (inout VideoEffect) -> Void) {
+                      _ change: @escaping (inout ClipEffect) -> Void) {
         editSequence(actionName) { sequence, _ in sequence.updateEffect(effectID, of: clipID, change) }
     }
 
@@ -31,7 +31,7 @@ extension WorkspaceController {
     /// Every parameter back to its default, without keyframes.
     func resetEffect(_ effectID: UUID, of clipID: UUID) {
         updateEffect(effectID, of: clipID, "Reset Effect") { effect in
-            effect.parameters = VideoEffect(kind: effect.kind).parameters
+            effect.parameters = ClipEffect(kind: effect.kind).parameters
         }
     }
 

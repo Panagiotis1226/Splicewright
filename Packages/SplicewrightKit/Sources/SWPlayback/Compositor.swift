@@ -27,7 +27,7 @@ struct InstructionLayer {
     /// For clips not at 100% forwards: how composition time maps to source time.
     var timing: ClipTiming?
     /// The clip's effect stack, evaluated each frame.
-    var effects: [VideoEffect] = []
+    var effects: [ClipEffect] = []
     /// An adjustment layer: no source; its effects apply to the layers below.
     var isAdjustment = false
 
@@ -35,7 +35,8 @@ struct InstructionLayer {
     /// Flip, Mirror) and what needs passes of its own (in render pixels).
     func effects(at time: CMTime, renderWidth: Double) -> (LayerGeometry, [PixelEffect]) {
         guard !effects.isEmpty else { return (.none, []) }
-        let resolved = effects.filter(\.isEnabled).map { $0.resolved(at: sourceTime(at: time)) }.filter { !$0.isNoOp }
+        let resolved = effects.filter { $0.isEnabled && !$0.kind.isAudio }
+            .map { $0.resolved(at: sourceTime(at: time)) }.filter { !$0.isNoOp }
         return EffectRendering.split(resolved, pixelScale: pixelScale)
     }
 

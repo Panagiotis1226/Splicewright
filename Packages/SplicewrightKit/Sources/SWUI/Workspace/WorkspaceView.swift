@@ -47,8 +47,16 @@ public struct WorkspaceView: View {
             }
         } second: {
             SplitPane(.horizontal, fraction: split(\.bottomSplit), minFirst: 300, minSecond: 480) {
-                PanelContainer(.project, title: "Project", workspace: workspace) {
-                    ProjectPanel(workspace: workspace)
+                PanelContainer(
+                    tabs: [PanelTab(id: .project, title: "Project"), PanelTab(id: .audioMixer, title: "Audio Track Mixer")],
+                    selectedTab: projectTab,
+                    workspace: workspace
+                ) {
+                    if projectTab.wrappedValue == .audioMixer {
+                        AudioMixerPanel(workspace: workspace)
+                    } else {
+                        ProjectPanel(workspace: workspace)
+                    }
                 }
             } second: {
                 HStack(spacing: 0) {
@@ -72,6 +80,7 @@ public struct WorkspaceView: View {
         .onChange(of: undoManager) { _, newValue in workspace.undoManager = newValue }
         .onChange(of: workspace.activePanel) { _, panel in
             if [.source, .effectControls, .effects, .captions, .markers].contains(panel) { sourceTab.wrappedValue = panel }
+            if [.project, .audioMixer].contains(panel) { projectTab.wrappedValue = panel }
         }
         .fileImporter(
             isPresented: $workspace.isImporterPresented,
@@ -116,6 +125,12 @@ public struct WorkspaceView: View {
     private var sourceTab: Binding<PanelID> {
         Binding(get: { PanelID(rawValue: layouts.current.sourceTab) ?? .source },
                 set: { panel in layouts.update { $0.sourceTab = panel.rawValue } })
+    }
+
+    /// The front tab of the Project panel group, stored in the current workspace.
+    private var projectTab: Binding<PanelID> {
+        Binding(get: { PanelID(rawValue: layouts.current.projectTab) ?? .project },
+                set: { panel in layouts.update { $0.projectTab = panel.rawValue } })
     }
 
     private var programTitle: String {

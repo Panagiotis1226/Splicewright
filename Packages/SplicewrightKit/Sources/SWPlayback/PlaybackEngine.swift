@@ -14,8 +14,10 @@ public final class PlaybackEngine: ObservableObject {
     @Published public private(set) var rate: Float = 0
     @Published public private(set) var droppedFrames = 0
     @Published public private(set) var isBuilding = false
-    /// Approximate left/right peak levels (0...1) from cached waveforms, for the meters.
+    /// The Mix's left/right peak levels (linear, 1 = 0 dBFS), measured as it plays.
     @Published public private(set) var meterLevels: [Float] = [0, 0]
+    /// Each audio track's left/right peak levels after its fader, by track ID.
+    @Published public private(set) var trackMeterLevels: [UUID: [Float]] = [:]
     @Published public var renderScale: Double = 1 {
         didSet { if renderScale != oldValue { scheduleRebuild(immediately: true) } }
     }
@@ -35,7 +37,8 @@ public final class PlaybackEngine: ObservableObject {
     private var buildTask: Task<Void, Never>?
     private var timeObserver: Any?
     private var rateObservation: AnyCancellable?
-    private var waveforms: [UUID: WaveformPeaks] = [:]
+    private var mixer: MixerLevels?
+    private var meters: AudioMeters?
     private var pendingSeekFrame: Int64?
     private var tick = 0
 
@@ -45,7 +48,10 @@ public final class PlaybackEngine: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] rate in
                 self?.rate = rate
-                if rate == 0 { self?.meterLevels = [0, 0] }
+                if rate == 0 {
+                    self?.meterLevels = [0, 0]
+                    self?.trackMeterLevels = [:]
+                }
             }
     }
 
@@ -62,6 +68,12 @@ public final class PlaybackEngine: ObservableObject {
         project = newProject
         sequence = newSequence
         guard sequenceChanged || mediaChanged else { return }
+        // Faders and pan are read live by the audio taps: no rebuild for those.
+        if !mediaChanged, let previous, let newSequence, previous.id == newSequence.id,
+           Self.withoutMixer(previous) == Self.withoutMixer(newSequence), let mixer {
+            mixer.update(from: newSequence)
+            return
+        }
         if previous?.id != newSequence?.id {
             currentFrame = 0
             pendingSeekFrame = 0
@@ -69,8 +81,18 @@ public final class PlaybackEngine: ObservableObject {
         frameRate = newSequence?.rate ?? .fps30
         // Known from the model right away, so seeks made before the rebuild lands clamp correctly.
         durationFrames = max(newSequence?.durationFrames ?? 0, newSequence == nil ? 0 : 1)
-        loadWaveforms()
         scheduleRebuild(immediately: previous?.id != newSequence?.id)
+    }
+
+    /// The sequence with its mixer settings at their defaults, to tell mixer-only changes apart.
+    private static func withoutMixer(_ sequence: EditSequence) -> EditSequence {
+        var copy = sequence
+        copy.mixVolumeDB = 0
+        for index in copy.audioTracks.indices {
+            copy.audioTracks[index].volumeDB = 0
+            copy.audioTracks[index].pan = 0
+        }
+        return copy
     }
 
     /// Rebuilds after proxies or caches change outside the project (e.g. a proxy finished).
@@ -107,6 +129,9 @@ public final class PlaybackEngine: ObservableObject {
         item.audioTimePitchAlgorithm = output.audioTimePitchAlgorithm
         item.videoComposition = output.videoComposition
         item.audioMix = output.audioMix
+        mixer = output.mixer
+        meters = output.meters
+        if let sequence { mixer?.update(from: sequence) }
         item.seekingWaitsForVideoCompositionRendering = true
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         player.replaceCurrentItem(with: item)
@@ -184,35 +209,10 @@ public final class PlaybackEngine: ObservableObject {
 
     // MARK: - Meters
 
-    private func loadWaveforms() {
-        guard let sequence else { return }
-        let ids = Set(sequence.audioTracks.flatMap { $0.clips.map(\.mediaID) }).subtracting(waveforms.keys)
-        for id in ids {
-            guard let item = project.item(id) else { continue }
-            let url = item.url
-            Task { [weak self] in
-                if let peaks = await WaveformProvider.shared.peaks(for: url) { self?.waveforms[id] = peaks }
-            }
-        }
-    }
-
     private func updateMeters() {
-        guard isPlaying, let sequence else { return }
-        let audible = RenderPlan.audibleTracks(in: sequence)
-        var levels: [Float] = [0, 0]
-        let frameSeconds = frameRate.frameDuration.seconds
-        for (index, track) in sequence.audioTracks.enumerated() where audible[index] {
-            guard let clip = track.clip(at: currentFrame), clip.isEnabled, let peaks = waveforms[clip.mediaID] else {
-                continue
-            }
-            let source = clip.sourceTime(atSequenceFrame: currentFrame, rate: frameRate).seconds
-            let gain = Float(RenderPlan.linearGain(dB: clip.gainDB))
-            for channel in 0..<2 {
-                let sourceChannel = min(channel, peaks.channels.count - 1)
-                let peak = peaks.channelPeak(sourceChannel, from: source, to: source + frameSeconds) * gain
-                levels[channel] = max(levels[channel], peak)
-            }
-        }
-        meterLevels = levels
+        guard isPlaying, let meters else { return }
+        let levels = meters.read()
+        meterLevels = levels.mix
+        trackMeterLevels = levels.tracks
     }
 }

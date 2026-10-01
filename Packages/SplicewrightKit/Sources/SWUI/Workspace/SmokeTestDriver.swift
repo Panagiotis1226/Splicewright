@@ -51,6 +51,8 @@ enum SmokeTestDriver {
         var chapterDetail = ""
         var effectApplied = false
         var adjustmentLayerAdded = false
+        var mixerApplied = false
+        var loudnessNormalized = ""
         var errors: [String] = []
     }
 
@@ -238,6 +240,12 @@ enum SmokeTestDriver {
             workspace.updateEffect(crop.id, of: layer, "Crop") { $0.parameters["left"] = AnimatableProperty([10]) }
         }
         report.adjustmentLayerAdded = workspace.activeSequence?.clip(layer)?.effects.map(\.kind) == [.crop]
+
+        // The tone's track (A2) down 3 dB in the Audio Track Mixer.
+        if let a2 = workspace.activeSequence?.audioTracks[1].id {
+            workspace.setTrackVolume(a2, dB: -3, live: false)
+            report.mixerApplied = workspace.activeSequence?.audioTracks[1].volumeDB == -3
+        }
     }
 
     /// Exports frames 10...39 as H.264 SDR and probes the result.
@@ -262,6 +270,7 @@ enum SmokeTestDriver {
         var settings = ExportSettings(preset: .h264SDR, range: .inToOut)
         settings.burnInCaptions = sequence.captionTracks.first?.id
         settings.sidecarCaptions = sequence.captionTracks.first?.id
+        settings.loudness = .streaming
         let session = ExportSession(sequence: settings.preparedSequence(sequence), project: workspace.project,
                                     settings: settings, outputURL: url)
         // Cancel rather than hang the smoke test if the export stalls.
@@ -279,6 +288,7 @@ enum SmokeTestDriver {
             report.errors.append("Export: \(state)")
             return
         }
+        report.loudnessNormalized = session.loudnessResult?.summary ?? ""
         if let text = settings.sidecarText(for: sequence),
            let captionURL = WorkspaceController.writeCaptionFile(text, settings: settings, videoURL: url),
            let written = try? String(contentsOf: captionURL, encoding: .utf8) {

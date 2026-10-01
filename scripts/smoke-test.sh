@@ -80,6 +80,8 @@ checks = {
     "marker added": r.get("markerAdded"),
     "chapter marks in the export": r.get("chaptersEmbedded"),
     "effect and adjustment layer applied": r.get("effectApplied") and r.get("adjustmentLayerAdded"),
+    "mixer fader set": r.get("mixerApplied"),
+    "export loudness normalized": "-14.0 LUFS" in r.get("loudnessNormalized", ""),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

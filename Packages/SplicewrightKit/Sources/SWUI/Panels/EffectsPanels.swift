@@ -30,7 +30,8 @@ struct EffectsPanel: View {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     section("Video Transitions", TransitionKind.video)
                     section("Audio Transitions", TransitionKind.audio)
-                    videoEffects
+                    effects("Video Effects", EffectKind.video, help: "Drag onto a clip or adjustment layer")
+                    effects("Audio Effects", EffectKind.audio, help: "Drag onto an audio clip")
                     graphics
                 }
                 .padding(.horizontal, 6)
@@ -45,16 +46,14 @@ struct EffectsPanel: View {
     }
 
     @ViewBuilder
-    private var videoEffects: some View {
-        let matching = VideoEffectKind.allCases.filter {
-            search.isEmpty || $0.displayName.localizedCaseInsensitiveContains(search)
-        }
+    private func effects(_ title: String, _ kinds: [EffectKind], help: String) -> some View {
+        let matching = kinds.filter { search.isEmpty || $0.displayName.localizedCaseInsensitiveContains(search) }
         if !matching.isEmpty {
-            header("Video Effects")
+            header(title)
             ForEach(matching) { kind in
                 EffectRow(symbol: kind.symbol, title: kind.displayName, isDefault: false,
                           payload: Self.effectPrefix + kind.rawValue, onDoubleClick: { workspace.addEffect(kind) })
-                    .help("Drag onto a clip or adjustment layer, or double-click to apply to the selected clips")
+                    .help(help + ", or double-click to apply to the selected clips")
             }
         }
     }

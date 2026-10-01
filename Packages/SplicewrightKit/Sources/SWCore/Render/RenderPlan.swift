@@ -99,7 +99,7 @@ public struct RenderLayer: Sendable, Hashable {
     /// Set for clips not at 100% forwards, to map sequence time to source time.
     public var timing: ClipTiming?
     /// The clip's effect stack (resolved per frame by the compositor).
-    public var effects: [VideoEffect] = []
+    public var effects: [ClipEffect] = []
     /// An adjustment layer: its effects apply to everything composited below it.
     public var isAdjustment = false
 

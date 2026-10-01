@@ -137,7 +137,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     /// Keeps the pitch of sped-up or slowed-down audio.
     public var maintainsPitch: Bool
     /// Video effects, applied in order (schema 7).
-    public var effects: [VideoEffect]
+    public var effects: [ClipEffect]
     /// An adjustment layer: no media; its effects apply to the tracks below (`mediaID` is
     /// `Clip.generatedMediaID`).
     public var isAdjustment: Bool
@@ -215,7 +215,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         speed = try container.decodeIfPresent(AnimatableProperty.self, forKey: .speed) ?? AnimatableProperty([100])
         isReversed = try container.decodeIfPresent(Bool.self, forKey: .isReversed) ?? false
         maintainsPitch = try container.decodeIfPresent(Bool.self, forKey: .maintainsPitch) ?? true
-        effects = try container.decodeIfPresent([VideoEffect].self, forKey: .effects) ?? []
+        effects = try container.decodeIfPresent([ClipEffect].self, forKey: .effects) ?? []
         isAdjustment = try container.decodeIfPresent(Bool.self, forKey: .isAdjustment) ?? false
         if try container.decodeIfPresent(Motion.self, forKey: .motion) == nil,
            let legacy = try container.decodeIfPresent(Double.self, forKey: .opacity) {
@@ -261,6 +261,10 @@ public struct Track: Sendable, Hashable, Codable, Identifiable {
     public var isTargeted: Bool
     /// Transitions at this track's cuts and clip edges. See `resolvedTransitions`.
     public var transitions: [Transition]
+    /// Audio Track Mixer fader, in dB (`Mixer.silentDB` or below is silent). Schema 8.
+    public var volumeDB: Double = 0
+    /// Audio Track Mixer pan, -100 (left) to 100 (right). Schema 8.
+    public var pan: Double = 0
 
     public init(id: UUID = UUID(), kind: TrackKind, clips: [Clip] = [], isLocked: Bool = false,
                 isSyncLocked: Bool = true, isOutputEnabled: Bool = true, isSolo: Bool = false,
@@ -277,7 +281,7 @@ public struct Track: Sendable, Hashable, Codable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, clips, isLocked, isSyncLocked, isOutputEnabled, isSolo, isTargeted, transitions
+        case id, kind, clips, isLocked, isSyncLocked, isOutputEnabled, isSolo, isTargeted, transitions, volumeDB, pan
     }
 
     /// Schema 2 files have no transitions.
@@ -292,6 +296,8 @@ public struct Track: Sendable, Hashable, Codable, Identifiable {
         isSolo = try container.decode(Bool.self, forKey: .isSolo)
         isTargeted = try container.decode(Bool.self, forKey: .isTargeted)
         transitions = try container.decodeIfPresent([Transition].self, forKey: .transitions) ?? []
+        volumeDB = try container.decodeIfPresent(Double.self, forKey: .volumeDB) ?? 0
+        pan = try container.decodeIfPresent(Double.self, forKey: .pan) ?? 0
     }
 
     public var end: Int64 { clips.last?.end ?? 0 }
@@ -336,6 +342,8 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
     public var captionTracks: [CaptionTrack]
     /// Sequence markers, sorted by frame. Schema 7.
     public var markers: [Marker]
+    /// The Audio Track Mixer's Mix fader, in dB. Schema 8.
+    public var mixVolumeDB: Double = 0
 
     public init(id: UUID = UUID(), name: String, settings: SequenceSettings,
                 videoTrackCount: Int = 3, audioTrackCount: Int = 3) {
@@ -350,7 +358,7 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, settings, videoTracks, audioTracks, marks, captionTracks, markers
+        case id, name, settings, videoTracks, audioTracks, marks, captionTracks, markers, mixVolumeDB
     }
 
     /// Sequences saved before schema 5 have no caption tracks.
@@ -364,6 +372,7 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
         marks = try container.decodeIfPresent(SequenceMarks.self, forKey: .marks) ?? SequenceMarks()
         captionTracks = try container.decodeIfPresent([CaptionTrack].self, forKey: .captionTracks) ?? []
         markers = try container.decodeIfPresent([Marker].self, forKey: .markers) ?? []
+        mixVolumeDB = try container.decodeIfPresent(Double.self, forKey: .mixVolumeDB) ?? 0
     }
 
     public var rate: FrameRate { settings.frameRate }

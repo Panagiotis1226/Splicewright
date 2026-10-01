@@ -40,6 +40,7 @@ private struct ExportSettingsForm: View {
     @State private var sidecar: UUID?
     @State private var sidecarFormat: SubRip.Format = .srt
     @State private var embedsChapters = true
+    @State private var loudness: LoudnessTarget?
 
     private var presets: [ExportPreset] { ExportPreset.builtIn(for: sequence) }
     private var preset: ExportPreset { presets.first { $0.id == presetID } ?? presets[0] }
@@ -50,6 +51,7 @@ private struct ExportSettingsForm: View {
         settings.sidecarCaptions = sidecar
         settings.sidecarFormat = sidecarFormat
         settings.embedsChapters = embedsChapters
+        settings.loudness = loudness
         return settings
     }
     private var destination: URL {
@@ -108,6 +110,12 @@ private struct ExportSettingsForm: View {
                         }
                     }
                 }
+                Picker("Normalize Loudness", selection: $loudness) {
+                    Text("Off").tag(LoudnessTarget?.none)
+                    ForEach(LoudnessTarget.allCases) { Text($0.displayName).tag(LoudnessTarget?.some($0)) }
+                }
+                .help("Measures the mix first, then sets its level so it plays at the target loudness, with peaks "
+                      + "kept under -1 dBTP")
                 if !sequence.markers.isEmpty {
                     let count = Chapters.chapters(from: sequence.markers, rate: sequence.rate).count
                     Toggle("Chapter marks from markers (\(count))", isOn: $embedsChapters)
@@ -249,7 +257,11 @@ private struct ExportProgressView: View {
             Text(session.outputURL.lastPathComponent).font(.caption).foregroundStyle(.secondary)
             switch session.state {
             case .idle, .preparing:
-                ProgressView("Preparing…").progressViewStyle(.linear)
+                if session.settings.loudness != nil && session.progress > 0 {
+                    ProgressView("Measuring loudness…", value: session.progress)
+                } else {
+                    ProgressView("Preparing…").progressViewStyle(.linear)
+                }
             case .exporting:
                 ProgressView(value: session.progress) {
                     Text("\(Int(session.progress * 100))%")
@@ -259,6 +271,9 @@ private struct ExportProgressView: View {
             case .finished(let url):
                 Label("Export finished.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                 Text(url.path).font(.caption).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                if let result = session.loudnessResult {
+                    Text(result.summary).font(.caption).foregroundStyle(.secondary)
+                }
             case .failed(let message):
                 Label("Export failed", systemImage: "xmark.octagon.fill").foregroundStyle(.red)
                 Text(message).font(.caption).textSelection(.enabled)

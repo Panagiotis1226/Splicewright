@@ -52,7 +52,7 @@ final class EffectRenderTests: XCTestCase {
     }
 
     /// Adds `kind` to the clip with the given parameter values.
-    private func apply(_ kind: VideoEffectKind, _ values: [String: Double], to clipID: UUID,
+    private func apply(_ kind: EffectKind, _ values: [String: Double], to clipID: UUID,
                        in sequence: inout EditSequence) throws {
         let added = sequence.addEffect(kind, to: [clipID])
         let effectID = try XCTUnwrap(added[clipID])

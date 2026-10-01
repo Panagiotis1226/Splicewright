@@ -8,7 +8,7 @@ import SWPlayback
 
 /// The panels of the Premiere-style workspace. The active panel receives transport shortcuts.
 public enum PanelID: String, Sendable {
-    case project, source, program, timeline, effects, effectControls, captions, markers
+    case project, source, program, timeline, effects, effectControls, captions, markers, audioMixer
 }
 
 public enum ProjectViewMode: String, Sendable {

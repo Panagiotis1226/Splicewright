@@ -31,6 +31,9 @@ public struct WorkspaceLayout: Sendable, Hashable, Codable, Identifiable {
     public var sourceTab: String = "source"
     /// The tabs of the Source panel group (PanelID raw values in SWUI).
     public static let sourceTabs: Set<String> = ["source", "effectControls", "effects", "captions", "markers"]
+    /// The tab showing in the Project panel group: "project" or "audioMixer".
+    public var projectTab: String = "project"
+    public static let projectTabs: Set<String> = ["project", "audioMixer"]
     /// "list" or "icons".
     public var projectViewMode: String = "list"
     /// Icon view tile width, in points.
@@ -70,6 +73,7 @@ public struct WorkspaceLayout: Sendable, Hashable, Codable, Identifiable {
         copy.timelineZoom = clamp(timelineZoom, Self.zoomRange)
         if ![1, 0.5, 0.25].contains(programResolution) { copy.programResolution = 1 }
         if !Self.sourceTabs.contains(sourceTab) { copy.sourceTab = "source" }
+        if !Self.projectTabs.contains(projectTab) { copy.projectTab = "project" }
         if !["list", "icons"].contains(projectViewMode) { copy.projectViewMode = "list" }
         if let frame = windowFrame, !(frame.width >= 400 && frame.height >= 300) { copy.windowFrame = nil }
         return copy
@@ -89,6 +93,7 @@ public struct WorkspaceLayout: Sendable, Hashable, Codable, Identifiable {
         bottomSplit = try value(.bottomSplit, defaults.bottomSplit)
         projectBinsWidth = try value(.projectBinsWidth, defaults.projectBinsWidth)
         sourceTab = try value(.sourceTab, defaults.sourceTab)
+        projectTab = try value(.projectTab, defaults.projectTab)
         projectViewMode = try value(.projectViewMode, defaults.projectViewMode)
         iconSize = try value(.iconSize, defaults.iconSize)
         timelineZoom = try value(.timelineZoom, defaults.timelineZoom)

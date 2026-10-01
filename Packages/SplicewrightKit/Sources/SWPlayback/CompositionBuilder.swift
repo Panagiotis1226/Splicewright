@@ -66,6 +66,10 @@ public struct CompositionOutput {
     /// How sped-up or slowed-down audio is resampled: pitch-corrected unless every retimed
     /// clip turned Maintain Audio Pitch off. Set it on the player item or reader output.
     public var audioTimePitchAlgorithm: AVAudioTimePitchAlgorithm = .spectral
+    /// The mixer settings the audio taps read; update it to move faders without a rebuild.
+    public var mixer: MixerLevels?
+    /// Levels the taps measure (playback meters).
+    public var meters: AudioMeters?
 }
 
 /// Compiles an `EditSequence` into an AVFoundation composition. Each timeline track becomes
@@ -141,7 +145,9 @@ public struct CompositionBuilder {
             }
         }
 
-        let mixParameters = addAudio(sequence, to: composition, loaded: loaded)
+        let mixer = MixerLevels(sequence)
+        let meters = AudioMeters()
+        let mixParameters = addAudio(sequence, to: composition, loaded: loaded, mixer: mixer, meters: meters)
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = mixParameters
 
@@ -149,14 +155,17 @@ public struct CompositionBuilder {
                                                     totalFrames: totalFrames, project: project)
         var output = CompositionOutput(composition: composition, videoComposition: videoComposition,
                                        audioMix: audioMix, durationFrames: totalFrames)
+        output.mixer = mixer
+        output.meters = meters
         let retimed = sequence.audioTracks.flatMap(\.clips).filter(\.isRetimed)
         if !retimed.isEmpty, retimed.allSatisfy({ !$0.maintainsPitch }) { output.audioTimePitchAlgorithm = .varispeed }
         return output
     }
 
-    /// Audio tracks (A/B packed where crossfades need it) and their volume automation.
-    private func addAudio(_ sequence: EditSequence, to composition: AVMutableComposition,
-                          loaded: [UUID: LoadedMedia]) -> [AVAudioMixInputParameters] {
+    /// Audio tracks (A/B packed where crossfades need it), their volume automation, and a tap
+    /// on each for clip audio effects, the track's fader and pan, and metering.
+    private func addAudio(_ sequence: EditSequence, to composition: AVMutableComposition, loaded: [UUID: LoadedMedia],
+                          mixer: MixerLevels, meters: AudioMeters) -> [AVAudioMixInputParameters] {
         let rate = sequence.rate
         let audible = RenderPlan.audibleTracks(in: sequence)
         var mixParameters: [AVAudioMixInputParameters] = []
@@ -165,6 +174,7 @@ public struct CompositionBuilder {
             let handles = Handles(track)
             let fades = RenderPlan.audioFades(for: track)
             var parameters: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
+            var placed: [CMPersistentTrackID: [Clip]] = [:]
             for clip in track.clips {
                 guard let source = loaded[clip.mediaID], let sourceTrack = source.audio else { continue }
                 let (head, tail) = handles[clip.id]
@@ -174,12 +184,18 @@ public struct CompositionBuilder {
                 let params = parameters[compositionTrack.trackID]
                     ?? AVMutableAudioMixInputParameters(track: compositionTrack)
                 parameters[compositionTrack.trackID] = params
+                placed[compositionTrack.trackID, default: []].append(clip)
                 let range = FrameRange(start: clip.start - head, end: clip.end + tail)
                 if audible[index] && clip.isEnabled {
                     AudioEnvelope.apply(clip, fades: fades[clip.id], range: range, to: params, rate: rate)
                 } else {
                     params.setVolume(0, at: RationalTime(frames: range.start, rate: rate).cmTime)
                 }
+            }
+            for (trackID, params) in parameters {
+                let context = TapContext(trackID: track.id, clips: placed[trackID] ?? [], rate: rate, levels: mixer,
+                                         meters: meters)
+                params.audioTapProcessor = TapContext.makeTap(context)
             }
             mixParameters += parameters.keys.sorted().compactMap { parameters[$0] }
         }

@@ -238,6 +238,38 @@ final class ExportTests: XCTestCase {
         }
     }
 
+    func testLoudnessNormalizationHitsTheTarget() async throws {
+        try await standardClips()
+        var settings = ExportSettings(preset: .h264SDR)
+        settings.loudness = .streaming
+        let url = FixtureWriter.directory.appending(path: "export-loudness.mp4")
+        let session = ExportSession(sequence: sequence, project: project, settings: settings, outputURL: url)
+        let state = try await Self.run(session, timeout: 90)
+        XCTAssertEqual(state, .finished(url))
+        let result = try XCTUnwrap(session.loudnessResult)
+        XCTAssertEqual(result.target, -14)
+
+        // Measure the file again: the encoded audio plays at -14 LUFS.
+        let asset = AVURLAsset(url: url)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        let track = try XCTUnwrap(audioTracks.first)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2,
+            AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true, AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ])
+        reader.add(output)
+        XCTAssertTrue(reader.startReading())
+        var meter = LoudnessMeter(sampleRate: 48_000, channels: 2)
+        while let sample = output.copyNextSampleBuffer() {
+            InterleavedAudio.withChannels(of: sample) { meter.process($0) }
+        }
+        let loudness = try XCTUnwrap(meter.integratedLoudness)
+        XCTAssertEqual(loudness, -14, accuracy: 0.7, "measured \(result.measured) LUFS before")
+        XCTAssertLessThan(meter.truePeakDB, -0.5)
+    }
+
     func testVideoOnlySequenceHasNoAudioTrack() async throws {
         let video = try await importClip(FixtureWriter.h264SDR30(frames: 30, width: Self.width, height: Self.height,
                                                                  fill: .grey(0.5, tenBit: false)), "export-grey.mov")

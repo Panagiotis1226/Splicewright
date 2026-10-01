@@ -53,6 +53,7 @@ struct MotionControls: View {
                     } else {
                         sectionTitle("Volume")
                         row(.volume)
+                        effectSections
                     }
                 }
                 .padding(.bottom, 8)
@@ -191,8 +192,9 @@ struct MotionControls: View {
                 }
             }
         }
-        if clip.effects.isEmpty && (isVideo || clip.isAdjustment) {
-            Text("Drag a video effect here from the Effects panel, or double-click one to add it.")
+        if clip.effects.isEmpty {
+            Text("Drag \(isVideo ? "a video" : "an audio") effect onto the clip from the Effects panel, or double-click one "
+                 + "to add it.")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 8)
@@ -200,7 +202,7 @@ struct MotionControls: View {
         }
     }
 
-    private func effectHeader(_ effect: VideoEffect, index: Int) -> some View {
+    private func effectHeader(_ effect: ClipEffect, index: Int) -> some View {
         HStack(spacing: 6) {
             Button { workspace.updateEffect(effect.id, of: clip.id, effect.isEnabled ? "Disable Effect" : "Enable Effect") {
                 $0.isEnabled.toggle()

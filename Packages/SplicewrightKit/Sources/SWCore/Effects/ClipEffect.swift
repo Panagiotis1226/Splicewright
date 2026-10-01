@@ -1,10 +1,21 @@
 import Foundation
 
-/// The video effects in the Effects panel. Parameters are keyframeable, like Motion.
-public enum VideoEffectKind: String, Sendable, Hashable, Codable, CaseIterable, Identifiable {
+/// The video and audio effects in the Effects panel. Parameters are keyframeable, like Motion.
+public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Identifiable {
     case crop, gaussianBlur, dropShadow, sharpen, horizontalFlip, verticalFlip, mirror
+    case parametricEQ, compressor, hardLimiter
 
     public var id: String { rawValue }
+
+    public var isAudio: Bool {
+        switch self {
+        case .parametricEQ, .compressor, .hardLimiter: return true
+        default: return false
+        }
+    }
+
+    public static var video: [EffectKind] { allCases.filter { !$0.isAudio } }
+    public static var audio: [EffectKind] { allCases.filter(\.isAudio) }
 
     public var displayName: String {
         switch self {
@@ -15,6 +26,9 @@ public enum VideoEffectKind: String, Sendable, Hashable, Codable, CaseIterable, 
         case .horizontalFlip: return "Horizontal Flip"
         case .verticalFlip: return "Vertical Flip"
         case .mirror: return "Mirror"
+        case .parametricEQ: return "Parametric EQ"
+        case .compressor: return "Compressor"
+        case .hardLimiter: return "Hard Limiter"
         }
     }
 
@@ -40,6 +54,23 @@ public enum VideoEffectKind: String, Sendable, Hashable, Codable, CaseIterable, 
         case .mirror:
             return [.init("center", "Reflection Center", unit: "%", range: 0...100, step: 0.2, default: 50),
                     .init("angle", "Reflection Angle", unit: "°", range: -360...360, step: 0.5)]
+        case .parametricEQ:
+            return [.init("lowFrequency", "Low Frequency", unit: "Hz", range: 20...1000, step: 1, default: 100),
+                    .init("lowGain", "Low Gain", unit: "dB", range: -18...18, step: 0.1),
+                    .init("midFrequency", "Mid Frequency", unit: "Hz", range: 100...10000, step: 5, default: 1000),
+                    .init("midGain", "Mid Gain", unit: "dB", range: -18...18, step: 0.1),
+                    .init("midQ", "Mid Q", unit: "", range: 0.1...10, step: 0.01, default: 1),
+                    .init("highFrequency", "High Frequency", unit: "Hz", range: 1000...20000, step: 10, default: 8000),
+                    .init("highGain", "High Gain", unit: "dB", range: -18...18, step: 0.1)]
+        case .compressor:
+            return [.init("threshold", "Threshold", unit: "dB", range: -60...0, step: 0.1, default: -20),
+                    .init("ratio", "Ratio", unit: ":1", range: 1...20, step: 0.05, default: 4),
+                    .init("attack", "Attack", unit: "ms", range: 0.1...200, step: 0.1, default: 10),
+                    .init("release", "Release", unit: "ms", range: 5...2000, step: 1, default: 100),
+                    .init("makeup", "Makeup Gain", unit: "dB", range: 0...24, step: 0.1)]
+        case .hardLimiter:
+            return [.init("ceiling", "Maximum Amplitude", unit: "dB", range: -24...0, step: 0.1, default: -1),
+                    .init("inputBoost", "Input Boost", unit: "dB", range: 0...24, step: 0.1)]
         }
     }
 
@@ -52,6 +83,9 @@ public enum VideoEffectKind: String, Sendable, Hashable, Codable, CaseIterable, 
         case .horizontalFlip: return "arrow.left.and.right.righttriangle.left.righttriangle.right"
         case .verticalFlip: return "arrow.up.and.down.righttriangle.up.righttriangle.down"
         case .mirror: return "rectangle.lefthalf.inset.filled"
+        case .parametricEQ: return "slider.vertical.3"
+        case .compressor: return "arrow.down.right.and.arrow.up.left"
+        case .hardLimiter: return "chart.line.flattrend.xyaxis"
         }
     }
 }
@@ -77,14 +111,14 @@ public struct EffectParameter: Sendable, Hashable {
 }
 
 /// An effect applied to a clip (or an adjustment layer), in the clip's effect stack.
-public struct VideoEffect: Sendable, Hashable, Codable, Identifiable {
+public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
     public var id: UUID
-    public var kind: VideoEffectKind
+    public var kind: EffectKind
     public var isEnabled: Bool
     /// Values by parameter key, in source time like Motion.
     public var parameters: [String: AnimatableProperty]
 
-    public init(id: UUID = UUID(), kind: VideoEffectKind, isEnabled: Bool = true) {
+    public init(id: UUID = UUID(), kind: EffectKind, isEnabled: Bool = true) {
         self.id = id
         self.kind = kind
         self.isEnabled = isEnabled
@@ -109,7 +143,7 @@ public struct VideoEffect: Sendable, Hashable, Codable, Identifiable {
     }
 
     /// The same effect with its keyframes shifted (for Paste Attributes).
-    func retimed(by offset: RationalTime) -> VideoEffect {
+    func retimed(by offset: RationalTime) -> ClipEffect {
         var copy = self
         copy.id = UUID()
         copy.parameters = parameters.mapValues { $0.retimed(by: offset) }
@@ -119,10 +153,10 @@ public struct VideoEffect: Sendable, Hashable, Codable, Identifiable {
 
 /// An effect's values at one frame.
 public struct ResolvedEffect: Sendable, Hashable {
-    public var kind: VideoEffectKind
+    public var kind: EffectKind
     public var values: [String: Double]
 
-    public init(kind: VideoEffectKind, values: [String: Double]) {
+    public init(kind: EffectKind, values: [String: Double]) {
         self.kind = kind
         self.values = values
     }
@@ -136,34 +170,42 @@ public struct ResolvedEffect: Sendable, Hashable {
         case .gaussianBlur: return self["blurriness"] <= 0
         case .dropShadow: return self["opacity"] <= 0
         case .sharpen: return self["amount"] <= 0
-        case .horizontalFlip, .verticalFlip, .mirror: return false
+        case .horizontalFlip, .verticalFlip, .mirror, .hardLimiter: return false
+        case .parametricEQ: return ["lowGain", "midGain", "highGain"].allSatisfy { self[$0] == 0 }
+        case .compressor: return self["ratio"] <= 1 && self["makeup"] <= 0
         }
     }
 }
 
 public extension Clip {
-    /// Effects drawn at a source time: enabled ones that do something, in stack order.
+    /// Video effects drawn at a source time: enabled ones that do something, in stack order.
     func resolvedEffects(at time: RationalTime) -> [ResolvedEffect] {
-        effects.filter(\.isEnabled).map { $0.resolved(at: time) }.filter { !$0.isNoOp }
+        effects.filter { $0.isEnabled && !$0.kind.isAudio }.map { $0.resolved(at: time) }.filter { !$0.isNoOp }
+    }
+
+    /// Audio effects heard at a source time, in stack order.
+    func resolvedAudioEffects(at time: RationalTime) -> [ResolvedEffect] {
+        effects.filter { $0.isEnabled && $0.kind.isAudio }.map { $0.resolved(at: time) }.filter { !$0.isNoOp }
     }
 }
 
 public extension EditSequence {
-    /// Adds an effect to the end of each video clip's stack (audio clips are skipped). Returns
-    /// the new effects' IDs by clip.
+    /// Adds an effect to the end of each clip's stack: video effects to video clips, audio
+    /// effects to audio clips (others are skipped). Returns the new effects' IDs by clip.
     @discardableResult
-    mutating func addEffect(_ kind: VideoEffectKind, to ids: Set<UUID>) -> [UUID: UUID] {
+    mutating func addEffect(_ kind: EffectKind, to ids: Set<UUID>) -> [UUID: UUID] {
         var added: [UUID: UUID] = [:]
-        let videoIDs = ids.intersection(videoTracks.flatMap { $0.clips.map(\.id) })
-        updateClipProperties(videoIDs) { clip in
-            let effect = VideoEffect(kind: kind)
+        let tracks = kind.isAudio ? audioTracks : videoTracks
+        let matching = ids.intersection(tracks.flatMap { $0.clips.map(\.id) })
+        updateClipProperties(matching) { clip in
+            let effect = ClipEffect(kind: kind)
             clip.effects.append(effect)
             added[clip.id] = effect.id
         }
         return added
     }
 
-    mutating func updateEffect(_ effectID: UUID, of clipID: UUID, _ change: (inout VideoEffect) -> Void) {
+    mutating func updateEffect(_ effectID: UUID, of clipID: UUID, _ change: (inout ClipEffect) -> Void) {
         updateClipProperties([clipID]) { clip in
             guard let index = clip.effects.firstIndex(where: { $0.id == effectID }) else { return }
             change(&clip.effects[index])

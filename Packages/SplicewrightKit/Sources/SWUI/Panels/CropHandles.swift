@@ -6,7 +6,7 @@ import SWCore
 struct CropHandles: View {
     @ObservedObject var workspace: WorkspaceController
     let clip: Clip
-    let crop: VideoEffect
+    let crop: ClipEffect
     let pictureRect: CGRect
 
     /// Each side: its parameter, and where its handle sits in picture coordinates.

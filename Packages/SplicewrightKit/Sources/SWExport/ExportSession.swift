@@ -29,11 +29,15 @@ public final class ExportSession: ObservableObject, Identifiable {
     /// 0...1
     @Published public private(set) var progress: Double = 0
     @Published public private(set) var startedAt: Date?
+    /// Set when the export normalized its loudness.
+    @Published public private(set) var loudnessResult: LoudnessResult?
 
     private let sequence: EditSequence
     private let project: Project
     private var worker: ExportWorker?
     private var cancelRequested = false
+    /// The part of the progress bar the encode covers (the rest is the loudness measurement).
+    private var encodeShare = 1.0
 
     /// `sequence` and `project` are copied, so editing can continue during the export.
     public init(sequence: EditSequence, project: Project, settings: ExportSettings, outputURL: URL) {
@@ -74,8 +78,11 @@ public final class ExportSession: ObservableObject, Identifiable {
             self.worker = worker
             if cancelRequested { worker.cancel() }
             state = .exporting
+            let share = encodeShare
             try await worker.run { [weak self] fraction in
-                Task { @MainActor in self?.progress = max(self?.progress ?? 0, min(fraction, 1)) }
+                Task { @MainActor in
+                    self?.progress = max(self?.progress ?? 0, 1 - share + share * min(fraction, 1))
+                }
             }
             progress = 1
             state = .finished(outputURL)
@@ -107,10 +114,34 @@ public final class ExportSession: ObservableObject, Identifiable {
         let rate = sequence.rate
         let range = CMTimeRange(start: RationalTime(frames: frames.start, rate: rate).cmTime,
                                 end: RationalTime(frames: frames.end, rate: rate).cmTime)
+        let gain = try await measureLoudness(output, range: range)
         try? FileManager.default.removeItem(at: outputURL)
-        return try await ExportWorker(output: output, settings: settings, chapters: settings.chapters(for: sequence),
-                                      range: range, width: width, height: height,
-                                      fps: outputRate.framesPerSecond, url: outputURL)
+        let worker = try await ExportWorker(output: output, settings: settings, chapters: settings.chapters(for: sequence),
+                                            range: range, width: width, height: height,
+                                            fps: outputRate.framesPerSecond, url: outputURL)
+        worker.loudnessGain = gain
+        return worker
+    }
+
+    /// Pass 1 of loudness normalization (the first 15% of the progress bar). Nil when it's off
+    /// or the range is silent.
+    private func measureLoudness(_ output: CompositionOutput, range: CMTimeRange) async throws -> LoudnessGain? {
+        guard let target = settings.loudness else { return nil }
+        encodeShare = 0.85
+        let meter = try await LoudnessScan.measure(output, range: range) { [weak self] fraction in
+            Task { @MainActor in self?.progress = max(self?.progress ?? 0, 0.15 * min(fraction, 1)) }
+        }
+        if cancelRequested { throw CancellationError() }
+        guard let meter, let measured = meter.integratedLoudness,
+              let normalization = meter.normalization(target: target.lufs, ceiling: LoudnessTarget.truePeakCeiling) else {
+            AppLog.shared.info("Export: the audio is silent; loudness left as is", category: "export")
+            return nil
+        }
+        let result = LoudnessResult(measured: measured, target: target.lufs, gainDB: normalization.gainDB,
+                                    limited: normalization.needsLimiting)
+        loudnessResult = result
+        AppLog.shared.info("Export: \(result.summary)", category: "export")
+        return LoudnessGain(gainDB: normalization.gainDB, limit: normalization.needsLimiting)
     }
 
     static func describe(_ error: Error) -> String {
@@ -140,6 +171,8 @@ final class ExportWorker: @unchecked Sendable {
     /// Chapter marks: a text track the video track points to as its chapter list.
     private let chapterTrack: ChapterTrack?
     private let range: CMTimeRange
+    /// Loudness normalization's gain, applied to the audio as it's written.
+    var loudnessGain: LoudnessGain?
     private let lock = NSLock()
     private var cancelled = false
 
@@ -171,7 +204,8 @@ final class ExportWorker: @unchecked Sendable {
             let mixOutput = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: ExportAudio.readerSettings)
             mixOutput.audioMix = output.audioMix
             mixOutput.audioTimePitchAlgorithm = output.audioTimePitchAlgorithm
-            mixOutput.alwaysCopiesSampleData = false
+            // Normalizing changes the samples in place, so they must be our own copies.
+            mixOutput.alwaysCopiesSampleData = settings.loudness != nil
             guard reader.canAdd(mixOutput) else { throw ExportError.message("Couldn't read the sequence's audio.") }
             reader.add(mixOutput)
             audioOutput = mixOutput
@@ -291,7 +325,11 @@ final class ExportWorker: @unchecked Sendable {
                 }
             }
             if let audioOutput, let audioInput {
-                group.addTask { [self] in await pump(audioOutput, into: audioInput, queue: "audio", onSample: nil) }
+                let gain = loudnessGain
+                group.addTask { [self] in
+                    await pump(audioOutput, into: audioInput, queue: "audio", process: gain.map { gain in gain.apply },
+                               onSample: nil)
+                }
             }
             if let chapterTrack {
                 group.addTask { [self] in await pumpChapters(chapterTrack) }
@@ -339,7 +377,7 @@ final class ExportWorker: @unchecked Sendable {
 
     /// Feeds one reader output into one writer input until either runs out or fails.
     private func pump(_ output: AVAssetReaderOutput, into input: AVAssetWriterInput, queue label: String,
-                      onSample: ((CMTime) -> Void)?) async {
+                      process: ((CMSampleBuffer) -> Void)? = nil, onSample: ((CMTime) -> Void)?) async {
         let queue = DispatchQueue(label: "com.splicewright.export.\(label)")
         let completion = PumpCompletion()
         lock.lock()
@@ -351,8 +389,13 @@ final class ExportWorker: @unchecked Sendable {
             completion.wait(continuation)
             input.requestMediaDataWhenReady(on: queue) { [self] in
                 while !completion.isFinished && input.isReadyForMoreMediaData {
-                    guard !isCancelled, reader.status == .reading, let sample = output.copyNextSampleBuffer(),
-                          input.append(sample) else {
+                    guard !isCancelled, reader.status == .reading, let sample = output.copyNextSampleBuffer() else {
+                        input.markAsFinished()
+                        completion.finish()
+                        return
+                    }
+                    process?(sample)
+                    guard input.append(sample) else {
                         input.markAsFinished()
                         completion.finish()
                         return

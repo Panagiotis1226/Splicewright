@@ -220,6 +220,8 @@ public struct ExportSettings: Sendable, Hashable, Codable {
     public var sidecarFormat: SubRip.Format?
     /// Writes markers as chapter marks in the file (nil means yes when there are markers).
     public var embedsChapters: Bool?
+    /// Normalizes the audio to this loudness (nil leaves it as mixed).
+    public var loudness: LoudnessTarget?
 
     public static let customMegabitRange: ClosedRange<Double> = 1...800
 

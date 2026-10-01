@@ -33,6 +33,8 @@ enum EffectRendering {
                 let distance = effect["distance"] * pixelScale
                 passes.append(.shadow(opacity: effect["opacity"] / 100, offsetX: sin(angle) * distance,
                                       offsetY: -cos(angle) * distance, softness: effect["softness"] * pixelScale))
+            case .parametricEQ, .compressor, .hardLimiter:
+                break
             }
         }
         return (geometry, passes)
