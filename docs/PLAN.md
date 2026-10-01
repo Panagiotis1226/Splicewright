@@ -166,6 +166,13 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Chapters.** YouTube text uses the markers flagged as chapters (or all of them when none are): the first moves to 0:00, ones closer than 10 s are dropped, and fewer than three gets a warning. Markers also export as CSV.
   - **Chapter marks in exports.** These are written as a disabled 3GPP text (tx3g) track that the video track references as its chapter list, the way iTunes and QuickTime store chapters. A timed-metadata track was tried first, but AVFoundation didn't read it back as chapters in .mp4.
 
+**M12 — Video effects and adjustment layers**
+- *As built:*
+  - **Model.** Each clip has an ordered effect stack (`Clip.effects`, schema 7). An effect has a kind, an on/off switch and keyframeable parameters, stored in source time like Motion and clamped to each parameter's range. Effects follow razor cuts, copy/paste and Paste Attributes. Effect Controls and keyframe editing address clip properties and effect parameters the same way (`PropertyRef`), so every row has the stopwatch, keyframes, scrubbing and reset.
+  - **Adjustment layers** are generated clips like titles: no media, trimmable to any length. Without a target track, a new one goes on the first free track above every clip in its range (V2 at the lowest). Without effects it draws nothing.
+  - **Rendering.** Crop (with feathered edges), Flip and Mirror are coordinate changes inside the layer shaders, so they cost nothing extra. Gaussian Blur (separable, sized to the preview resolution), Sharpen (unsharp mask) and Drop Shadow (blurred alpha, offset by Premiere's direction: 0° up, clockwise) render the layer to a scratch texture and run as passes before it's composited. An adjustment layer copies the frame drawn so far, runs its effects on the copy, and mixes it back in by its opacity. The result replaces what's below it rather than drawing over it, so cropping on an adjustment layer leaves black, as in Premiere. Transition sides run their own effects before they're mixed.
+  - **Not done yet:** Motion on adjustment layers is ignored, as Premiere does by default. Drop Shadow is always black, and Blur has no Repeat Edge Pixels option.
+
 Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: audio mixer, Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), bezier keyframe curves, nested sequences, multicam, dockable workspaces, OTIO/XML interchange, and plugins.
 
 ## Risks and mitigations

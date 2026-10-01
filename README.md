@@ -10,6 +10,7 @@ Status: **M11**. You can:
 - play the sequence in the Program monitor through a Metal compositor that handles SDR and HDR (HLG/PQ), with an optional clipping overlay
 - override how a clip's color is read (right-click ▸ Interpret Footage)
 - add transitions (cross dissolve, dip to black/white, film dissolve, wipes, audio crossfades) and titles
+- apply video effects (Crop, Gaussian Blur, Drop Shadow, Sharpen, Flip, Mirror) with keyframes, and adjustment layers that apply effects to everything below them
 - animate Position, Scale, Rotation, Anchor Point, Opacity and Volume with keyframes in Effect Controls, or move, scale and rotate clips directly in the Program monitor
 - make HEVC, H.264 or ProRes proxies for smooth editing of 4K/HDR footage (export always uses the originals)
 - copy and paste clips and Paste Attributes between them
@@ -63,7 +64,9 @@ When the app opens, choose **New Document**, then:
     - **Time Remapping:** in Effect Controls, click the **Speed** stopwatch and add keyframes. Speed ramps between them (Ease for smooth ramps), 0% holds a frame, and the clip keeps its length.
     - Reversed and time-remapped clips play their video only; their audio is silent in this version.
 14. **Markers:** press **M** to add a marker at the playhead (M again on it opens it), **⇧M** / **⌘⇧M** to jump to the next or previous one. Drag a marker in the ruler to move it, double-click it to name it, add notes, a color, a duration, or flag it as a chapter. The **Markers** panel lists them all (filter by color, click to jump). In the Source monitor, M adds a clip marker that shows on every clip using that part of the file. **File ▸ Export ▸ Markers as YouTube Chapters…** copies `0:00 Intro` lines for the video description (YouTube needs 3+ chapters, 10 s apart); exports also embed chapter marks that QuickTime and VLC show.
-15. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
+15. **Effects:** drag a video effect from the **Effects** panel onto a clip (onto any selected clip to apply it to all of them), or select clips and double-click the effect. Each effect shows in **Effect Controls** under Motion and Opacity, with a stopwatch on every value: **fx** turns it off, the arrows change the order they apply in, and ↶ resets it. Clips with effects show `fx` on the timeline. With Crop applied, drag the handles on the crop's edges in the Program monitor.
+    - **Adjustment layers:** choose **Graphics ▸ New Adjustment Layer** or drag **Adjustment Layer** from the Effects panel onto a video track. Its effects apply to every track below it for as long as it lasts; tracks above it aren't affected. Lower its Opacity to blend the result with the original. Trim and move it like any clip.
+16. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
 
 ### Make targets
 
