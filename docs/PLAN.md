@@ -160,6 +160,12 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Edits.** Trim, ripple, roll, slide, slip, razor and clear all go through it (`moveStart`, `framesBefore`, `maximumDuration`), so retimed clips trim by the source they actually have. Speed/Duration keeps each clip's source and changes its length, with an optional ripple. Rate Stretch keeps the source and changes speed with length.
   - **Playback and export.** Constant forward speed is one scaled AVFoundation edit, and audio is resampled with the item's time-pitch algorithm (spectral, or varispeed when every retimed clip turns Maintain Pitch off). Reversed and remapped video are built one frame per edit, showing the source frame at each mapped time. AVFoundation can't play audio backwards or along a curve, so that audio is silent; a custom audio renderer would be needed. Premiere also leaves audio out of Time Remapping.
 
+**M11 — Markers**
+- *As built:*
+  - **Model.** Sequence markers (`EditSequence.markers`, schema 7) have a frame, an optional duration, a name, comments, one of Premiere's eight colors, and a chapter flag. They stay where they are on ripple edits, as Premiere's default does. Clip markers live on the media item in source time, so they show on every clip that uses that part of the file and follow speed changes.
+  - **Chapters.** YouTube text uses the markers flagged as chapters (or all of them when none are): the first moves to 0:00, ones closer than 10 s are dropped, and fewer than three gets a warning. Markers also export as CSV.
+  - **Chapter marks in exports.** These are written as a disabled 3GPP text (tx3g) track that the video track references as its chapter list, the way iTunes and QuickTime store chapters. A timed-metadata track was tried first, but AVFoundation didn't read it back as chapters in .mp4.
+
 Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: audio mixer, Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), bezier keyframe curves, nested sequences, multicam, dockable workspaces, OTIO/XML interchange, and plugins.
 
 ## Risks and mitigations
