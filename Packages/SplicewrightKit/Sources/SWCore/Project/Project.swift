@@ -6,8 +6,8 @@ import Foundation
 /// and every mutation below is a pure function that can be unit-tested.
 public struct Project: Sendable, Hashable, Codable {
     /// 2: adds `sequences`. 3: adds track transitions and title clips. 4: keyframeable clip
-    /// motion, opacity and volume. Older files load unchanged.
-    public static let currentSchemaVersion = 4
+    /// motion, opacity and volume. 5: caption tracks. Older files load unchanged.
+    public static let currentSchemaVersion = 5
 
     public var schemaVersion: Int
     public var bins: [Bin]

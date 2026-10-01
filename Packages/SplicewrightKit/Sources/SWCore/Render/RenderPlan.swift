@@ -172,6 +172,12 @@ public enum RenderPlan {
                 cuts.insert(min(transition.range.end, total))
             }
         }
+        for track in sequence.captionTracks where track.isOutputEnabled {
+            for caption in track.captions {
+                cuts.insert(min(caption.start, total))
+                cuts.insert(min(caption.end, total))
+            }
+        }
         let boundaries = cuts.sorted()
         var segments: [RenderSegment] = []
         for (start, end) in zip(boundaries, boundaries.dropFirst()) where end > start {
@@ -195,6 +201,13 @@ public enum RenderPlan {
                 } else if let single = layer(track.clip(at: start)) {
                     layers.append(single)
                 }
+            }
+            // Captions draw over all video, in track order.
+            for (index, track) in sequence.captionTracks.enumerated() where track.isOutputEnabled {
+                guard let caption = track.caption(at: start), !caption.text.isEmpty else { continue }
+                layers.append(RenderLayer(trackIndex: sequence.videoTracks.count + index, clipID: caption.id,
+                                          mediaID: Clip.generatedMediaID, opacity: 1,
+                                          title: track.style.titleSpec(text: caption.text), clipStart: caption.start))
             }
             segments.append(RenderSegment(range: FrameRange(start: start, end: end), layers: layers))
         }

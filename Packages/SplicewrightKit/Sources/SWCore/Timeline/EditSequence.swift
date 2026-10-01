@@ -299,6 +299,8 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
     /// Index 0 is A1.
     public var audioTracks: [Track]
     public var marks: SequenceMarks
+    /// Subtitle tracks, drawn above all video. Schema 5.
+    public var captionTracks: [CaptionTrack]
 
     public init(id: UUID = UUID(), name: String, settings: SequenceSettings,
                 videoTrackCount: Int = 3, audioTrackCount: Int = 3) {
@@ -308,6 +310,23 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
         videoTracks = (0..<max(1, videoTrackCount)).map { Track(kind: .video, isTargeted: $0 == 0) }
         audioTracks = (0..<max(1, audioTrackCount)).map { Track(kind: .audio, isTargeted: $0 == 0) }
         marks = SequenceMarks()
+        captionTracks = []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, settings, videoTracks, audioTracks, marks, captionTracks
+    }
+
+    /// Sequences saved before schema 5 have no caption tracks.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        settings = try container.decode(SequenceSettings.self, forKey: .settings)
+        videoTracks = try container.decode([Track].self, forKey: .videoTracks)
+        audioTracks = try container.decode([Track].self, forKey: .audioTracks)
+        marks = try container.decodeIfPresent(SequenceMarks.self, forKey: .marks) ?? SequenceMarks()
+        captionTracks = try container.decodeIfPresent([CaptionTrack].self, forKey: .captionTracks) ?? []
     }
 
     public var rate: FrameRate { settings.frameRate }

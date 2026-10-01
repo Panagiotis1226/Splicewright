@@ -212,6 +212,12 @@ public struct ExportSettings: Sendable, Hashable, Codable {
     public var frameRate: FrameRate?
     /// A target bitrate in megabits per second that replaces `quality` (H.264/HEVC only).
     public var customMegabits: Double?
+    /// The caption track drawn into the picture, or nil for none.
+    public var burnInCaptions: UUID?
+    /// The caption track written next to the video as a file, or nil for none.
+    public var sidecarCaptions: UUID?
+    /// The sidecar file's format (nil is SubRip).
+    public var sidecarFormat: SubRip.Format?
 
     public static let customMegabitRange: ClosedRange<Double> = 1...800
 
@@ -223,6 +229,28 @@ public struct ExportSettings: Sendable, Hashable, Codable {
         self.quality = quality
         self.frameRate = frameRate
         self.customMegabits = customMegabits
+    }
+
+    /// The sequence as it's rendered: only the burned-in caption track is drawn.
+    public func preparedSequence(_ sequence: EditSequence) -> EditSequence {
+        var prepared = sequence
+        for index in prepared.captionTracks.indices {
+            prepared.captionTracks[index].isOutputEnabled = prepared.captionTracks[index].id == burnInCaptions
+        }
+        return prepared
+    }
+
+    /// The sidecar caption file's contents, timed to the exported range, or nil when none is wanted.
+    public func sidecarText(for sequence: EditSequence) -> String? {
+        guard let id = sidecarCaptions, let track = sequence.captionTrack(id) else { return nil }
+        // Times are written in seconds, so the export frame rate doesn't matter.
+        return SubRip.write(track.captions, rate: sequence.rate, range: frameRange(for: sequence),
+                            format: sidecarFormat ?? .srt)
+    }
+
+    /// Where the sidecar goes: beside the video, with the same name.
+    public func sidecarURL(for videoURL: URL) -> URL {
+        videoURL.deletingPathExtension().appendingPathExtension((sidecarFormat ?? .srt).fileExtension)
     }
 
     public func outputRate(for sequence: EditSequence) -> FrameRate {

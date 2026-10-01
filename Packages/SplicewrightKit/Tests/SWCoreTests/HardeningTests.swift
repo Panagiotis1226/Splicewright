@@ -135,7 +135,7 @@ struct RelinkTests {
         project.addMedia([makeItem("A")])
         var json = try #require(String(bytes: try ProjectFileCoder.encode(project), encoding: .utf8))
         #expect(!json.contains("fileModifiedAt"), "nil isn't written")
-        json = json.replacingOccurrences(of: "\"schemaVersion\" : 4", with: "\"schemaVersion\" : 3")
+        json = json.replacingOccurrences(of: "\"schemaVersion\" : 5", with: "\"schemaVersion\" : 3")
         let decoded = try ProjectFileCoder.decode(Data(json.utf8))
         #expect(decoded.media.first?.fileModifiedAt == nil)
     }
