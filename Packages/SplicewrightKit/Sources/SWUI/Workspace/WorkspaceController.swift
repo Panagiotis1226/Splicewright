@@ -81,6 +81,9 @@ public final class WorkspaceController: ObservableObject {
     @Published public var captionJob: CaptionJob?
     /// Non-nil while the Speed/Duration sheet is shown, for these clips.
     @Published public var speedSheetClipIDs: Set<UUID>?
+    /// The mask the Program monitor shows for editing, and where the Pen is drawing a new one.
+    @Published public var selectedMask: MaskSelection?
+    @Published public var maskPen: MaskTarget?
     /// The marker highlighted in the ruler and Markers panel, and the one open in the Marker sheet.
     @Published public var selectedMarkerID: UUID?
     @Published public var editingMarkerID: UUID?

@@ -164,4 +164,18 @@ struct PictureMapping {
         let scale = pictureRect.width / CGFloat(size.width)
         return CGPoint(x: pictureRect.minX + CGFloat(mapped.x) * scale, y: pictureRect.minY + CGFloat(mapped.y) * scale)
     }
+
+    /// The picture point under a monitor point (the inverse of `point`); nil if the clip is squashed flat.
+    func uv(at point: CGPoint) -> (u: Double, v: Double)? {
+        let scale = Double(pictureRect.width) / size.width
+        guard scale > 0, half.width > 0, half.height > 0 else { return nil }
+        let t = transform
+        let determinant = t.a * t.d - t.b * t.c
+        guard abs(determinant) > 1e-12 else { return nil }
+        let dx = Double(point.x - pictureRect.minX) / scale - t.tx
+        let dy = Double(point.y - pictureRect.minY) / scale - t.ty
+        let x = (t.d * dx - t.c * dy) / determinant
+        let y = (t.a * dy - t.b * dx) / determinant
+        return (((x - size.width / 2) / half.width + 1) / 2, ((y - size.height / 2) / half.height + 1) / 2)
+    }
 }

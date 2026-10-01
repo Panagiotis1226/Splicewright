@@ -64,6 +64,14 @@ struct MaskTests {
         mask.insertVertex(segment: 0, t: 0.5)
         #expect(mask.path.keyframes.allSatisfy { $0.values.count == 30 })
         #expect(mask.vertices(at: RationalTime(frames: 15, rate: rate)).count == 5)
+
+        // Removing one does the same, down to three.
+        mask.removeVertex(at: 1)
+        #expect(mask.path.keyframes.allSatisfy { $0.values.count == 24 })
+        mask.removeVertex(at: 0)
+        mask.removeVertex(at: 0)
+        #expect(mask.vertices(at: .zero).count == 3, "a mask keeps at least three points")
+        #expect(EffectKind.gaussianBlur.supportsMasks && !EffectKind.crop.supportsMasks)
     }
 
     @Test func resolvedClampsAndRetimes() {

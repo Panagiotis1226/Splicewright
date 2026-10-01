@@ -150,6 +150,20 @@ public struct Mask: Sendable, Hashable, Codable, Identifiable {
         }
     }
 
+    /// Removes vertex `index` from the path and every keyframe of it; a mask keeps at least three.
+    public mutating func removeVertex(at index: Int) {
+        func removing(_ values: [Double]) -> [Double] {
+            var vertices = Self.vertices(from: values)
+            guard vertices.count > 3, vertices.indices.contains(index) else { return values }
+            vertices.remove(at: index)
+            return vertices.flatMap(\.values)
+        }
+        path.values = removing(path.values)
+        for keyframe in path.keyframes.indices {
+            path.keyframes[keyframe].values = removing(path.keyframes[keyframe].values)
+        }
+    }
+
     /// Moves the whole mask by a picture offset at `time`.
     public mutating func offset(dx: Double, dy: Double, at time: RationalTime, tolerance: RationalTime) {
         let moved = vertices(at: time).map { vertex -> Vertex in

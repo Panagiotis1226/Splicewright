@@ -16,6 +16,14 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         }
     }
 
+    /// Effects that can be limited to masks (the pixel effects; Crop, Flip and Mirror move the picture).
+    public var supportsMasks: Bool {
+        switch self {
+        case .gaussianBlur, .sharpen, .dropShadow, .colorCorrection, .lut: return true
+        default: return false
+        }
+    }
+
     public static var video: [EffectKind] { allCases.filter { !$0.isAudio } }
     public static var audio: [EffectKind] { allCases.filter(\.isAudio) }
 

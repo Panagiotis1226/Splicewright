@@ -56,6 +56,7 @@ enum SmokeTestDriver {
         var timelineRoundTrip = ""
         var timelineKeyframes = ""
         var colorApplied = false
+        var maskApplied = false
         var errors: [String] = []
     }
 
@@ -256,6 +257,13 @@ enum SmokeTestDriver {
         let kinds = workspace.activeSequence?.clip(clip.id)?.effects.map(\.kind)
         report.colorApplied = kinds == [.gaussianBlur, .colorCorrection, .lut]
             && workspace.activeSequence?.clip(clip.id)?.effects.last?.lutPath == cube.path
+        // An ellipse mask on Opacity, as the Effect Controls button adds it; the export renders it.
+        let target = MaskTarget(clipID: clip.id, owner: .opacity)
+        workspace.addMask(.ellipse, to: target)
+        let masks = workspace.activeSequence?.clip(clip.id)?.opacityMasks ?? []
+        report.maskApplied = masks.count == 1 && workspace.selectedMask?.maskID == masks.first?.id
+            && workspace.maskVertices(MaskSelection(target: target, maskID: masks[0].id)).count == 4
+        workspace.selectedMask = nil
         workspace.program.seek(toFrame: 10)
         workspace.newAdjustmentLayer()
         guard let layer = workspace.timeline.selection.first,

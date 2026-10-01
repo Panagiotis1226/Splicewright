@@ -85,6 +85,7 @@ checks = {
     "timeline exported and imported": r.get("timelineRoundTrip") == "ok",
     "keyframes at their frames on the timeline": r.get("timelineKeyframes") == "ok",
     "color correction and LUT applied": r.get("colorApplied"),
+    "opacity mask applied": r.get("maskApplied"),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

@@ -44,7 +44,12 @@ struct ProgramMonitorPanel: View {
                             frameOverlay(in: fittedRect(geometry.size))
                         }
                     }
-                    if workspace.activeTool == .selection, let selected = transformTarget {
+                    if workspace.activeTool == .selection, let selected = maskTarget {
+                        // A selected mask (or the Pen drawing one) takes over from the transform box.
+                        GeometryReader { geometry in
+                            MaskHandles(workspace: workspace, clip: selected, pictureRect: fittedRect(geometry.size))
+                        }
+                    } else if workspace.activeTool == .selection, let selected = transformTarget {
                         GeometryReader { geometry in
                             TransformHandles(workspace: workspace, clip: selected, pictureRect: fittedRect(geometry.size))
                             if let crop = selected.effects.first(where: { $0.kind == .crop && $0.isEnabled }) {
@@ -145,6 +150,18 @@ struct ProgramMonitorPanel: View {
         guard let selected = workspace.effectControlsClip, selected.isVideo, !selected.clip.isAdjustment,
               selected.clip.range.contains(engine.currentFrame) else { return nil }
         return selected.clip
+    }
+
+    /// The selected video clip (adjustment layers included) when one of its masks is selected
+    /// or the Pen is drawing one, if it's on screen at the playhead.
+    private var maskTarget: Clip? {
+        guard let selected = workspace.effectControlsClip, selected.isVideo,
+              selected.clip.range.contains(engine.currentFrame) else { return nil }
+        let clip = selected.clip
+        if workspace.maskPen?.clipID == clip.id { return clip }
+        guard let mask = workspace.selectedMask, mask.target.clipID == clip.id,
+              clip.masks(of: mask.target.owner).contains(where: { $0.id == mask.maskID }) else { return nil }
+        return clip
     }
 
     /// Where the picture sits inside the monitor (aspect fit).

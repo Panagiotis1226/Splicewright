@@ -29,7 +29,7 @@ final class MaskResources: @unchecked Sendable {
     private var rasters: [RasterKey: MTLTexture] = [:]
     private var order: [RasterKey] = []
     private let capacity = 24
-    private var targets: Targets?
+    private var frameTargets: Targets?
 
     init(device: MTLDevice, library: MTLLibrary) throws {
         self.device = device
@@ -67,7 +67,9 @@ final class MaskResources: @unchecked Sendable {
     func targets(width: Int, height: Int) -> Targets? {
         lock.lock()
         defer { lock.unlock() }
-        if let targets, targets.coverage.width == width, targets.coverage.height == height { return targets }
+        if let frameTargets, frameTargets.coverage.width == width, frameTargets.coverage.height == height {
+            return frameTargets
+        }
         func make() -> MTLTexture? {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: width,
                                                                       height: height, mipmapped: false)
@@ -76,8 +78,8 @@ final class MaskResources: @unchecked Sendable {
             return device.makeTexture(descriptor: descriptor)
         }
         guard let blurH = make(), let blurV = make(), let coverage = make() else { return nil }
-        targets = Targets(blurH: blurH, blurV: blurV, coverage: coverage)
-        return targets
+        frameTargets = Targets(blurH: blurH, blurV: blurV, coverage: coverage)
+        return frameTargets
     }
 
     /// The mask's filled path (grown or shrunk by its expansion), white on black.

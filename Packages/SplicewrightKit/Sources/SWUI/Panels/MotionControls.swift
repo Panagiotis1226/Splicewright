@@ -35,6 +35,7 @@ struct MotionControls: View {
                         // Adjustment layers: their effects, blended in with Opacity.
                         sectionTitle("Opacity")
                         row(.opacity)
+                        masks(.opacity)
                         effectSections
                     } else if isVideo {
                         sectionTitle("Motion")
@@ -46,6 +47,7 @@ struct MotionControls: View {
                         row(.anchorPoint)
                         sectionTitle("Opacity")
                         row(.opacity)
+                        masks(.opacity)
                         if !clip.isGenerated {
                             sectionTitle(clip.speed.isAnimated ? "Time Remapping" : "Speed")
                             row(.speed)
@@ -201,6 +203,14 @@ struct MotionControls: View {
         .disabled(disabled)
     }
 
+    /// The masks on Opacity or on an effect, with rows like the others.
+    private func masks(_ owner: MaskOwner) -> some View {
+        MaskControls(workspace: workspace, engine: engine, clip: clip, owner: owner,
+                     selectedKeyframes: $selectedKeyframes) { ref, title, unit, step in
+            valueRow(ref, title: title, components: [""], unit: unit, step: step)
+        }
+    }
+
     // MARK: - Effects
 
     @ViewBuilder private var effectSections: some View {
@@ -213,6 +223,7 @@ struct MotionControls: View {
                              unit: parameter.unit, step: parameter.dragStep)
                 }
                 if effect.kind == .colorCorrection { CurvesEditor(workspace: workspace, clipID: clip.id, effect: effect) }
+                if effect.kind.supportsMasks { masks(.effect(effect.id)) }
             }
         }
         if clip.effects.isEmpty {
