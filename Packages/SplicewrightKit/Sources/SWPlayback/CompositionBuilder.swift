@@ -63,13 +63,17 @@ public struct CompositionBuilder {
     public var outputColorSpace: SequenceColorSpace?
     /// Diagnostic overlay for the Program monitor. Exports always use `.none`.
     public var overlay: OverlayMode
+    /// Render at this rate instead of the sequence's (export). Frames are taken at real
+    /// composition times, so 120 fps sources exported at 120 keep every frame.
+    public var frameRate: FrameRate?
 
     public init(renderScale: Double = 1, renderSize: CGSize? = nil, outputColorSpace: SequenceColorSpace? = nil,
-                overlay: OverlayMode = .none) {
+                overlay: OverlayMode = .none, frameRate: FrameRate? = nil) {
         self.renderScale = renderScale
         self.renderSize = renderSize
         self.outputColorSpace = outputColorSpace
         self.overlay = overlay
+        self.frameRate = frameRate
     }
 
     public func build(_ sequence: EditSequence, project: Project, cache: MediaAssetCache) async -> CompositionOutput {
@@ -154,7 +158,7 @@ public struct CompositionBuilder {
 
         let videoComposition = AVMutableVideoComposition()
         videoComposition.customVideoCompositorClass = SplicewrightCompositor.self
-        videoComposition.frameDuration = rate.cmFrameDuration
+        videoComposition.frameDuration = (frameRate ?? rate).cmFrameDuration
         videoComposition.renderSize = CGSize(width: renderWidth, height: renderHeight)
         let tags = OutputColorTags(outputSpace.color)
         videoComposition.colorPrimaries = tags.primaries as String

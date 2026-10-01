@@ -20,10 +20,13 @@ public struct FrameRate: Sendable, Hashable, Codable {
     public static let fps50 = FrameRate(numerator: 50)
     public static let fps59_94 = FrameRate(numerator: 60000, denominator: 1001)
     public static let fps60 = FrameRate(numerator: 60)
+    public static let fps100 = FrameRate(numerator: 100)
+    public static let fps119_88 = FrameRate(numerator: 120_000, denominator: 1001)
+    public static let fps120 = FrameRate(numerator: 120)
 
-    /// The frame rates Splicewright offers for sequences and export.
+    /// The frame rates Splicewright offers for sequences and export, up to iPhone slow motion's 120.
     public static let standard: [FrameRate] = [
-        .fps23_976, .fps24, .fps25, .fps29_97, .fps30, .fps50, .fps59_94, .fps60,
+        .fps23_976, .fps24, .fps25, .fps29_97, .fps30, .fps50, .fps59_94, .fps60, .fps100, .fps119_88, .fps120,
     ]
 
     public var framesPerSecond: Double { Double(numerator) / Double(denominator) }

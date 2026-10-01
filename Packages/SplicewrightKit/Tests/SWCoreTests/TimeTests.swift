@@ -56,8 +56,8 @@ struct FrameRateTests {
     }
 
     @Test func nonStandardRatesAreApproximated() {
-        #expect(FrameRate.nearestStandard(to: 120) == nil)
-        #expect(FrameRate.approximating(120) == FrameRate(numerator: 120))
+        #expect(FrameRate.nearestStandard(to: 240) == nil)
+        #expect(FrameRate.approximating(240) == FrameRate(numerator: 240))
         #expect(FrameRate.approximating(12.5) == FrameRate(numerator: 25, denominator: 2))
         #expect(FrameRate.approximating(0) == nil)
     }
@@ -66,7 +66,8 @@ struct FrameRateTests {
         #expect(FrameRate.standard(matchingFrameDuration: 1001, timescale: 60000) == .fps59_94)
         #expect(FrameRate.standard(matchingFrameDuration: 2002, timescale: 120_000) == .fps59_94)
         #expect(FrameRate.standard(matchingFrameDuration: 20, timescale: 600) == .fps30)
-        #expect(FrameRate.standard(matchingFrameDuration: 1, timescale: 120) == nil)
+        #expect(FrameRate.standard(matchingFrameDuration: 1, timescale: 240) == nil)
+        #expect(FrameRate.standard(matchingFrameDuration: 1001, timescale: 120_000) == .fps119_88)
         #expect(FrameRate.standard(matchingFrameDuration: 0, timescale: 600) == nil)
     }
 

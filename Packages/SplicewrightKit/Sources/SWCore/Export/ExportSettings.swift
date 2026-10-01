@@ -5,6 +5,9 @@ public enum ExportCodec: String, Sendable, Hashable, Codable, CaseIterable {
     case hevc
     case hevc10
     case proRes422HQ
+    case proRes422
+    case proRes422LT
+    case proRes422Proxy
 
     public var displayName: String {
         switch self {
@@ -12,13 +15,23 @@ public enum ExportCodec: String, Sendable, Hashable, Codable, CaseIterable {
         case .hevc: return "HEVC (H.265)"
         case .hevc10: return "HEVC 10-bit"
         case .proRes422HQ: return "Apple ProRes 422 HQ"
+        case .proRes422: return "Apple ProRes 422"
+        case .proRes422LT: return "Apple ProRes 422 LT"
+        case .proRes422Proxy: return "Apple ProRes 422 Proxy"
+        }
+    }
+
+    public var isProRes: Bool {
+        switch self {
+        case .proRes422HQ, .proRes422, .proRes422LT, .proRes422Proxy: return true
+        case .h264, .hevc, .hevc10: return false
         }
     }
 
     public var bitDepth: Int {
         switch self {
         case .h264, .hevc: return 8
-        case .hevc10, .proRes422HQ: return 10
+        case .hevc10, .proRes422HQ, .proRes422, .proRes422LT, .proRes422Proxy: return 10
         }
     }
 
@@ -26,7 +39,18 @@ public enum ExportCodec: String, Sendable, Hashable, Codable, CaseIterable {
     public var supportsHDR: Bool { bitDepth >= 10 }
 
     /// Bitrate-controlled codecs; ProRes has a fixed data rate per resolution.
-    public var usesBitRate: Bool { self != .proRes422HQ }
+    public var usesBitRate: Bool { !isProRes }
+
+    /// Apple's target data rate at 1920×1080, 29.97 fps (ProRes only).
+    var proResMegabitsAt1080p30: Double {
+        switch self {
+        case .proRes422HQ: return 220
+        case .proRes422: return 147
+        case .proRes422LT: return 102
+        case .proRes422Proxy: return 45
+        case .h264, .hevc, .hevc10: return 0
+        }
+    }
 }
 
 public enum ExportContainer: String, Sendable, Hashable, Codable, CaseIterable {
@@ -67,10 +91,22 @@ public enum ExportRange: String, Sendable, Hashable, Codable {
     case entireSequence, inToOut
 }
 
-public enum ExportSize: String, Sendable, Hashable, Codable {
-    case matchSequence, hd1080
+/// Output frame size: the sequence's, or scaled so the short side has `lines` pixels.
+public enum ExportSize: Sendable, Hashable, Codable {
+    case matchSequence
+    case lines(Int)
 
-    public var displayName: String { self == .matchSequence ? "Match Sequence" : "1080p" }
+    public static let hd1080 = ExportSize.lines(1080)
+    public static let presets: [ExportSize] = [2160, 1440, 1080, 720, 540, 480].map { .lines($0) }
+
+    public var displayName: String {
+        switch self {
+        case .matchSequence: return "Match Sequence"
+        case .lines(2160): return "2160p (4K UHD)"
+        case .lines(1440): return "1440p"
+        case .lines(let lines): return "\(lines)p"
+        }
+    }
 }
 
 /// What to encode: codec, container, color space and audio.
@@ -101,9 +137,9 @@ public struct ExportPreset: Sendable, Hashable, Codable, Identifiable {
     public static let hevcPQ = ExportPreset(name: "HEVC 10-bit · HDR10 (PQ)", codec: .hevc10, container: .mp4,
                                             colorSpace: .rec2100PQ, audio: .aac)
 
-    /// ProRes 422 HQ in the sequence's own color space (a mastering/intermediate file).
-    public static func proRes(for sequence: EditSequence) -> ExportPreset {
-        ExportPreset(name: "Apple ProRes 422 HQ · Match Sequence", codec: .proRes422HQ, container: .mov,
+    /// ProRes in the sequence's own color space (a mastering/intermediate file).
+    public static func proRes(_ codec: ExportCodec = .proRes422HQ, for sequence: EditSequence) -> ExportPreset {
+        ExportPreset(name: "\(codec.displayName) · Match Sequence", codec: codec, container: .mov,
                      colorSpace: sequence.settings.colorSpace, audio: .pcm24)
     }
 
@@ -116,7 +152,8 @@ public struct ExportPreset: Sendable, Hashable, Codable, Identifiable {
     }
 
     public static func builtIn(for sequence: EditSequence) -> [ExportPreset] {
-        [matchSequence(sequence), .h264SDR, .hevcSDR, .hevcHLG, .hevcPQ, proRes(for: sequence)]
+        [matchSequence(sequence), .h264SDR, .hevcSDR, .hevcHLG, .hevcPQ]
+            + [ExportCodec.proRes422HQ, .proRes422, .proRes422LT, .proRes422Proxy].map { proRes($0, for: sequence) }
     }
 }
 
@@ -126,6 +163,7 @@ public enum ExportValidationError: Error, Equatable, Sendable {
     case pcmNeedsQuickTime
     case missingInOut
     case emptyRange
+    case invalidBitRate
 
     public var message: String {
         switch self {
@@ -134,6 +172,32 @@ public enum ExportValidationError: Error, Equatable, Sendable {
         case .pcmNeedsQuickTime: return "Uncompressed PCM audio needs a QuickTime (.mov) file."
         case .missingInOut: return "Set both an In and an Out point on the sequence to export that range."
         case .emptyRange: return "There's nothing to export: the sequence is empty."
+        case .invalidBitRate: return "Enter a bitrate between 1 and 800 Mbps."
+        }
+    }
+}
+
+/// Things that are allowed but probably not what the user wants.
+public enum ExportWarning: Hashable, Sendable {
+    /// The export rate is higher than every source clip's, so frames repeat.
+    case frameRateAboveSources(fastestSource: FrameRate)
+    /// The export rate isn't a whole multiple or divisor of the sequence rate, so motion judders.
+    case frameRateMismatch
+    /// H.264 at 4K above 60 fps is beyond many encoders and players.
+    case h264HighFrameRate
+    case upscaled
+
+    public var message: String {
+        switch self {
+        case .frameRateAboveSources(let fastest):
+            return "Frames will repeat: the fastest clip is \(fastest.displayName) fps. " +
+                "Shoot at the export rate (e.g. 120 fps) for smoother motion."
+        case .frameRateMismatch:
+            return "The export rate doesn't divide evenly into the sequence rate, so motion may judder."
+        case .h264HighFrameRate:
+            return "H.264 at 4K above 60 fps may not encode or play everywhere; HEVC is safer."
+        case .upscaled:
+            return "This is larger than the sequence, so the picture is upscaled."
         }
     }
 }
@@ -144,19 +208,34 @@ public struct ExportSettings: Sendable, Hashable, Codable {
     public var range: ExportRange
     public var size: ExportSize
     public var quality: ExportQuality
+    /// The output frame rate; nil matches the sequence.
+    public var frameRate: FrameRate?
+    /// A target bitrate in megabits per second that replaces `quality` (H.264/HEVC only).
+    public var customMegabits: Double?
+
+    public static let customMegabitRange: ClosedRange<Double> = 1...800
 
     public init(preset: ExportPreset, range: ExportRange = .entireSequence, size: ExportSize = .matchSequence,
-                quality: ExportQuality = .standard) {
+                quality: ExportQuality = .standard, frameRate: FrameRate? = nil, customMegabits: Double? = nil) {
         self.preset = preset
         self.range = range
         self.size = size
         self.quality = quality
+        self.frameRate = frameRate
+        self.customMegabits = customMegabits
+    }
+
+    public func outputRate(for sequence: EditSequence) -> FrameRate {
+        frameRate ?? sequence.rate
     }
 
     public func validate(for sequence: EditSequence) -> [ExportValidationError] {
         var errors: [ExportValidationError] = []
         if preset.colorSpace.isHDR && !preset.codec.supportsHDR { errors.append(.hdrNeedsTenBit) }
-        if preset.codec == .proRes422HQ && preset.container != .mov { errors.append(.proResNeedsQuickTime) }
+        if preset.codec.isProRes && preset.container != .mov { errors.append(.proResNeedsQuickTime) }
+        if let custom = customMegabits, preset.codec.usesBitRate, !(Self.customMegabitRange ~= custom) {
+            errors.append(.invalidBitRate)
+        }
         if preset.audio == .pcm24 && preset.container != .mov { errors.append(.pcmNeedsQuickTime) }
         switch range {
         case .inToOut where sequence.marks.range == nil:
@@ -180,22 +259,46 @@ public struct ExportSettings: Sendable, Hashable, Codable {
         }
     }
 
-    /// Output frame size: the sequence size, or scaled to 1080 lines (1920 wide for 16:9),
-    /// never upscaled. Dimensions are even, as encoders require.
+    /// Output frame size: the sequence size, or scaled so the short side has the preset's line
+    /// count (1080p of a 4K sequence is 1920×1080; of a vertical one, 1080×1920). Dimensions are
+    /// even, as encoders require.
     public func outputSize(for sequence: EditSequence) -> (width: Int, height: Int) {
-        let width = sequence.settings.width
-        let height = sequence.settings.height
+        let width = Double(sequence.settings.width)
+        let height = Double(sequence.settings.height)
         func even(_ value: Double) -> Int { max(2, Int((value / 2).rounded()) * 2) }
-        guard size == .hd1080 else { return (even(Double(width)), even(Double(height))) }
-        let shortSide = Double(min(width, height))
-        guard shortSide > 1080 else { return (even(Double(width)), even(Double(height))) }
-        let scale = 1080 / shortSide
-        return (even(Double(width) * scale), even(Double(height) * scale))
+        guard case .lines(let lines) = size, lines > 0 else { return (even(width), even(height)) }
+        let scale = Double(lines) / min(width, height)
+        return (even(width * scale), even(height * scale))
+    }
+
+    public func warnings(for sequence: EditSequence, project: Project) -> [ExportWarning] {
+        var warnings: [ExportWarning] = []
+        let rate = outputRate(for: sequence)
+        let frames = frameRange(for: sequence)
+        let sourceRates = sequence.videoTracks.flatMap(\.clips)
+            .filter { clip in frames.map { clip.range.overlaps($0) } ?? true }
+            .compactMap { project.item($0.mediaID)?.info.video?.frameRate }
+        if let fastest = sourceRates.max(by: { $0.framesPerSecond < $1.framesPerSecond }),
+           rate.framesPerSecond > fastest.framesPerSecond * 1.01 {
+            warnings.append(.frameRateAboveSources(fastestSource: fastest))
+        }
+        let ratio = max(rate.framesPerSecond, sequence.rate.framesPerSecond)
+            / min(rate.framesPerSecond, sequence.rate.framesPerSecond)
+        if abs(ratio - ratio.rounded()) > 0.01 { warnings.append(.frameRateMismatch) }
+        let output = outputSize(for: sequence)
+        if preset.codec == .h264, rate.framesPerSecond > 61, min(output.width, output.height) > 1440 {
+            warnings.append(.h264HighFrameRate)
+        }
+        if output.width * output.height > sequence.settings.width * sequence.settings.height {
+            warnings.append(.upscaled)
+        }
+        return warnings
     }
 
     /// Average video bitrate in bits per second (nil for ProRes).
     public func bitRate(width: Int, height: Int, fps: Double) -> Int? {
         guard preset.codec.usesBitRate else { return nil }
+        if let customMegabits { return Int((customMegabits * 1_000_000).rounded()) }
         // Bits per pixel per frame at Standard quality. At 3840×2160, 30 fps: H.264 ≈ 45 Mbps,
         // HEVC ≈ 30 Mbps, HEVC 10-bit ≈ 36 Mbps. Higher frame rates need less per frame.
         let bitsPerPixel: Double
@@ -203,7 +306,7 @@ public struct ExportSettings: Sendable, Hashable, Codable {
         case .h264: bitsPerPixel = 0.18
         case .hevc: bitsPerPixel = 0.12
         case .hevc10: bitsPerPixel = 0.145
-        case .proRes422HQ: return nil
+        case .proRes422HQ, .proRes422, .proRes422LT, .proRes422Proxy: return nil
         }
         let frameRateFactor = fps > 30.5 ? 0.8 : 1
         let rate = Double(width * height) * max(fps, 1) * bitsPerPixel * frameRateFactor * quality.multiplier
@@ -215,12 +318,14 @@ public struct ExportSettings: Sendable, Hashable, Codable {
         guard let frames = frameRange(for: sequence) else { return 0 }
         let seconds = Double(frames.length) / sequence.rate.framesPerSecond
         let (width, height) = outputSize(for: sequence)
+        let fps = outputRate(for: sequence).framesPerSecond
         let videoBits: Double
-        if let rate = bitRate(width: width, height: height, fps: sequence.rate.framesPerSecond) {
+        if let rate = bitRate(width: width, height: height, fps: fps) {
             videoBits = Double(rate)
         } else {
-            // ProRes 422 HQ is about 220 Mbps at 1080p30 and scales with pixels × frame rate.
-            videoBits = 220_000_000 * Double(width * height) / (1920 * 1080) * sequence.rate.framesPerSecond / 29.97
+            // ProRes data rates scale with pixels × frame rate from Apple's 1080p29.97 figures.
+            videoBits = preset.codec.proResMegabitsAt1080p30 * 1_000_000 * Double(width * height) / (1920 * 1080)
+                * fps / 29.97
         }
         let audioBits: Double = preset.audio == .aac ? 320_000 : 48_000 * 24 * 2
         return Int64((videoBits + audioBits) * seconds / 8)

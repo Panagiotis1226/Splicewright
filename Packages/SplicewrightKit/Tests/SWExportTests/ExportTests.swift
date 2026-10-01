@@ -217,6 +217,27 @@ final class ExportTests: XCTestCase {
         XCTAssertEqual(info.duration.frameIndex(at: .fps30), 15)
     }
 
+    func testFrameSizeAndRateOptions() async throws {
+        try await standardClips()
+        let settings = ExportSettings(preset: .h264SDR, size: .lines(720), frameRate: .fps60)
+        let url = try await export(settings, name: "720p60")
+        let info = try await MediaProber().probe(url)
+        let video = try XCTUnwrap(info.video)
+        XCTAssertEqual(video.width, 1280)
+        XCTAssertEqual(video.height, 720)
+        XCTAssertEqual(video.frameRate, .fps60)
+        XCTAssertEqual(info.duration.frameIndex(at: .fps60), Self.frames * 2)
+    }
+
+    func testProResFlavors() async throws {
+        try await standardClips()
+        for (codec, expected) in [(ExportCodec.proRes422LT, VideoCodec.proRes422LT), (.proRes422Proxy, .proRes422Proxy)] {
+            let url = try await export(ExportSettings(preset: .proRes(codec, for: sequence)), name: codec.rawValue)
+            let video = try XCTUnwrap(try await MediaProber().probe(url).video)
+            XCTAssertEqual(video.codec, expected)
+        }
+    }
+
     func testVideoOnlySequenceHasNoAudioTrack() async throws {
         let video = try await importClip(FixtureWriter.h264SDR30(frames: 30, width: Self.width, height: Self.height,
                                                                  fill: .grey(0.5, tenBit: false)), "export-grey.mov")

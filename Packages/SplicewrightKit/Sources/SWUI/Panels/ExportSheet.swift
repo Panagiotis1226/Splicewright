@@ -30,13 +30,19 @@ private struct ExportSettingsForm: View {
     @State private var range: ExportRange = .entireSequence
     @State private var size: ExportSize = .matchSequence
     @State private var quality: ExportQuality = .standard
+    @State private var frameRate: FrameRate?
+    @State private var usesCustomBitRate = false
+    @State private var customMegabits: Double = 40
     @State private var folder = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
         ?? FileManager.default.homeDirectoryForCurrentUser
     @State private var fileName = ""
 
     private var presets: [ExportPreset] { ExportPreset.builtIn(for: sequence) }
     private var preset: ExportPreset { presets.first { $0.id == presetID } ?? presets[0] }
-    private var settings: ExportSettings { ExportSettings(preset: preset, range: range, size: size, quality: quality) }
+    private var settings: ExportSettings {
+        ExportSettings(preset: preset, range: range, size: size, quality: quality, frameRate: frameRate,
+                       customMegabits: usesCustomBitRate && preset.codec.usesBitRate ? customMegabits : nil)
+    }
     private var destination: URL {
         let base = (fileName as NSString).deletingPathExtension
         return folder.appending(path: "\(base.isEmpty ? "Sequence" : base).\(preset.container.fileExtension)")
@@ -62,11 +68,35 @@ private struct ExportSettingsForm: View {
                 Picker("Frame Size", selection: $size) {
                     Text("Match Sequence (\(sequence.settings.width)×\(sequence.settings.height))")
                         .tag(ExportSize.matchSequence)
-                    Text("1080p").tag(ExportSize.hd1080)
+                    ForEach(ExportSize.presets, id: \.self) { option in
+                        Text(sizeLabel(option)).tag(option)
+                    }
+                }
+                Picker("Frame Rate", selection: $frameRate) {
+                    Text("Match Sequence (\(sequence.rate.displayName) fps)").tag(FrameRate?.none)
+                    ForEach(FrameRate.standard, id: \.self) { rate in
+                        Text("\(rate.displayName) fps").tag(FrameRate?.some(rate))
+                    }
                 }
                 if preset.codec.usesBitRate {
-                    Picker("Quality", selection: $quality) {
-                        ForEach(ExportQuality.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    Picker("Bitrate", selection: $usesCustomBitRate) {
+                        Text("Quality preset").tag(false)
+                        Text("Custom").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    if usesCustomBitRate {
+                        LabeledContent("Target") {
+                            HStack {
+                                TextField("Mbps", value: $customMegabits, format: .number.precision(.fractionLength(0...1)))
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 80)
+                                Stepper("Mbps", value: $customMegabits, in: ExportSettings.customMegabitRange, step: 5)
+                            }
+                        }
+                    } else {
+                        Picker("Quality", selection: $quality) {
+                            ForEach(ExportQuality.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                        }
                     }
                 }
                 LabeledContent("Save As") {
@@ -98,6 +128,11 @@ private struct ExportSettingsForm: View {
             }
             if errors.isEmpty {
                 Text(summaryText).font(.caption)
+                ForEach(settings.warnings(for: sequence, project: workspace.project), id: \.self) { warning in
+                    Label(warning.message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.yellow)
+                }
                 if preset.colorSpace != sequence.settings.colorSpace {
                     Label(colorChangeNote, systemImage: "info.circle").font(.caption).foregroundStyle(.orange)
                 }
@@ -110,7 +145,20 @@ private struct ExportSettingsForm: View {
         let output = settings.outputSize(for: sequence)
         let duration = Timecode(frame: frames.length, rate: sequence.rate).description
         let bytes = ByteCountFormatter.string(fromByteCount: settings.estimatedBytes(for: sequence), countStyle: .file)
-        return "\(output.width)×\(output.height) · \(sequence.rate.displayName) fps · \(duration) · about \(bytes)"
+        let rate = settings.outputRate(for: sequence).displayName
+        var text = "\(output.width)×\(output.height) · \(rate) fps · \(duration) · about \(bytes)"
+        let (width, height) = output
+        if let bitRate = settings.bitRate(width: width, height: height,
+                                          fps: settings.outputRate(for: sequence).framesPerSecond) {
+            text += String(format: " · %.0f Mbps", Double(bitRate) / 1_000_000)
+        }
+        return text
+    }
+
+    private func sizeLabel(_ option: ExportSize) -> String {
+        let (width, height) = ExportSettings(preset: preset, size: option).outputSize(for: sequence)
+        let upscaled = width * height > sequence.settings.width * sequence.settings.height
+        return "\(option.displayName) (\(width)×\(height))\(upscaled ? " · upscaled" : "")"
     }
 
     private var colorChangeNote: String {
@@ -126,6 +174,11 @@ private struct ExportSettingsForm: View {
             presetID = last.preset.id
             size = last.size
             quality = last.quality
+            frameRate = last.frameRate
+            if let custom = last.customMegabits {
+                usesCustomBitRate = true
+                customMegabits = custom
+            }
         } else {
             presetID = presets[0].id
         }

@@ -9,7 +9,7 @@ Status: **M5**. You can:
 - edit on a multi-track timeline, with Insert/Overwrite, ripple and rolling trims, slip, slide, razor and ripple delete
 - play the sequence in the Program monitor through a Metal compositor that handles SDR and HDR (HLG/PQ), with an optional clipping overlay
 - override how a clip's color is read (right-click ▸ Interpret Footage)
-- export to H.264, HEVC, HEVC 10-bit HLG/PQ or ProRes 422 HQ, and tone-map HDR sequences to SDR deliverables
+- export to H.264, HEVC, HEVC 10-bit HLG/PQ or ProRes (422 HQ, 422, LT, Proxy) at 480p up to 4K and 23.976 up to 120 fps, with a quality preset or a custom bitrate, and tone-map HDR sequences to SDR deliverables
 
 Transitions and titles are next (M6). See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
 
@@ -37,7 +37,7 @@ When the app opens, choose **New Document**, then:
    - Press `,` to Insert or `.` to Overwrite at the playhead on the targeted tracks (the blue track names).
    - Drag clips on the timeline to move them, and drag clip edges to trim.
 4. **Play:** press Space or J/K/L with the Timeline or Program monitor active.
-5. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out.
+5. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
 
 ### Make targets
 

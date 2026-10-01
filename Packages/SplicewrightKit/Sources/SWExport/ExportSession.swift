@@ -100,15 +100,16 @@ public final class ExportSession: ObservableObject, Identifiable {
             throw ExportError.message(ExportValidationError.emptyRange.message)
         }
         let (width, height) = settings.outputSize(for: sequence)
+        let outputRate = settings.outputRate(for: sequence)
         let builder = CompositionBuilder(renderSize: CGSize(width: width, height: height),
-                                         outputColorSpace: settings.preset.colorSpace)
+                                         outputColorSpace: settings.preset.colorSpace, frameRate: outputRate)
         let output = await builder.build(sequence, project: project, cache: MediaAssetCache())
         let rate = sequence.rate
         let range = CMTimeRange(start: RationalTime(frames: frames.start, rate: rate).cmTime,
                                 end: RationalTime(frames: frames.end, rate: rate).cmTime)
         try? FileManager.default.removeItem(at: outputURL)
         return try await ExportWorker(output: output, settings: settings, range: range, width: width, height: height,
-                                      fps: rate.framesPerSecond, url: outputURL)
+                                      fps: outputRate.framesPerSecond, url: outputURL)
     }
 
     static func describe(_ error: Error) -> String {
@@ -212,7 +213,7 @@ final class ExportWorker: @unchecked Sendable {
         case .h264: compression[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
         case .hevc: compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main_AutoLevel as String
         case .hevc10: compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main10_AutoLevel as String
-        case .proRes422HQ: break
+        case .proRes422HQ, .proRes422, .proRes422LT, .proRes422Proxy: break
         }
         var settings: [String: Any] = [
             AVVideoCodecKey: ExportColor.codecType(preset.codec),
@@ -387,6 +388,9 @@ enum ExportColor {
         case .h264: return .h264
         case .hevc, .hevc10: return .hevc
         case .proRes422HQ: return .proRes422HQ
+        case .proRes422: return .proRes422
+        case .proRes422LT: return .proRes422LT
+        case .proRes422Proxy: return .proRes422Proxy
         }
     }
 }

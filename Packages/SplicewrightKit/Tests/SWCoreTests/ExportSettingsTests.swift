@@ -53,14 +53,19 @@ struct ExportSettingsTests {
         #expect(ExportSettings(preset: .h264SDR).frameRange(for: seq) == FrameRange(start: 0, end: 100))
     }
 
-    @Test func outputSizeIsEvenAndNeverUpscaled() {
+    @Test func outputSizeIsEvenAndKeepsAspect() {
         let uhd = sequence()
         #expect(ExportSettings(preset: .h264SDR, size: .hd1080).outputSize(for: uhd) == (1920, 1080))
         #expect(ExportSettings(preset: .h264SDR).outputSize(for: uhd) == (3840, 2160))
         let vertical = sequence(width: 2160, height: 3840)
         #expect(ExportSettings(preset: .h264SDR, size: .hd1080).outputSize(for: vertical) == (1080, 1920))
         let small = sequence(width: 1280, height: 720)
-        #expect(ExportSettings(preset: .h264SDR, size: .hd1080).outputSize(for: small) == (1280, 720))
+        #expect(ExportSettings(preset: .h264SDR, size: .hd1080).outputSize(for: small) == (1920, 1080))
+        #expect(ExportSettings(preset: .h264SDR, size: .lines(720)).outputSize(for: uhd) == (1280, 720))
+        #expect(ExportSettings(preset: .h264SDR, size: .lines(480)).outputSize(for: uhd) == (854, 480))
+        #expect(ExportSettings(preset: .h264SDR, size: .lines(1440)).outputSize(for: uhd) == (2560, 1440))
+        let odd = sequence(width: 1440, height: 1080)
+        #expect(ExportSettings(preset: .h264SDR, size: .lines(540)).outputSize(for: odd) == (720, 540))
         let dci = sequence(width: 4096, height: 2160)
         #expect(ExportSettings(preset: .h264SDR, size: .hd1080).outputSize(for: dci) == (2048, 1080))
     }
@@ -77,6 +82,60 @@ struct ExportSettingsTests {
         let high = try #require(ExportSettings(preset: .h264SDR, quality: .high).bitRate(width: 3840, height: 2160, fps: 30))
         #expect(high > uhd30)
         #expect(ExportSettings(preset: .proRes(for: sequence())).bitRate(width: 3840, height: 2160, fps: 30) == nil)
+    }
+
+    @Test func customBitRateAndExportFrameRate() throws {
+        var settings = ExportSettings(preset: .hevcSDR, customMegabits: 25)
+        #expect(settings.bitRate(width: 3840, height: 2160, fps: 30) == 25_000_000)
+        settings.customMegabits = 0
+        #expect(settings.validate(for: sequence()) == [.invalidBitRate])
+        let seq = sequence(rate: .fps30)
+        #expect(ExportSettings(preset: .h264SDR).outputRate(for: seq) == .fps30)
+        #expect(ExportSettings(preset: .h264SDR, frameRate: .fps120).outputRate(for: seq) == .fps120)
+        let at30 = ExportSettings(preset: .h264SDR).estimatedBytes(for: seq)
+        let at60 = ExportSettings(preset: .h264SDR, frameRate: .fps60).estimatedBytes(for: seq)
+        #expect(at60 > at30)
+    }
+
+    @Test func proResFlavors() {
+        let seq = sequence()
+        let names = ExportPreset.builtIn(for: seq).map(\.codec).filter(\.isProRes)
+        #expect(names == [.proRes422HQ, .proRes422, .proRes422LT, .proRes422Proxy])
+        let hq = ExportSettings(preset: .proRes(.proRes422HQ, for: seq)).estimatedBytes(for: seq)
+        let proxy = ExportSettings(preset: .proRes(.proRes422Proxy, for: seq)).estimatedBytes(for: seq)
+        #expect(proxy * 4 < hq)
+        #expect(ExportCodec.proRes422LT.bitDepth == 10 && !ExportCodec.proRes422LT.usesBitRate)
+    }
+
+    @Test func warnings() {
+        var project = Project()
+        let item = makeItem("A", rate: .fps30)
+        project.addMedia([item])
+        var seq = EditSequence(name: "W", settings: SequenceSettings(width: 3840, height: 2160, frameRate: .fps30,
+                                                                     colorSpace: .rec709))
+        seq.overwrite([TrackPlacement(trackID: seq.videoTracks[0].id, clip: Clip(
+            mediaID: item.id, name: "A", start: 0, duration: 30, sourceStart: .zero))])
+        #expect(ExportSettings(preset: .hevcSDR).warnings(for: seq, project: project).isEmpty)
+        let fast = ExportSettings(preset: .h264SDR, frameRate: .fps120).warnings(for: seq, project: project)
+        #expect(fast.contains(.frameRateAboveSources(fastestSource: .fps30)))
+        #expect(fast.contains(.h264HighFrameRate))
+        #expect(!fast.contains(.frameRateMismatch))
+        #expect(ExportSettings(preset: .hevcSDR, frameRate: .fps25).warnings(for: seq, project: project)
+            .contains(.frameRateMismatch))
+        var small = seq
+        small.settings.width = 1280
+        small.settings.height = 720
+        #expect(ExportSettings(preset: .hevcSDR, size: .lines(2160)).warnings(for: small, project: project)
+            .contains(.upscaled))
+    }
+
+    @Test func highFrameRatesAreStandard() {
+        #expect(FrameRate.nearestStandard(to: 119.88) == .fps119_88)
+        #expect(FrameRate.nearestStandard(to: 120) == .fps120)
+        #expect(FrameRate.fps119_88.displayName == "119.88")
+        #expect(FrameRate.fps119_88.timecodeBase == 120)
+        #expect(!FrameRate.fps119_88.supportsDropFrame)
+        #expect(Timecode(frame: 121, rate: .fps120).description == "00:00:01:01")
     }
 
     @Test func estimatedSize() {
