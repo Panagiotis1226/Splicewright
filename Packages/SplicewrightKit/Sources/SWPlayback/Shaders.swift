@@ -27,6 +27,12 @@ enum Shaders {
         float4 params;  // output space (0 rec709, 1 hlg, 2 pq), clipping overlay (0/1)
     };
 
+    struct TransitionUniforms {
+        // kind (0 dissolve, 1 dip to black, 2 dip to white, 3 film dissolve,
+        // 4 wipe right, 5 wipe left, 6 wipe down, 7 wipe up), progress 0...1
+        float4 params;
+    };
+
     struct VertexOut {
         float4 position [[position]];
         float2 uv;
@@ -185,6 +191,44 @@ enum Shaders {
         float3 lin = toRec2020(toLinear(rgb, int(u.color.x)), int(u.color.y));
         if (u.color.w > 0.5) { lin = toneMapToSDR(lin, u.tone.x); }
         return float4(lin, u.color.z);
+    }
+
+    // --- Transition pass ----------------------------------------------------------------
+    // Both sides arrive premultiplied (drawn over transparent); the result is premultiplied
+    // and composited over the layers below.
+
+    float4 filmMix(float4 a, float4 b, float p) {
+        // Mix in gamma-encoded space, like an optical dissolve: midtones dip less than in linear.
+        float3 ga = pow(max(a.rgb / max(a.a, 1e-5), 0.0), 1.0 / 2.4);
+        float3 gb = pow(max(b.rgb / max(b.a, 1e-5), 0.0), 1.0 / 2.4);
+        float alpha = mix(a.a, b.a, p);
+        float3 g = mix(ga * step(1e-5, a.a), gb * step(1e-5, b.a), p);
+        return float4(pow(g, 2.4) * alpha, alpha);
+    }
+
+    fragment float4 transitionFragment(VertexOut in [[stage_in]],
+                                       texture2d<float> outgoing [[texture(0)]],
+                                       texture2d<float> incoming [[texture(1)]],
+                                       constant TransitionUniforms& u [[buffer(0)]]) {
+        uint2 position = uint2(in.position.xy);
+        float4 a = outgoing.read(position);
+        float4 b = incoming.read(position);
+        int kind = int(u.params.x);
+        float p = clamp(u.params.y, 0.0, 1.0);
+        const float edge = 0.004;
+        switch (kind) {
+        case 1:
+        case 2: {
+            float4 color = kind == 1 ? float4(0.0, 0.0, 0.0, 1.0) : float4(1.0, 1.0, 1.0, 1.0);
+            return p < 0.5 ? mix(a, color, p * 2.0) : mix(color, b, p * 2.0 - 1.0);
+        }
+        case 3: return filmMix(a, b, p);
+        case 4: return mix(a, b, 1.0 - smoothstep(p - edge, p + edge, in.uv.x));
+        case 5: return mix(a, b, smoothstep(1.0 - p - edge, 1.0 - p + edge, in.uv.x));
+        case 6: return mix(a, b, 1.0 - smoothstep(p - edge, p + edge, in.uv.y));
+        case 7: return mix(a, b, smoothstep(1.0 - p - edge, 1.0 - p + edge, in.uv.y));
+        default: return mix(a, b, p);
+        }
     }
 
     // --- Output pass --------------------------------------------------------------------

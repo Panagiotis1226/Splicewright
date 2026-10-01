@@ -22,6 +22,8 @@ extension Track {
             if clip.end > range.end {
                 var right = clip
                 right.id = clip.start < range.start ? UUID() : clip.id
+                // A transition at the clip's end now belongs to the right piece.
+                if right.id != clip.id { reanchorEnd(of: clip.id, to: right.id) }
                 if clip.start < range.start, let link = clip.linkID {
                     right.linkID = Self.splitLink(link, &linkMap)
                 }
@@ -47,6 +49,14 @@ extension Track {
         right.duration = clip.end - frame
         right.sourceStart = clip.sourceTime(atSequenceFrame: frame, rate: rate)
         clips.replaceSubrange(index...index, with: [left, right])
+        reanchorEnd(of: clip.id, to: right.id)
+    }
+
+    /// Moves transitions on `clipID`'s end edge to `newID` (the right half of a split).
+    private mutating func reanchorEnd(of clipID: UUID, to newID: UUID) {
+        for index in transitions.indices where transitions[index].leftClipID == clipID {
+            transitions[index].leftClipID = newID
+        }
     }
 
     /// Moves every clip starting at or after `frame` by `delta` frames.

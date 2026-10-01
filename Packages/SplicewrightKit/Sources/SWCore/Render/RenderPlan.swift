@@ -63,18 +63,39 @@ public struct Affine2D: Sendable, Hashable, Codable {
     }
 }
 
-/// One video layer in a render segment, listed bottom (V1) to top.
+/// The part a layer plays in a transition.
+public struct LayerTransition: Sendable, Hashable {
+    public enum Role: Sendable, Hashable { case outgoing, incoming }
+
+    public var id: UUID
+    public var kind: TransitionKind
+    /// The frames the whole transition covers.
+    public var range: FrameRange
+    public var role: Role
+
+    public init(id: UUID, kind: TransitionKind, range: FrameRange, role: Role) {
+        self.id = id
+        self.kind = kind
+        self.range = range
+        self.role = role
+    }
+}
+
+/// One video layer in a render segment, listed bottom (V1) to top. Inside a transition a
+/// track contributes two layers, outgoing then incoming, that the compositor mixes.
 public struct RenderLayer: Sendable, Hashable {
     public var trackIndex: Int
     public var clipID: UUID
     public var mediaID: UUID
     public var opacity: Double
+    public var transition: LayerTransition?
 
-    public init(trackIndex: Int, clipID: UUID, mediaID: UUID, opacity: Double) {
+    public init(trackIndex: Int, clipID: UUID, mediaID: UUID, opacity: Double, transition: LayerTransition? = nil) {
         self.trackIndex = trackIndex
         self.clipID = clipID
         self.mediaID = mediaID
         self.opacity = opacity
+        self.transition = transition
     }
 }
 
@@ -82,6 +103,41 @@ public struct RenderLayer: Sendable, Hashable {
 public struct RenderSegment: Sendable, Hashable {
     public var range: FrameRange
     public var layers: [RenderLayer]
+}
+
+/// A clip's audio fade in and fade out, in sequence frames.
+public struct ClipFades: Sendable {
+    public enum Curve: Sendable, Hashable { case linear, constantPower }
+
+    public var fadeIn: (range: FrameRange, curve: Curve)?
+    public var fadeOut: (range: FrameRange, curve: Curve)?
+
+    public init() {}
+
+    /// Gain multiplier (0...1) at sequence frame position `frame` (fractional).
+    public func gain(at frame: Double) -> Double {
+        var gain = 1.0
+        if let fadeIn {
+            gain *= Self.curve(fadeIn.curve, progress: Self.progress(frame, fadeIn.range))
+        }
+        if let fadeOut {
+            gain *= Self.curve(fadeOut.curve, progress: 1 - Self.progress(frame, fadeOut.range))
+        }
+        return gain
+    }
+
+    private static func progress(_ frame: Double, _ range: FrameRange) -> Double {
+        guard range.length > 0 else { return 1 }
+        return min(max((frame - Double(range.start)) / Double(range.length), 0), 1)
+    }
+
+    /// Constant power keeps loudness steady through a crossfade: sin/cos instead of a line.
+    static func curve(_ curve: Curve, progress: Double) -> Double {
+        switch curve {
+        case .linear: return progress
+        case .constantPower: return sin(progress * .pi / 2)
+        }
+    }
 }
 
 public enum RenderPlan {
@@ -93,10 +149,15 @@ public enum RenderPlan {
                                      isAvailable: (UUID) -> Bool = { _ in true }) -> [RenderSegment] {
         let total = max(sequence.durationFrames, minimumFrames)
         var cuts = Set<Int64>([0, total])
-        for track in sequence.videoTracks where track.isOutputEnabled {
+        let transitions = sequence.videoTracks.map { $0.isOutputEnabled ? $0.resolvedTransitions : [] }
+        for (index, track) in sequence.videoTracks.enumerated() where track.isOutputEnabled {
             for clip in track.clips {
                 cuts.insert(min(clip.start, total))
                 cuts.insert(min(clip.end, total))
+            }
+            for transition in transitions[index] {
+                cuts.insert(min(max(transition.range.start, 0), total))
+                cuts.insert(min(transition.range.end, total))
             }
         }
         let boundaries = cuts.sorted()
@@ -104,14 +165,41 @@ public enum RenderPlan {
         for (start, end) in zip(boundaries, boundaries.dropFirst()) where end > start {
             var layers: [RenderLayer] = []
             for (index, track) in sequence.videoTracks.enumerated() where track.isOutputEnabled {
-                guard let clip = track.clip(at: start), clip.isEnabled, clip.opacity > 0,
-                      isAvailable(clip.mediaID) else { continue }
-                layers.append(RenderLayer(trackIndex: index, clipID: clip.id, mediaID: clip.mediaID,
-                                          opacity: min(1, clip.opacity)))
+                func layer(_ clip: Clip?, _ transition: LayerTransition? = nil) -> RenderLayer? {
+                    guard let clip, clip.isEnabled, clip.opacity > 0, isAvailable(clip.mediaID) else { return nil }
+                    return RenderLayer(trackIndex: index, clipID: clip.id, mediaID: clip.mediaID,
+                                       opacity: min(1, clip.opacity), transition: transition)
+                }
+                if let active = transitions[index].first(where: { $0.range.contains(start) }) {
+                    let range = active.range
+                    let outgoing = layer(active.left, LayerTransition(id: active.id, kind: active.kind, range: range,
+                                                                      role: .outgoing))
+                    let incoming = layer(active.right, LayerTransition(id: active.id, kind: active.kind, range: range,
+                                                                       role: .incoming))
+                    layers += [outgoing, incoming].compactMap { $0 }
+                } else if let single = layer(track.clip(at: start)) {
+                    layers.append(single)
+                }
             }
             segments.append(RenderSegment(range: FrameRange(start: start, end: end), layers: layers))
         }
         return segments
+    }
+
+    /// Volume envelopes for audio crossfades and fades on one track: for each clip, the
+    /// frames over which it fades in and out.
+    public static func audioFades(for track: Track) -> [UUID: ClipFades] {
+        var fades: [UUID: ClipFades] = [:]
+        for transition in track.resolvedTransitions where transition.kind.isAudio {
+            let curve: ClipFades.Curve = transition.kind == .constantPower ? .constantPower : .linear
+            if let left = transition.left {
+                fades[left.id, default: ClipFades()].fadeOut = (transition.range, curve)
+            }
+            if let right = transition.right {
+                fades[right.id, default: ClipFades()].fadeIn = (transition.range, curve)
+            }
+        }
+        return fades
     }
 
     /// Linear gain for each audio track: solo overrides mute, as in Premiere's mixer.

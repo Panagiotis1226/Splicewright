@@ -51,8 +51,8 @@ public struct CompositionOutput {
 }
 
 /// Compiles an `EditSequence` into an AVFoundation composition. Each timeline track becomes
-/// one composition track (clips on a track never overlap), and the render plan's segments
-/// become compositor instructions.
+/// one composition track, or more where transitions need two of its clips at once (A/B
+/// roll), and the render plan's segments become compositor instructions.
 public struct CompositionBuilder {
     /// 1, 0.5 or 0.25: the Program monitor's playback resolution.
     public var renderScale: Double
@@ -88,18 +88,23 @@ public struct CompositionBuilder {
 
         let composition = AVMutableComposition()
         let totalFrames = max(sequence.durationFrames, 1)
-        var videoTrackIDs: [CMPersistentTrackID] = []
+        var clipTracks: [UUID: CMPersistentTrackID] = [:]
         var baseTrack: AVMutableCompositionTrack?
         for track in sequence.videoTracks {
-            let compositionTrack = composition.addMutableTrack(withMediaType: .video,
-                                                               preferredTrackID: kCMPersistentTrackID_Invalid)
-            videoTrackIDs.append(compositionTrack?.trackID ?? kCMPersistentTrackID_Invalid)
-            guard let compositionTrack else { continue }
-            if baseTrack == nil { baseTrack = compositionTrack }
+            let packer = TrackPacker(composition: composition, mediaType: .video)
+            let handles = Handles(track)
             for clip in track.clips {
                 guard let source = loaded[clip.mediaID], let sourceTrack = source.video else { continue }
-                insert(clip, from: sourceTrack, duration: source.duration, into: compositionTrack, rate: rate)
+                let (head, tail) = handles[clip.id]
+                guard let compositionTrack = packer.track(for: clip.start - head, end: clip.end + tail) else { continue }
+                if baseTrack == nil { baseTrack = compositionTrack }
+                clipTracks[clip.id] = compositionTrack.trackID
+                insert(Placement(clip: clip, head: head, tail: tail, freezeMissingHandles: true),
+                       from: sourceTrack, duration: source.duration, into: compositionTrack, rate: rate)
             }
+        }
+        if baseTrack == nil {
+            baseTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         }
         // Keep the composition as long as the sequence so instructions always cover it.
         if let baseTrack {
@@ -112,41 +117,72 @@ public struct CompositionBuilder {
         let audible = RenderPlan.audibleTracks(in: sequence)
         var mixParameters: [AVAudioMixInputParameters] = []
         for (index, track) in sequence.audioTracks.enumerated() {
-            guard let compositionTrack = composition.addMutableTrack(withMediaType: .audio,
-                                                                     preferredTrackID: kCMPersistentTrackID_Invalid) else {
-                continue
-            }
-            let parameters = AVMutableAudioMixInputParameters(track: compositionTrack)
+            let packer = TrackPacker(composition: composition, mediaType: .audio)
+            let handles = Handles(track)
+            let fades = RenderPlan.audioFades(for: track)
+            var parameters: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
             for clip in track.clips {
                 guard let source = loaded[clip.mediaID], let sourceTrack = source.audio else { continue }
-                insert(clip, from: sourceTrack, duration: source.duration, into: compositionTrack, rate: rate)
-                // Volume holds until the next change, so setting it at each clip start is enough.
+                let (head, tail) = handles[clip.id]
+                guard let compositionTrack = packer.track(for: clip.start - head, end: clip.end + tail) else { continue }
+                insert(Placement(clip: clip, head: head, tail: tail, freezeMissingHandles: false),
+                       from: sourceTrack, duration: source.duration, into: compositionTrack, rate: rate)
+                let params = parameters[compositionTrack.trackID]
+                    ?? AVMutableAudioMixInputParameters(track: compositionTrack)
+                parameters[compositionTrack.trackID] = params
                 let gain = audible[index] && clip.isEnabled ? Float(RenderPlan.linearGain(dB: clip.gainDB)) : 0
-                parameters.setVolume(gain, at: time(clip.start))
+                AudioEnvelope.apply(gain: gain, fades: fades[clip.id], clipStart: clip.start - head, to: params,
+                                    rate: rate)
             }
-            mixParameters.append(parameters)
+            mixParameters += parameters.keys.sorted().compactMap { parameters[$0] }
         }
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = mixParameters
 
-        let videoComposition = makeVideoComposition(sequence, trackIDs: videoTrackIDs, loaded: loaded,
+        let videoComposition = makeVideoComposition(sequence, clipTracks: clipTracks, loaded: loaded,
                                                     totalFrames: totalFrames, project: project)
         return CompositionOutput(composition: composition, videoComposition: videoComposition,
                                  audioMix: audioMix, durationFrames: totalFrames)
     }
 
-    private func insert(_ clip: Clip, from sourceTrack: AVAssetTrack, duration: CMTime,
-                        into track: AVMutableCompositionTrack, rate: FrameRate) {
-        let start = clip.sourceStart.cmTime
-        var length = RationalTime(frames: clip.duration, rate: rate).cmTime
-        // Never read past the end of the source.
-        if start + length > duration { length = duration - start }
-        guard length > .zero else { return }
-        let at = RationalTime(frames: clip.start, rate: rate).cmTime
-        try? track.insertTimeRange(CMTimeRange(start: start, duration: length), of: sourceTrack, at: at)
+    /// Inserts a clip plus `head`/`tail` frames of handle for its transitions. Handles the
+    /// source doesn't have are filled with a held first or last frame (video) or silence.
+    private struct Placement {
+        var clip: Clip
+        var head: Int64
+        var tail: Int64
+        var freezeMissingHandles: Bool
     }
 
-    private func makeVideoComposition(_ sequence: EditSequence, trackIDs: [CMPersistentTrackID],
+    private func insert(_ placement: Placement, from sourceTrack: AVAssetTrack, duration: CMTime,
+                        into track: AVMutableCompositionTrack, rate: FrameRate) {
+        func time(_ frames: Int64) -> CMTime { RationalTime(frames: frames, rate: rate).cmTime }
+        let (clip, head, tail, freezeMissingHandles) = (placement.clip, placement.head, placement.tail,
+                                                        placement.freezeMissingHandles)
+        let wantedStart = clip.sourceStart.cmTime - time(head)
+        let wantedEnd = clip.sourceStart.cmTime + time(clip.duration + tail)
+        let start = max(wantedStart, .zero)
+        let end = min(wantedEnd, duration)
+        guard end > start else { return }
+        let at = time(clip.start - head)
+        let missingHead = start - wantedStart
+        let frame = rate.cmFrameDuration
+        if freezeMissingHandles, missingHead > .zero {
+            try? track.insertTimeRange(CMTimeRange(start: start, duration: min(frame, end - start)), of: sourceTrack, at: at)
+            track.scaleTimeRange(CMTimeRange(start: at, duration: min(frame, end - start)), toDuration: missingHead)
+        }
+        try? track.insertTimeRange(CMTimeRange(start: start, end: end), of: sourceTrack, at: at + missingHead)
+        // Only hold the last frame for the transition's handle, not for media shorter than the clip.
+        let missingTail = min(wantedEnd - end, time(tail))
+        if freezeMissingHandles, missingTail > .zero {
+            let holdAt = at + missingHead + (end - start)
+            let last = CMTimeRange(start: max(start, end - frame), end: end)
+            try? track.insertTimeRange(last, of: sourceTrack, at: holdAt)
+            track.scaleTimeRange(CMTimeRange(start: holdAt, duration: last.duration), toDuration: missingTail)
+        }
+    }
+
+    private func makeVideoComposition(_ sequence: EditSequence, clipTracks: [UUID: CMPersistentTrackID],
                                       loaded: [UUID: LoadedMedia], totalFrames: Int64,
                                       project: Project) -> AVMutableVideoComposition {
         let settings = sequence.settings
@@ -170,23 +206,93 @@ public struct CompositionBuilder {
         }
         videoComposition.instructions = segments.map { segment in
             let layers: [InstructionLayer] = segment.layers.compactMap { layer in
-                guard let media = loaded[layer.mediaID], trackIDs.indices.contains(layer.trackIndex) else { return nil }
+                guard let media = loaded[layer.mediaID], let trackID = clipTracks[layer.clipID] else { return nil }
                 let orientation = Affine2D(media.preferredTransform)
                 let transform = Affine2D.fit(sourceWidth: media.naturalSize.width, sourceHeight: media.naturalSize.height,
                                              orientation: orientation, renderWidth: renderWidth,
                                              renderHeight: renderHeight)
                 let item = project.item(layer.mediaID)
-                return InstructionLayer(trackID: trackIDs[layer.trackIndex], opacity: layer.opacity,
+                return InstructionLayer(trackID: trackID, opacity: layer.opacity,
                                         transform: transform, sourceWidth: media.naturalSize.width,
                                         sourceHeight: media.naturalSize.height,
                                         fallbackColor: item?.info.video?.color ?? .untagged,
-                                        forcedColor: item?.colorOverride)
+                                        forcedColor: item?.colorOverride,
+                                        transition: layer.transition.map { InstructionTransition($0, rate: rate) })
             }
             let range = CMTimeRange(start: RationalTime(frames: segment.range.start, rate: rate).cmTime,
                                     end: RationalTime(frames: segment.range.end, rate: rate).cmTime)
             return CompositionInstruction(timeRange: range, layers: layers, outputSpace: outputSpace, overlay: overlay)
         }
         return videoComposition
+    }
+}
+
+/// Frames of handle each clip needs on a track: before its start for a transition into it,
+/// after its end for a transition out of it.
+private struct Handles {
+    private var values: [UUID: (head: Int64, tail: Int64)] = [:]
+
+    init(_ track: Track) {
+        for transition in track.resolvedTransitions {
+            if let left = transition.left { values[left.id, default: (0, 0)].tail = transition.after }
+            if let right = transition.right { values[right.id, default: (0, 0)].head = transition.before }
+        }
+    }
+
+    subscript(_ clipID: UUID) -> (head: Int64, tail: Int64) { values[clipID] ?? (0, 0) }
+}
+
+/// Spreads one timeline track's clips over as few composition tracks as possible: a clip
+/// goes on the first track that's free for its whole range (handles included).
+private final class TrackPacker {
+    private let composition: AVMutableComposition
+    private let mediaType: AVMediaType
+    private var tracks: [(track: AVMutableCompositionTrack, end: Int64)] = []
+
+    init(composition: AVMutableComposition, mediaType: AVMediaType) {
+        self.composition = composition
+        self.mediaType = mediaType
+    }
+
+    func track(for start: Int64, end: Int64) -> AVMutableCompositionTrack? {
+        if let index = tracks.firstIndex(where: { $0.end <= start }) {
+            tracks[index].end = end
+            return tracks[index].track
+        }
+        guard let track = composition.addMutableTrack(withMediaType: mediaType,
+                                                      preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
+        tracks.append((track, end))
+        return track
+    }
+}
+
+/// Clip gain and fade ramps on an audio mix track.
+enum AudioEnvelope {
+    /// Constant-power fades are approximated with this many linear ramps.
+    static let curveSteps = 8
+
+    static func apply(gain: Float, fades: ClipFades?, clipStart: Int64, to parameters: AVMutableAudioMixInputParameters,
+                      rate: FrameRate) {
+        func time(_ frames: Double) -> CMTime {
+            CMTime(seconds: frames / rate.framesPerSecond, preferredTimescale: 48_000)
+        }
+        guard let fades, fades.fadeIn != nil || fades.fadeOut != nil else {
+            parameters.setVolume(gain, at: time(Double(clipStart)))
+            return
+        }
+        if fades.fadeIn == nil { parameters.setVolume(gain, at: time(Double(clipStart))) }
+        for range in [fades.fadeIn?.range, fades.fadeOut?.range].compactMap({ $0 }) {
+            let steps = (fades.fadeIn?.curve == .constantPower || fades.fadeOut?.curve == .constantPower) ? curveSteps : 1
+            for step in 0..<steps {
+                let from = Double(range.start) + Double(range.length) * Double(step) / Double(steps)
+                let to = Double(range.start) + Double(range.length) * Double(step + 1) / Double(steps)
+                // Sample the envelope just inside each end so neighbouring ramps meet exactly.
+                let startGain = Float(fades.gain(at: from)) * gain
+                let endGain = Float(fades.gain(at: to)) * gain
+                parameters.setVolumeRamp(fromStartVolume: startGain, toEndVolume: endGain,
+                                         timeRange: CMTimeRange(start: time(from), end: time(to)))
+            }
+        }
     }
 }
 

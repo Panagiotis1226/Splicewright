@@ -163,10 +163,12 @@ public struct Track: Sendable, Hashable, Codable, Identifiable {
     public var isSolo: Bool
     /// Source patching: Insert/Overwrite from the Source monitor land on targeted tracks.
     public var isTargeted: Bool
+    /// Transitions at this track's cuts and clip edges. See `resolvedTransitions`.
+    public var transitions: [Transition]
 
     public init(id: UUID = UUID(), kind: TrackKind, clips: [Clip] = [], isLocked: Bool = false,
                 isSyncLocked: Bool = true, isOutputEnabled: Bool = true, isSolo: Bool = false,
-                isTargeted: Bool = false) {
+                isTargeted: Bool = false, transitions: [Transition] = []) {
         self.id = id
         self.kind = kind
         self.clips = clips
@@ -175,6 +177,25 @@ public struct Track: Sendable, Hashable, Codable, Identifiable {
         self.isOutputEnabled = isOutputEnabled
         self.isSolo = isSolo
         self.isTargeted = isTargeted
+        self.transitions = transitions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, clips, isLocked, isSyncLocked, isOutputEnabled, isSolo, isTargeted, transitions
+    }
+
+    /// Schema 2 files have no transitions.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(TrackKind.self, forKey: .kind)
+        clips = try container.decode([Clip].self, forKey: .clips)
+        isLocked = try container.decode(Bool.self, forKey: .isLocked)
+        isSyncLocked = try container.decode(Bool.self, forKey: .isSyncLocked)
+        isOutputEnabled = try container.decode(Bool.self, forKey: .isOutputEnabled)
+        isSolo = try container.decode(Bool.self, forKey: .isSolo)
+        isTargeted = try container.decode(Bool.self, forKey: .isTargeted)
+        transitions = try container.decodeIfPresent([Transition].self, forKey: .transitions) ?? []
     }
 
     public var end: Int64 { clips.last?.end ?? 0 }

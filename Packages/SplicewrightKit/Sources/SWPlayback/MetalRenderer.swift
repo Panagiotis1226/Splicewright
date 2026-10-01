@@ -32,6 +32,26 @@ struct LayerFrame {
     var forcedColor: ColorDescription?
 }
 
+/// Must match `TransitionUniforms` in Shaders.swift.
+struct TransitionUniforms {
+    /// Kind index, progress (0...1), unused, unused.
+    var params: SIMD4<Float>
+}
+
+/// The two sides of a transition on one track. Either side may be missing (a fade).
+struct TransitionFrame {
+    var outgoing: LayerFrame?
+    var incoming: LayerFrame?
+    var kind: TransitionKind
+    var progress: Double
+}
+
+/// What to draw, bottom first.
+enum RenderItem {
+    case layer(LayerFrame)
+    case transition(TransitionFrame)
+}
+
 enum RenderError: Error {
     case noMetalDevice
     case shaderCompilation(String)
@@ -47,8 +67,11 @@ final class MetalRenderer {
     private let queue: MTLCommandQueue
     private let layerPipeline: MTLRenderPipelineState
     private let outputPipeline: MTLRenderPipelineState
+    private let transitionPipeline: MTLRenderPipelineState
     private let textureCache: CVMetalTextureCache
     private var workingTexture: MTLTexture?
+    /// Each side of a transition is drawn here first (transparent where it doesn't cover).
+    private var scratchTextures: [MTLTexture] = []
     private let lock = NSLock()
 
     init() throws {
@@ -83,6 +106,18 @@ final class MetalRenderer {
         output.colorAttachments[0].pixelFormat = .rgba16Float
         outputPipeline = try device.makeRenderPipelineState(descriptor: output)
 
+        // Transition mixes are premultiplied, composited over the layers below.
+        let mix = MTLRenderPipelineDescriptor()
+        mix.vertexFunction = library.makeFunction(name: "fullScreenVertex")
+        mix.fragmentFunction = library.makeFunction(name: "transitionFragment")
+        mix.colorAttachments[0].pixelFormat = .rgba16Float
+        mix.colorAttachments[0].isBlendingEnabled = true
+        mix.colorAttachments[0].sourceRGBBlendFactor = .one
+        mix.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+        mix.colorAttachments[0].sourceAlphaBlendFactor = .one
+        mix.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        transitionPipeline = try device.makeRenderPipelineState(descriptor: mix)
+
         var cache: CVMetalTextureCache?
         guard CVMetalTextureCacheCreate(nil, nil, device, nil, &cache) == kCVReturnSuccess, let cache else {
             throw RenderError.textureCreationFailed
@@ -93,6 +128,12 @@ final class MetalRenderer {
     /// Renders `layers` over black into `output` (a 64RGBAHalf buffer) encoded for `space`.
     func render(layers: [LayerFrame], into output: CVPixelBuffer, space: SequenceColorSpace,
                 overlay: OverlayMode = .none) throws {
+        try render(items: layers.map(RenderItem.layer), into: output, space: space, overlay: overlay)
+    }
+
+    /// Renders `items` over black into `output` (a 64RGBAHalf buffer) encoded for `space`.
+    func render(items: [RenderItem], into output: CVPixelBuffer, space: SequenceColorSpace,
+                overlay: OverlayMode = .none) throws {
         lock.lock()
         defer { lock.unlock() }
 
@@ -100,49 +141,98 @@ final class MetalRenderer {
         let height = CVPixelBufferGetHeight(output)
         var keepAlive: [CVMetalTexture] = []
         let destination = try texture(from: output, plane: 0, format: .rgba16Float, keepAlive: &keepAlive)
-        let working = workingTexture(width: width, height: height)
-        guard let commandBuffer = queue.makeCommandBuffer() else { throw RenderError.textureCreationFailed }
+        guard let working = workingTexture(width: width, height: height),
+              let commandBuffer = queue.makeCommandBuffer() else { throw RenderError.textureCreationFailed }
 
-        let layerPass = MTLRenderPassDescriptor()
-        layerPass.colorAttachments[0].texture = working
-        layerPass.colorAttachments[0].loadAction = .clear
-        layerPass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        layerPass.colorAttachments[0].storeAction = .store
-        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: layerPass) {
-            encoder.setRenderPipelineState(layerPipeline)
-            for layer in layers {
-                guard let format = PlanarFormat(CVPixelBufferGetPixelFormatType(layer.pixelBuffer)) else { continue }
-                let luma = try texture(from: layer.pixelBuffer, plane: 0, format: format.lumaFormat, keepAlive: &keepAlive)
-                let chroma = try texture(from: layer.pixelBuffer, plane: 1, format: format.chromaFormat,
-                                         keepAlive: &keepAlive)
-                var uniforms = Self.uniforms(for: layer, format: format, space: space,
-                                             renderWidth: width, renderHeight: height)
-                encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
-                encoder.setFragmentBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
-                encoder.setFragmentTexture(luma, index: 0)
-                encoder.setFragmentTexture(chroma, index: 1)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        var encoder = try layerEncoder(commandBuffer, target: working, clear: MTLClearColor(red: 0, green: 0, blue: 0,
+                                                                                             alpha: 1))
+        for item in items {
+            switch item {
+            case .layer(let layer):
+                try draw(layer, with: encoder, space: space, size: (width, height), keepAlive: &keepAlive)
+            case .transition(let transition):
+                encoder.endEncoding()
+                let scratch = try scratch(width: width, height: height)
+                for (side, target) in zip([transition.outgoing, transition.incoming], scratch) {
+                    let sideEncoder = try layerEncoder(commandBuffer, target: target,
+                                                       clear: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0))
+                    if let side {
+                        try draw(side, with: sideEncoder, space: space, size: (width, height), keepAlive: &keepAlive)
+                    }
+                    sideEncoder.endEncoding()
+                }
+                encoder = try layerEncoder(commandBuffer, target: working, clear: nil)
+                encoder.setRenderPipelineState(transitionPipeline)
+                var uniforms = TransitionUniforms(params: SIMD4(Float(Self.transitionIndex(transition.kind)),
+                                                                Float(transition.progress), 0, 0))
+                encoder.setFragmentBytes(&uniforms, length: MemoryLayout<TransitionUniforms>.stride, index: 0)
+                encoder.setFragmentTexture(scratch[0], index: 0)
+                encoder.setFragmentTexture(scratch[1], index: 1)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                encoder.setRenderPipelineState(layerPipeline)
             }
-            encoder.endEncoding()
         }
+        encoder.endEncoding()
 
         let outputPass = MTLRenderPassDescriptor()
         outputPass.colorAttachments[0].texture = destination
         outputPass.colorAttachments[0].loadAction = .dontCare
         outputPass.colorAttachments[0].storeAction = .store
-        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: outputPass) {
-            encoder.setRenderPipelineState(outputPipeline)
+        if let outputEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: outputPass) {
+            outputEncoder.setRenderPipelineState(outputPipeline)
             var uniforms = OutputUniforms(params: SIMD4(Float(Self.outputSpaceIndex(space)),
                                                         overlay == .clipping ? 1 : 0, 0, 0))
-            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<OutputUniforms>.stride, index: 0)
-            encoder.setFragmentTexture(working, index: 0)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-            encoder.endEncoding()
+            outputEncoder.setFragmentBytes(&uniforms, length: MemoryLayout<OutputUniforms>.stride, index: 0)
+            outputEncoder.setFragmentTexture(working, index: 0)
+            outputEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            outputEncoder.endEncoding()
         }
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         withExtendedLifetime(keepAlive) {}
         ColorAttachments.tag(output, with: space.color)
+    }
+
+    /// A layer-pipeline encoder on `target`, cleared to `clear` (or keeping its contents if nil).
+    private func layerEncoder(_ commandBuffer: MTLCommandBuffer, target: MTLTexture,
+                              clear: MTLClearColor?) throws -> MTLRenderCommandEncoder {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = clear == nil ? .load : .clear
+        if let clear { pass.colorAttachments[0].clearColor = clear }
+        pass.colorAttachments[0].storeAction = .store
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+            throw RenderError.textureCreationFailed
+        }
+        encoder.setRenderPipelineState(layerPipeline)
+        return encoder
+    }
+
+    private func draw(_ layer: LayerFrame, with encoder: MTLRenderCommandEncoder, space: SequenceColorSpace,
+                      size: (width: Int, height: Int), keepAlive: inout [CVMetalTexture]) throws {
+        let (width, height) = size
+        guard let format = PlanarFormat(CVPixelBufferGetPixelFormatType(layer.pixelBuffer)) else { return }
+        let luma = try texture(from: layer.pixelBuffer, plane: 0, format: format.lumaFormat, keepAlive: &keepAlive)
+        let chroma = try texture(from: layer.pixelBuffer, plane: 1, format: format.chromaFormat, keepAlive: &keepAlive)
+        var uniforms = Self.uniforms(for: layer, format: format, space: space, renderWidth: width, renderHeight: height)
+        encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
+        encoder.setFragmentTexture(luma, index: 0)
+        encoder.setFragmentTexture(chroma, index: 1)
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+    }
+
+    static func transitionIndex(_ kind: TransitionKind) -> Int {
+        switch kind {
+        case .crossDissolve, .constantPower, .constantGain: return 0
+        case .dipToBlack: return 1
+        case .dipToWhite: return 2
+        case .filmDissolve: return 3
+        case .wipeRight: return 4
+        case .wipeLeft: return 5
+        case .wipeDown: return 6
+        case .wipeUp: return 7
+        }
     }
 
     // MARK: - Parameters
@@ -221,12 +311,27 @@ final class MetalRenderer {
 
     private func workingTexture(width: Int, height: Int) -> MTLTexture? {
         if let existing = workingTexture, existing.width == width, existing.height == height { return existing }
+        workingTexture = makeRenderTexture(width: width, height: height)
+        return workingTexture
+    }
+
+    private func scratch(width: Int, height: Int) throws -> [MTLTexture] {
+        if scratchTextures.count == 2, scratchTextures[0].width == width, scratchTextures[0].height == height {
+            return scratchTextures
+        }
+        let textures = [makeRenderTexture(width: width, height: height), makeRenderTexture(width: width, height: height)]
+            .compactMap { $0 }
+        guard textures.count == 2 else { throw RenderError.textureCreationFailed }
+        scratchTextures = textures
+        return textures
+    }
+
+    private func makeRenderTexture(width: Int, height: Int) -> MTLTexture? {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: width,
                                                                   height: height, mipmapped: false)
         descriptor.usage = [.renderTarget, .shaderRead]
         descriptor.storageMode = .private
-        workingTexture = device.makeTexture(descriptor: descriptor)
-        return workingTexture
+        return device.makeTexture(descriptor: descriptor)
     }
 }
 

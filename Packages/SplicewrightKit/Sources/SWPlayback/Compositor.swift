@@ -13,6 +13,34 @@ struct InstructionLayer {
     var fallbackColor: ColorDescription
     /// Interpret Footage override: used instead of the frame's own tags.
     var forcedColor: ColorDescription?
+    /// Set when this layer is one side of a transition.
+    var transition: InstructionTransition?
+}
+
+/// A layer's part in a transition, in composition time.
+struct InstructionTransition {
+    var id: UUID
+    var kind: TransitionKind
+    var start: CMTime
+    var duration: CMTime
+    var frameDuration: CMTime
+    var role: LayerTransition.Role
+
+    init(_ transition: LayerTransition, rate: FrameRate) {
+        id = transition.id
+        kind = transition.kind
+        start = RationalTime(frames: transition.range.start, rate: rate).cmTime
+        duration = RationalTime(frames: transition.range.length, rate: rate).cmTime
+        frameDuration = rate.cmFrameDuration
+        role = transition.role
+    }
+
+    /// 0 at the transition's first frame, approaching 1 at its last. Frames are sampled at
+    /// their centers so a dissolve is symmetrical.
+    func progress(at time: CMTime) -> Double {
+        let elapsed = (time - start).seconds + frameDuration.seconds / 2
+        return min(max(elapsed / max(duration.seconds, 1e-9), 0), 1)
+    }
 }
 
 /// Program-monitor diagnostics drawn by the compositor's output pass.
@@ -26,7 +54,8 @@ public enum OverlayMode: Sendable, Hashable {
 final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let timeRange: CMTimeRange
     let enablePostProcessing = false
-    let containsTweening = false
+    /// Transitions change every frame.
+    let containsTweening: Bool
     let requiredSourceTrackIDs: [NSValue]?
     let passthroughTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid
 
@@ -40,6 +69,7 @@ final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProto
         self.layers = layers
         self.outputSpace = outputSpace
         self.overlay = overlay
+        containsTweening = layers.contains { $0.transition != nil }
         let ids = Array(Set(layers.map(\.trackID))).sorted()
         requiredSourceTrackIDs = ids.isEmpty ? nil : ids.map { NSNumber(value: $0) }
     }
@@ -107,13 +137,35 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
             try renderer.render(layers: [], into: output, space: .rec709)
             return output
         }
-        let frames: [LayerFrame] = instruction.layers.compactMap { layer in
+        func frame(_ layer: InstructionLayer) -> LayerFrame? {
             guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { return nil }
             return LayerFrame(pixelBuffer: buffer, transform: layer.transform, sourceWidth: layer.sourceWidth,
                               sourceHeight: layer.sourceHeight, opacity: layer.opacity,
                               fallbackColor: layer.fallbackColor, forcedColor: layer.forcedColor)
         }
-        try renderer.render(layers: frames, into: output, space: instruction.outputSpace, overlay: instruction.overlay)
+        var items: [RenderItem] = []
+        var index = instruction.layers.startIndex
+        while index < instruction.layers.endIndex {
+            let layer = instruction.layers[index]
+            guard let transition = layer.transition else {
+                if let frame = frame(layer) { items.append(.layer(frame)) }
+                index += 1
+                continue
+            }
+            // A transition's outgoing and incoming layers are adjacent.
+            var mix = TransitionFrame(outgoing: nil, incoming: nil, kind: transition.kind,
+                                      progress: transition.progress(at: request.compositionTime))
+            while index < instruction.layers.endIndex, let side = instruction.layers[index].transition,
+                  side.id == transition.id {
+                switch side.role {
+                case .outgoing: mix.outgoing = frame(instruction.layers[index])
+                case .incoming: mix.incoming = frame(instruction.layers[index])
+                }
+                index += 1
+            }
+            items.append(.transition(mix))
+        }
+        try renderer.render(items: items, into: output, space: instruction.outputSpace, overlay: instruction.overlay)
         return output
     }
 }
