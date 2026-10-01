@@ -184,12 +184,14 @@ final class EffectRenderTests: XCTestCase {
         XCTAssertGreaterThan(try green(image, 69 / 320, 25 / 180), 235, "V3 above it stays sharp")
 
         sequence.updateProperty(.opacity, of: layer) { $0.values = [0.5] }
-        let half = try green(try await render(sequence), 0.23, 0.5)
+        let halfImage = try await render(sequence)
+        let half = try green(halfImage, 0.23, 0.5)
         XCTAssertGreaterThan(half, 10, "half the blur")
         XCTAssertLessThan(half, blurredEdge)
 
         sequence.updateEffect(sequence.clip(layer)!.effects[0].id, of: layer) { $0.isEnabled = false }
-        XCTAssertLessThan(try green(try await render(sequence), 0.23, 0.5), 10, "a disabled effect does nothing")
+        let disabled = try await render(sequence)
+        XCTAssertLessThan(try green(disabled, 0.23, 0.5), 10, "a disabled effect does nothing")
     }
 
     func testAdjustmentLayerKeepsWhatsUnderItWhereItEnds() async throws {
@@ -198,7 +200,9 @@ final class EffectRenderTests: XCTestCase {
         sequence.updateProperty(.scale, of: below) { $0.values = [50] }
         let layer = try XCTUnwrap(sequence.addAdjustmentLayer(at: 0, duration: 20, trackID: sequence.videoTracks[1].id))
         try apply(.crop, ["left": 100], to: layer, in: &sequence)
-        XCTAssertLessThan(try green(try await render(sequence, frame: 10), 0.5, 0.5), 10, "cropped to nothing")
-        XCTAssertGreaterThan(try green(try await render(sequence, frame: 30), 0.5, 0.5), 240, "after the layer ends")
+        let during = try await render(sequence, frame: 10)
+        let after = try await render(sequence, frame: 30)
+        XCTAssertLessThan(try green(during, 0.5, 0.5), 10, "cropped to nothing")
+        XCTAssertGreaterThan(try green(after, 0.5, 0.5), 240, "after the layer ends")
     }
 }
