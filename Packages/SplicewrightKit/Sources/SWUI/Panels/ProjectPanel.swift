@@ -7,25 +7,29 @@ import SWMedia
 struct ProjectPanel: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject private var proxies = ProxyQueue.shared
+    @ObservedObject private var layouts = WorkspaceStore.shared
     @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
             toolbar
             Divider().overlay(Theme.divider)
-            HSplitView {
-                BinList(workspace: workspace)
-                    .frame(minWidth: 130, idealWidth: 160, maxWidth: 260)
-                Group {
-                    if workspace.project.media.isEmpty {
-                        emptyState
-                    } else if workspace.projectViewMode == .list {
-                        MediaTable(workspace: workspace)
-                    } else {
-                        MediaGrid(workspace: workspace)
+            GeometryReader { geometry in
+                // The bin list's width is saved in the workspace, in points.
+                SplitPane(.horizontal, fraction: binsFraction(width: geometry.size.width), minFirst: 100, minSecond: 200) {
+                    BinList(workspace: workspace)
+                } second: {
+                    Group {
+                        if workspace.project.media.isEmpty {
+                            emptyState
+                        } else if workspace.projectViewMode == .list {
+                            MediaTable(workspace: workspace)
+                        } else {
+                            MediaGrid(workspace: workspace)
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(minWidth: 240, maxWidth: .infinity, maxHeight: .infinity)
             }
             statusBar
         }
@@ -57,6 +61,12 @@ struct ProjectPanel: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 70)
+            if workspace.projectViewMode == .icons {
+                Slider(value: $workspace.iconSize, in: WorkspaceLayout.iconSizeRange)
+                    .controlSize(.mini)
+                    .frame(width: 80)
+                    .help("Thumbnail size")
+            }
             Spacer()
             TextField("Search", text: $workspace.searchText)
                 .textFieldStyle(.roundedBorder)
@@ -79,6 +89,11 @@ struct ProjectPanel: View {
                 .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func binsFraction(width: CGFloat) -> Binding<CGFloat> {
+        Binding(get: { CGFloat(layouts.current.projectBinsWidth) / max(width, 1) },
+                set: { fraction in layouts.update { $0.projectBinsWidth = Double(fraction * max(width, 1)) } })
     }
 
     private var statusBar: some View {
@@ -337,7 +352,8 @@ private struct MediaGrid: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: workspace.iconSize, maximum: workspace.iconSize * 1.45),
+                                         spacing: 10)], spacing: 10) {
                 ForEach(workspace.visibleMedia) { item in
                     MediaTile(item: item, isSelected: workspace.selectedMediaIDs.contains(item.id))
                         .onTapGesture(count: 2) { workspace.openInSource(item.id) }

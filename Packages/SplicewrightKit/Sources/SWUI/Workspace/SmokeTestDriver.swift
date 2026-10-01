@@ -30,6 +30,13 @@ enum SmokeTestDriver {
         var exportedCodec = ""
         var transitionsApplied = 0
         var titleAdded = false
+        var proxyCreated = false
+        var proxyPlayback = false
+        var cacheBytes: Int64 = 0
+        var thumbnailCacheCleared = false
+        var workspaceApplied = false
+        var exportedWidth = 0
+        var sequenceWidth = 0
         var undoWorks = false
         var undoDiagnostics = ""
         var errors: [String] = []
@@ -83,6 +90,9 @@ enum SmokeTestDriver {
 
         (report.undoWorks, report.undoDiagnostics) = await checkUndo(workspace)
         addTransitionAndTitle(workspace, report: &report)
+        await checkProxies(workspace, video: first, report: &report)
+        checkCache(&report)
+        await checkWorkspaces(workspace, report: &report)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)
         if let clip = sequence.videoTracks[0].clips.first { workspace.timeline.selection = [clip.id] }
@@ -122,6 +132,36 @@ enum SmokeTestDriver {
         if !report.titleAdded { report.errors.append("No title was added") }
     }
 
+    /// Makes a proxy for one clip, then plays with proxies on (export later must still use originals).
+    private static func checkProxies(_ workspace: WorkspaceController, video: MediaItem, report: inout Report) async {
+        ProxyQueue.shared.enqueue([video], preset: ProxyPreset(resolution: .half))
+        _ = await waitFor(seconds: 90) { ProxyQueue.shared.jobs.isEmpty }
+        if case .failed(let reason)? = ProxyQueue.shared.jobs[video.id] { report.errors.append("Proxy: \(reason)") }
+        report.proxyCreated = ProxyStore.shared.proxy(for: video) != nil
+        workspace.useProxies = true
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        report.proxyPlayback = await waitFor(seconds: 30) {
+            !workspace.program.isBuilding && workspace.program.player.currentItem != nil
+        } && workspace.program.useProxies
+    }
+
+    private static func checkCache(_ report: inout Report) {
+        let manager = CacheManager.shared
+        report.cacheBytes = manager.usage().values.reduce(0) { $0 + $1.bytes }
+        manager.delete([.thumbnails])
+        report.thumbnailCacheCleared = manager.usage()[.thumbnails]?.files == 0
+    }
+
+    /// Switches to the Assembly workspace (icon view) and back.
+    private static func checkWorkspaces(_ workspace: WorkspaceController, report: inout Report) async {
+        let store = WorkspaceStore.shared
+        let original = store.library.currentID
+        store.select(WorkspaceLayout.assembly.id)
+        report.workspaceApplied = await waitFor(seconds: 5) { workspace.projectViewMode == .icons }
+        store.select(original)
+        _ = await waitFor(seconds: 5) { workspace.projectViewMode == ProjectViewMode(rawValue: store.current.projectViewMode) }
+    }
+
     /// Exports frames 10...39 as H.264 SDR and probes the result.
     private static func exportClip(_ workspace: WorkspaceController, to url: URL, report: inout Report) async {
         guard var sequence = workspace.activeSequence else { return }
@@ -148,6 +188,8 @@ enum SmokeTestDriver {
             report.exportSucceeded = true
             report.exportedFrames = info.duration.frameIndex(at: sequence.rate)
             report.exportedCodec = info.video?.codec.displayName ?? "none"
+            report.exportedWidth = info.video?.width ?? 0
+            report.sequenceWidth = sequence.settings.width
         } catch {
             report.errors.append("Probing export: \(error.localizedDescription)")
         }

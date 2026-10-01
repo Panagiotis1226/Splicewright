@@ -7,7 +7,6 @@ struct ProgramMonitorPanel: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject var engine: PlaybackEngine
     @ObservedObject private var keys = KeyBindingsStore.shared
-    @State private var showsSafeMargins = false
 
     init(workspace: WorkspaceController) {
         self.workspace = workspace
@@ -24,7 +23,7 @@ struct ProgramMonitorPanel: View {
                     Text("No sequence").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
                 } else {
                     PlayerSurface(player: engine.player)
-                    if showsSafeMargins || workspace.activeTool == .type {
+                    if workspace.showsSafeMargins || workspace.activeTool == .type {
                         GeometryReader { geometry in
                             frameOverlay(in: fittedRect(geometry.size))
                         }
@@ -56,7 +55,7 @@ struct ProgramMonitorPanel: View {
                 .controlSize(.small)
                 .help(keys.hint("Toggle Proxies", .toggleProxies)
                       + ": play proxies where clips have them (export always uses originals)")
-            Toggle(isOn: $showsSafeMargins) { Image(systemName: "rectangle.dashed") }
+            Toggle(isOn: $workspace.showsSafeMargins) { Image(systemName: "rectangle.dashed") }
                 .toggleStyle(.button)
                 .buttonStyle(.borderless)
                 .controlSize(.small)
@@ -105,7 +104,7 @@ struct ProgramMonitorPanel: View {
     @ViewBuilder
     private func frameOverlay(in rect: CGRect) -> some View {
         ZStack(alignment: .topLeading) {
-            if showsSafeMargins {
+            if workspace.showsSafeMargins {
                 ForEach([0.9, 0.8], id: \.self) { fraction in
                     Rectangle()
                         .stroke(Color.white.opacity(0.55), lineWidth: 1)

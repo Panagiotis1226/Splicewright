@@ -12,25 +12,25 @@ public struct WorkspaceView: View {
     @ObservedObject var document: ProjectDocument
     @StateObject private var workspace = WorkspaceController()
     @Environment(\.undoManager) private var undoManager
-    @State private var sourceTab: PanelID = .source
+    @ObservedObject private var layouts = WorkspaceStore.shared
 
     public init(document: ProjectDocument) {
         self.document = document
     }
 
     public var body: some View {
-        SplitPane(.vertical, fraction: 0.52, minFirst: 220, minSecond: 260) {
-            SplitPane(.horizontal, fraction: 0.5, minFirst: 320, minSecond: 320) {
+        SplitPane(.vertical, fraction: split(\.rootSplit), minFirst: 220, minSecond: 260) {
+            SplitPane(.horizontal, fraction: split(\.topSplit), minFirst: 320, minSecond: 320) {
                 PanelContainer(
                     tabs: [
                         PanelTab(id: .source, title: sourceTitle),
                         PanelTab(id: .effectControls, title: "Effect Controls"),
                         PanelTab(id: .effects, title: "Effects"),
                     ],
-                    selectedTab: $sourceTab,
+                    selectedTab: sourceTab,
                     workspace: workspace
                 ) {
-                    switch sourceTab {
+                    switch sourceTab.wrappedValue {
                     case .effectControls: EffectControlsPanel(workspace: workspace)
                     case .effects: EffectsPanel(workspace: workspace)
                     default: SourceMonitorPanel(workspace: workspace)
@@ -42,7 +42,7 @@ public struct WorkspaceView: View {
                 }
             }
         } second: {
-            SplitPane(.horizontal, fraction: 0.33, minFirst: 300, minSecond: 480) {
+            SplitPane(.horizontal, fraction: split(\.bottomSplit), minFirst: 300, minSecond: 480) {
                 PanelContainer(.project, title: "Project", workspace: workspace) {
                     ProjectPanel(workspace: workspace)
                 }
@@ -60,14 +60,14 @@ public struct WorkspaceView: View {
         .preferredColorScheme(.dark)
         .background(KeyEventMonitor { workspace.handle(keyInput: $0) })
         .background(WindowAccessor { window in
-            workspace.window = window
+            workspace.attachWindow(window)
             SmokeTestDriver.startIfRequested(workspace: workspace)
         })
         .focusedSceneObject(workspace)
         .onAppear { workspace.attach(document: document, undoManager: undoManager) }
         .onChange(of: undoManager) { _, newValue in workspace.undoManager = newValue }
         .onChange(of: workspace.activePanel) { _, panel in
-            if panel == .source || panel == .effectControls || panel == .effects { sourceTab = panel }
+            if panel == .source || panel == .effectControls || panel == .effects { sourceTab.wrappedValue = panel }
         }
         .fileImporter(
             isPresented: $workspace.isImporterPresented,
@@ -89,6 +89,18 @@ public struct WorkspaceView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+    }
+
+    /// A divider position stored in the current workspace.
+    private func split(_ key: WritableKeyPath<WorkspaceLayout, Double>) -> Binding<CGFloat> {
+        Binding(get: { CGFloat(layouts.current[keyPath: key]) },
+                set: { value in layouts.update { $0[keyPath: key] = Double(value) } })
+    }
+
+    /// The front tab of the Source panel group, stored in the current workspace.
+    private var sourceTab: Binding<PanelID> {
+        Binding(get: { PanelID(rawValue: layouts.current.sourceTab) ?? .source },
+                set: { panel in layouts.update { $0.sourceTab = panel.rawValue } })
     }
 
     private var programTitle: String {

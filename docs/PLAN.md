@@ -131,6 +131,11 @@ XcodeGen project (committed), SPM modules, Makefile, README quick start, CI on a
 **M7 — Proxies (≈2 wk)**
 - "Create Proxies" on bin items writes ProRes 422 Proxy at 1920×1080 (or half resolution) through AVAssetWriter in a background queue. Proxies keep the source's color tags and are saved in `Cache/Proxies`.
 - The Program monitor proxy toggle swaps sources inside `CompositionBuilder`. **Export always uses the full-resolution originals.**
+- *As built:*
+  - **Location.** Proxies live in one app folder, `~/Library/Application Support/Splicewright/Proxies`, which can be changed in Settings, rather than inside each project. They are found by the source file's path, size and date, so every project using a file shares its proxy, and a changed source file needs a new one.
+  - **Format.** Proxies are video only; audio plays from the original. They are made at 1080p, 720p or half size in ProRes 422 Proxy or LT, and both monitors have a toggle.
+  - **Caches.** Settings ▸ Media Cache measures and deletes thumbnails, waveforms and proxies.
+  - **Workspaces.** Window ▸ Workspaces saves and switches layouts, and layouts are kept automatically.
 
 **M8 — Hardening (≈2 wk)**
 Autosave and crash recovery, relinking missing media, preferences, performance passes with Instruments (Metal System Trace, Allocations), and signing plus notarization.

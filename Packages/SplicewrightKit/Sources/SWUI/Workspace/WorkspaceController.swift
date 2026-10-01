@@ -24,6 +24,9 @@ public final class WorkspaceController: ObservableObject {
     @Published public var showsAllMedia = true
     @Published public var selectedMediaIDs: Set<UUID> = []
     @Published public var projectViewMode: ProjectViewMode = .list
+    /// Icon view tile width.
+    @Published public var iconSize: Double = 150
+    @Published public var showsSafeMargins = false
     @Published public var searchText = ""
     @Published public var isImporterPresented = false
     @Published public private(set) var isImporting = false
@@ -60,7 +63,9 @@ public final class WorkspaceController: ObservableObject {
     public var undoManager: UndoManager?
 
     private var importTask: Task<Void, Never>?
-    private var cancellables: Set<AnyCancellable> = []
+    var cancellables: Set<AnyCancellable> = []
+    /// Set while a workspace is being applied, so applying it isn't recorded as a change.
+    var isApplyingLayout = false
 
     public init() {
         NotificationCenter.default.publisher(for: .splicewrightProxiesChanged)
@@ -71,6 +76,7 @@ public final class WorkspaceController: ObservableObject {
                 self.sourceMonitor.reloadForProxies()
             }
             .store(in: &cancellables)
+        observeWorkspace()
     }
 
     public func attach(document: ProjectDocument, undoManager: UndoManager?) {

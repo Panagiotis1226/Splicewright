@@ -24,6 +24,8 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
     case newTitle
     // View
     case toggleProxies
+    // Window ▸ Workspaces: the first nine workspaces in the menu
+    case workspace1, workspace2, workspace3, workspace4, workspace5, workspace6, workspace7, workspace8, workspace9
 
     public var id: String { rawValue }
 
@@ -35,6 +37,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         case timeline = "Timeline"
         case tools = "Tools"
         case graphics = "Graphics"
+        case window = "Window"
 
         public var id: String { rawValue }
     }
@@ -60,11 +63,15 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
             return .graphics
         case .toggleProxies:
             return .transport
+        case .workspace1, .workspace2, .workspace3, .workspace4, .workspace5, .workspace6, .workspace7, .workspace8,
+             .workspace9:
+            return .window
         }
     }
 
     public var title: String {
         if let tool { return tool.displayName }
+        if let index = workspaceIndex { return "Workspace \(index + 1)" }
         return Self.titles[self] ?? rawValue
     }
 
@@ -101,6 +108,15 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         default: return nil
         }
     }
+
+    /// 0...8 for the workspace commands.
+    public var workspaceIndex: Int? {
+        Self.workspaceCommands.firstIndex(of: self)
+    }
+
+    public static let workspaceCommands: [CommandID] = [
+        .workspace1, .workspace2, .workspace3, .workspace4, .workspace5, .workspace6, .workspace7, .workspace8, .workspace9,
+    ]
 
     public static func command(for tool: EditTool) -> CommandID {
         allCases.first { $0.tool == tool } ?? .toolSelection

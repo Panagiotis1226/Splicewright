@@ -13,19 +13,24 @@ struct SplitPane<First: View, Second: View>: View {
     let minSecond: CGFloat
     let first: First
     let second: Second
-    @State private var fraction: CGFloat
+    /// The saved position (a workspace setting); written when a drag ends.
+    @Binding private var savedFraction: CGFloat
+    /// The position while dragging, so a drag doesn't save on every frame.
+    @State private var dragFraction: CGFloat?
     @State private var dragStartFraction: CGFloat?
 
     private let handle: CGFloat = 5
 
-    init(_ axis: Axis, fraction: CGFloat = 0.5, minFirst: CGFloat = 120, minSecond: CGFloat = 120,
+    private var fraction: CGFloat { dragFraction ?? savedFraction }
+
+    init(_ axis: Axis, fraction: Binding<CGFloat>, minFirst: CGFloat = 120, minSecond: CGFloat = 120,
          @ViewBuilder first: () -> First, @ViewBuilder second: () -> Second) {
         self.axis = axis
         self.minFirst = minFirst
         self.minSecond = minSecond
         self.first = first()
         self.second = second()
-        _fraction = State(initialValue: fraction)
+        _savedFraction = fraction
     }
 
     var body: some View {
@@ -74,9 +79,13 @@ struct SplitPane<First: View, Second: View>: View {
                         dragStartFraction = start
                         let delta = axis == .vertical ? value.translation.height : value.translation.width
                         let size = clampedFirstSize(start * available + delta, available: available)
-                        fraction = size / available
+                        dragFraction = size / available
                     }
-                    .onEnded { _ in dragStartFraction = nil }
+                    .onEnded { _ in
+                        if let dragFraction { savedFraction = dragFraction }
+                        dragFraction = nil
+                        dragStartFraction = nil
+                    }
             )
     }
 }

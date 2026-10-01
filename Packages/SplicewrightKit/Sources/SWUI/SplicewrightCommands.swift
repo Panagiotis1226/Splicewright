@@ -4,6 +4,7 @@ import SwiftUI
 public struct SplicewrightCommands: Commands {
     @FocusedObject private var workspace: WorkspaceController?
     @ObservedObject private var keys = KeyBindingsStore.shared
+    @ObservedObject private var workspaces = WorkspaceStore.shared
 
     public init() {}
 
@@ -71,9 +72,41 @@ public struct SplicewrightCommands: Commands {
             Button("Go to In") { workspace?.handle(.goToIn) }
             Button("Go to Out") { workspace?.handle(.goToOut) }
         }
+        CommandGroup(before: .windowArrangement) {
+            Menu("Workspaces") {
+                ForEach(Array(workspaces.library.saved.enumerated()), id: \.element.id) { index, layout in
+                    Toggle(layout.name, isOn: Binding(get: { workspaces.library.currentID == layout.id },
+                                                      set: { _ in workspaces.select(layout.id) }))
+                        .modifier(WorkspaceShortcut(index: index, keys: keys))
+                }
+                Divider()
+                Button("Save Changes to This Workspace") { workspaces.saveChanges() }
+                    .disabled(!workspaces.library.hasUnsavedChanges(workspaces.library.currentID))
+                Button("Save as New Workspace…") { workspaces.promptSaveAsNew() }
+                Button("Reset to Saved Layout") { workspaces.resetToSaved() }
+                    .disabled(!workspaces.library.hasUnsavedChanges(workspaces.library.currentID))
+                Divider()
+                OpenSettingsButton(title: "Edit Workspaces…", tab: .workspaces)
+            }
+            Divider()
+        }
         CommandGroup(after: .help) {
             Divider()
-            SettingsLink { Text("Keyboard Shortcuts…") }
+            OpenSettingsButton(title: "Keyboard Shortcuts…", tab: .keyboard)
+        }
+    }
+}
+
+/// ⌥⇧1…9 (or the user's shortcuts) for the first nine workspaces.
+private struct WorkspaceShortcut: ViewModifier {
+    let index: Int
+    let keys: KeyBindingsStore
+
+    func body(content: Content) -> some View {
+        if index < CommandID.workspaceCommands.count {
+            content.shortcut(CommandID.workspaceCommands[index], keys)
+        } else {
+            content
         }
     }
 }

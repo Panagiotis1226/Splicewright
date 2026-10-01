@@ -174,18 +174,44 @@ private struct KeyRecorder: NSViewRepresentable {
 
 /// The Settings window (Splicewright ▸ Settings…, ⌘,).
 public struct SettingsView: View {
+    enum Tab: String {
+        case keyboard, media, cache, workspaces
+    }
+
+    /// The tab to show; menu items set it before opening Settings.
+    @AppStorage("settingsTab") private var tab = Tab.keyboard.rawValue
     @ObservedObject private var store = KeyBindingsStore.shared
 
     public init() {}
 
     public var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             KeyboardSettingsView(store: store)
                 .tabItem { Label("Keyboard", systemImage: "keyboard") }
+                .tag(Tab.keyboard.rawValue)
             MediaSettingsView(preferences: MediaPreferences.shared)
                 .tabItem { Label("Media", systemImage: "film.stack") }
+                .tag(Tab.media.rawValue)
             CacheSettingsView()
                 .tabItem { Label("Media Cache", systemImage: "internaldrive") }
+                .tag(Tab.cache.rawValue)
+            WorkspaceSettingsView(store: WorkspaceStore.shared)
+                .tabItem { Label("Workspaces", systemImage: "rectangle.3.group") }
+                .tag(Tab.workspaces.rawValue)
+        }
+    }
+}
+
+/// A menu item that opens Settings on a given tab.
+struct OpenSettingsButton: View {
+    let title: String
+    let tab: SettingsView.Tab
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button(title) {
+            UserDefaults.standard.set(tab.rawValue, forKey: "settingsTab")
+            openSettings()
         }
     }
 }

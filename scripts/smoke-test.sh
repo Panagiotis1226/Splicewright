@@ -65,6 +65,11 @@ checks = {
         and r.get("exportedCodec") == "H.264",
     "transition applied": r.get("transitionsApplied", 0) >= 1,
     "title added": r.get("titleAdded"),
+    "proxy created": r.get("proxyCreated"),
+    "playback with proxies": r.get("proxyPlayback"),
+    "export used originals, not proxies": r.get("exportedWidth") == r.get("sequenceWidth") and r.get("sequenceWidth", 0) > 0,
+    "cache measured and thumbnails deleted": r.get("cacheBytes", 0) > 0 and r.get("thumbnailCacheCleared"),
+    "workspace switched": r.get("workspaceApplied"),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

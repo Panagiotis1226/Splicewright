@@ -52,7 +52,7 @@ public final class ProxyGenerator: @unchecked Sendable {
                           progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> URL {
         let asset = AVURLAsset(url: item.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw ProxyError.noVideo }
-        let (natural, transform) = try await track.load(.naturalSize, .preferredTransform)
+        let (natural, transform, timescale) = try await track.load(.naturalSize, .preferredTransform, .naturalTimeScale)
         let duration = try await asset.load(.duration)
         let (width, height) = preset.size(width: Int(abs(natural.width).rounded()), height: Int(abs(natural.height).rounded()))
         let tenBit = (item.info.video?.bitDepth ?? 8) > 8
@@ -75,6 +75,8 @@ public final class ProxyGenerator: @unchecked Sendable {
 
         let (writer, adaptor) = try Self.makeWriter(at: temporary, item: item, preset: preset,
                                                     size: (width, height), transform: transform)
+        // Keep the source's timescale: the default (600) can't represent 29.97 or 59.94 exactly.
+        if timescale > 0 { adaptor.assetWriterInput.mediaTimeScale = timescale }
 
         var transfer: VTPixelTransferSession?
         guard VTPixelTransferSessionCreate(allocator: nil, pixelTransferSessionOut: &transfer) == noErr,

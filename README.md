@@ -2,7 +2,7 @@
 
 A native macOS video editor for Apple silicon, laid out like Premiere Pro. It handles SDR (Rec.709) and HDR (HLG, PQ) footage in H.264, HEVC and ProRes, in `.mov` and `.mp4`, up to 4K60.
 
-Status: **M6**. You can:
+Status: **M7**. You can:
 
 - import media into bins and check its format details
 - mark In/Out in the Source monitor
@@ -10,9 +10,12 @@ Status: **M6**. You can:
 - play the sequence in the Program monitor through a Metal compositor that handles SDR and HDR (HLG/PQ), with an optional clipping overlay
 - override how a clip's color is read (right-click ▸ Interpret Footage)
 - add transitions (cross dissolve, dip to black/white, film dissolve, wipes, audio crossfades) and titles
+- make ProRes proxies for smooth editing of 4K/HDR footage (export always uses the originals)
+- see and delete cached files (Settings ▸ Media Cache)
+- switch between workspaces and save your own (Window ▸ Workspaces); layout changes are remembered
 - export to H.264, HEVC, HEVC 10-bit HLG/PQ or ProRes (422 HQ, 422, LT, Proxy) at 480p up to 4K and 23.976 up to 120 fps, with a quality preset or a custom bitrate, and tone-map HDR sequences to SDR deliverables
 
-Proxies are next (M7). See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
+Hardening (autosave, relinking, notarization) is next (M8). See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
 
 ## Quick start
 
@@ -40,7 +43,8 @@ When the app opens, choose **New Document**, then:
 4. **Play:** press Space or J/K/L with the Timeline or Program monitor active.
 5. **Transitions:** drag one from the **Effects** panel onto a cut (or a clip's free edge for a fade), or press ⌘D (video) / ⇧⌘D (audio) to apply the default at the edit point nearest the playhead. Drag a transition's edge to change its length; select it to edit it in **Effect Controls**.
 6. **Titles:** choose **Graphics ▸ New Title** (⇧⌘T), drag **Title** from the Effects panel onto a video track, or pick the Type tool (T) and click the Program monitor. Edit the text, font, colors, stroke, shadow, box and position in **Effect Controls**.
-7. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
+7. **Proxies:** select clips in the Project panel, right-click ▸ **Proxy ▸ Create Proxies**, then turn on the **P** button on either monitor (or **View ▸ Use Proxies**). Proxies are ProRes 422 Proxy at 1080p by default (Settings ▸ Media) and are stored in `~/Library/Application Support/Splicewright/Proxies`.
+8. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
 
 ### Make targets
 
@@ -99,6 +103,10 @@ These follow Premiere Pro's defaults.
 | ⌘I | Import |
 | ⇧⌘E | Export media |
 | ⌘B | New bin |
+
+**Workspaces.** Window ▸ Workspaces switches between Editing, Assembly (big Project panel with thumbnails), Effects and Review (big Program monitor), or ⌥⇧1…9. Panel sizes, the front tab, Project view and thumbnail size, timeline zoom, monitor options and the window's size and position are saved to the current workspace as you change them. **Save as New Workspace…** keeps a layout of your own; **Reset to Saved Layout** undoes unsaved changes.
+
+**Cache.** Thumbnails and waveforms are cached in `~/Library/Caches/com.splicewright.Splicewright`, proxies in Application Support. Settings ▸ Media Cache shows how much each uses and deletes all of it, chosen categories, individual proxies, or files older than a number of days.
 
 These are the defaults. To change them, open **Splicewright ▸ Settings… ▸ Keyboard** (⌘,), or choose **Help ▸ Keyboard Shortcuts…**. The editor won't assign a shortcut macOS uses, such as ⌘M (Minimize), ⌘H (Hide) or ⌘Q, so Export Media is ⇧⌘E instead of Premiere's ⌘M. Your shortcuts apply to every project.
 

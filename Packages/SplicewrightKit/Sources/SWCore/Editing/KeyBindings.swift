@@ -114,6 +114,10 @@ public struct KeyBindings: Sendable, Hashable, Codable {
         for tool in EditTool.allCases {
             map[CommandID.command(for: tool)] = [.character(tool.shortcut)]
         }
+        // Workspaces: ⌥⇧1…9, as in Premiere.
+        for (index, command) in CommandID.workspaceCommands.enumerated() {
+            map[command] = [.character(Character(String(index + 1)), [.option, .shift])]
+        }
         return map
     }()
 }
