@@ -30,6 +30,8 @@ final class TimelineCanvas: NSView {
         case slide(UUID)
         /// Dragging a transition's edge changes its duration.
         case transitionDuration(id: UUID, edge: TrimEdge, original: Int64, symmetric: Bool)
+        /// Moving a caption, or one of its edges.
+        case caption(id: UUID, edge: TrimEdge?)
     }
 
     struct Drag {
@@ -109,6 +111,19 @@ final class TimelineCanvas: NSView {
             row.rect.origin.y -= timeline.scrollY
             return row
         }
+    }
+
+    func captionRows(for sequence: EditSequence) -> [TimelineLayout.CaptionRow] {
+        TimelineLayout.captionRows(for: sequence, width: bounds.width).map { row in
+            var row = row
+            row.rect.origin.y -= timeline.scrollY
+            return row
+        }
+    }
+
+    func captionRow(at point: CGPoint, in sequence: EditSequence) -> TimelineLayout.CaptionRow? {
+        guard point.y >= TimelineLayout.rulerHeight else { return nil }
+        return captionRows(for: sequence).first { $0.rect.minY <= point.y && point.y < $0.rect.maxY + 1 }
     }
 
     func row(at point: CGPoint, in sequence: EditSequence) -> TimelineLayout.Row? {

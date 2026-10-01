@@ -43,6 +43,8 @@ enum SmokeTestDriver {
         var clipsPasted = false
         var autoSaveWritten = false
         var logWritten = false
+        var captionTrackAdded = false
+        var captionFileWritten = false
         var errors: [String] = []
     }
 
@@ -199,10 +201,21 @@ enum SmokeTestDriver {
 
     /// Exports frames 10...39 as H.264 SDR and probes the result.
     private static func exportClip(_ workspace: WorkspaceController, to url: URL, report: inout Report) async {
+        // Captions as an imported .srt would add them, burned in and written beside the video.
+        let srt = "1\n00:00:00,500 --> 00:00:01,200\nSmoke test caption\n"
+        if let rate = workspace.activeSequence?.rate, let captions = try? SubRip.parse(srt, rate: rate) {
+            workspace.editSequence("Import Captions") { sequence, _ in
+                sequence.addCaptionTrack(name: "Smoke", language: "en-US", captions: captions)
+            }
+        }
+        report.captionTrackAdded = workspace.activeSequence?.captionTracks.first?.captions.count == 1
         guard var sequence = workspace.activeSequence else { return }
         sequence.marks = SequenceMarks(inFrame: 10, outFrame: 39)
-        let session = ExportSession(sequence: sequence, project: workspace.project,
-                                    settings: ExportSettings(preset: .h264SDR, range: .inToOut), outputURL: url)
+        var settings = ExportSettings(preset: .h264SDR, range: .inToOut)
+        settings.burnInCaptions = sequence.captionTracks.first?.id
+        settings.sidecarCaptions = sequence.captionTracks.first?.id
+        let session = ExportSession(sequence: settings.preparedSequence(sequence), project: workspace.project,
+                                    settings: settings, outputURL: url)
         // Cancel rather than hang the smoke test if the export stalls.
         let watchdog = Task { @MainActor in
             try await Task.sleep(nanoseconds: 90_000_000_000)
@@ -217,6 +230,12 @@ enum SmokeTestDriver {
         guard state == .finished(url) else {
             report.errors.append("Export: \(state)")
             return
+        }
+        if let text = settings.sidecarText(for: sequence),
+           let captionURL = WorkspaceController.writeCaptionFile(text, settings: settings, videoURL: url),
+           let written = try? String(contentsOf: captionURL, encoding: .utf8) {
+            // Frames 10-39 export; the caption (15-36) starts 5 frames in.
+            report.captionFileWritten = written.contains("00:00:00,167 --> ") && written.contains("Smoke test caption")
         }
         do {
             let info = try await MediaProber().probe(url)

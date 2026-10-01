@@ -137,6 +137,7 @@ extension TimelineCanvas {
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let sequence = workspace.activeSequence else { return nil }
         let point = convert(event.locationInWindow, from: nil)
+        if let menu = captionMenu(at: point, in: sequence) { return menu }
         if point.x < TimelineLayout.headerWidth, let row = row(at: point, in: sequence) {
             return trackMenu(for: row, in: sequence)
         }
@@ -186,6 +187,10 @@ extension TimelineCanvas {
         let menu = NSMenu()
         menu.addItem(ActionMenuItem("Add Video Track") { [weak self] in self?.workspace.addTrack(.video) })
         menu.addItem(ActionMenuItem("Add Audio Track") { [weak self] in self?.workspace.addTrack(.audio) })
+        menu.addItem(ActionMenuItem("Add Subtitle Track") { [weak self] in self?.workspace.addCaptionTrack() })
+        menu.addItem(ActionMenuItem("Transcribe & Create Captions…") { [weak self] in
+            self?.workspace.isTranscribeSheetPresented = true
+        })
         let delete = ActionMenuItem("Delete Track") { [weak self] in self?.workspace.removeTrack(row.trackID) }
         let track = sequence.track(row.trackID)
         let kindCount = row.kind == .video ? sequence.videoTracks.count : sequence.audioTracks.count

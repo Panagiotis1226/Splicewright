@@ -26,6 +26,7 @@ extension TimelineCanvas {
         for row in rows {
             drawLane(row, sequence: sequence)
         }
+        drawCaptionLanes(sequence)
         drawMarkedRange(sequence, in: lanes)
         drawDropTarget(rows)
         drawSnapLine(in: lanes)
@@ -37,6 +38,7 @@ extension TimelineCanvas {
         for row in rows {
             drawHeader(row, track: sequence.track(row.trackID))
         }
+        drawCaptionHeaders(sequence)
         NSGraphicsContext.restoreGraphicsState()
 
         drawRuler(sequence)

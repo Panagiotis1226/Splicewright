@@ -2,7 +2,7 @@
 
 A native macOS video editor for Apple silicon, laid out like Premiere Pro. It handles SDR (Rec.709) and HDR (HLG, PQ) footage in H.264, HEVC and ProRes, in `.mov` and `.mp4`, up to 4K60.
 
-Status: **M8**. You can:
+Status: **M9**. You can:
 
 - import media into bins and check its format details
 - mark In/Out in the Source monitor
@@ -14,6 +14,7 @@ Status: **M8**. You can:
 - make HEVC, H.264 or ProRes proxies for smooth editing of 4K/HDR footage (export always uses the originals)
 - copy and paste clips and Paste Attributes between them
 - recover from crashes with auto-saved versions, and relink moved or missing files (Link Media)
+- transcribe speech into an editable subtitle track (on-device, nothing uploaded), then burn it in or export .srt/.vtt
 - see and delete cached files (Settings ▸ Media Cache)
 - switch between workspaces and save your own (Window ▸ Workspaces); layout changes are remembered
 - export to H.264, HEVC, HEVC 10-bit HLG/PQ or ProRes (422 HQ, 422, LT, Proxy) at 480p up to 4K and 23.976 up to 120 fps, with a quality preset or a custom bitrate, and tone-map HDR sequences to SDR deliverables
@@ -51,7 +52,12 @@ When the app opens, choose **New Document**, then:
 9. **Copy and paste:** with the Timeline active, ⌘C / ⌘X / ⌘V copy, cut and paste clips at the playhead on the targeted tracks (also between projects). **Edit ▸ Paste Attributes** (⌥⌘V) copies the copied clip's motion, opacity and volume, keyframes included, onto the selected clips.
 10. **Missing files:** clips whose file has moved show a red **Media Offline** frame. Right-click the clip in the Project panel ▸ **Link Media…** (or **File ▸ Link Media…**) and pick the file. Other missing files with the same name in that folder and its subfolders are linked too. Files changed on disk by another app are re-read automatically.
 11. **Auto-save:** a copy of each changed project is saved every 5 minutes to `~/Library/Application Support/Splicewright/Auto-Save` (Settings ▸ General sets how often and how many are kept). After a crash, Splicewright offers to open the latest ones; **File ▸ Open Auto-Save…** opens any of them. Logs are in `~/Library/Logs/Splicewright` (**Help ▸ Show Logs in Finder**).
-12. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
+12. **Captions:** choose **Sequence ▸ Transcribe & Create Captions…**, pick the language and a style (Standard: two lines at the bottom; Social: big, one line), and Splicewright transcribes the sequence's audio on your Mac into a subtitle track above the video tracks. macOS 26 uses Apple's SpeechAnalyzer; macOS 15 uses the older on-device recognizer and asks for Speech Recognition permission. The first use of a language may download it.
+    - On the timeline, drag a caption to move it, drag its edges to trim, cut it with the Razor (C), press Delete to remove it, and double-click it to edit the text.
+    - The **Captions** panel (next to Effect Controls) lists every caption: click a time to jump there, edit text (⏎ saves, ⌥⏎ adds a line), right-click to split at the playhead or merge with the next one, and use Find / Replace All to fix a name everywhere.
+    - The ⋯ menu changes the style (re-splitting the lines), imports an existing .srt/.vtt, or exports one. The eye in the track header hides a track.
+    - In **Export Media**, choose a track to **Burn In** and/or a **Caption File** (.srt or .vtt, written next to the video and timed to the exported range).
+13. **Export:** choose **File ▸ Export ▸ Media…** (⇧⌘E), pick a preset, and choose Entire Sequence or In to Out, the frame size, the frame rate and the bitrate. Exporting faster than your footage (for example 120 fps from 30 fps clips) repeats frames; the sheet warns you when that happens.
 
 ### Make targets
 

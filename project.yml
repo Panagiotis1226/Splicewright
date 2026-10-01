@@ -50,6 +50,7 @@ targets:
         NSDownloadsFolderUsageDescription: Splicewright reads media you import from your Downloads folder.
         NSRemovableVolumesUsageDescription: Splicewright reads media you import from external drives.
         NSNetworkVolumesUsageDescription: Splicewright reads media you import from network volumes.
+        NSSpeechRecognitionUsageDescription: Splicewright transcribes speech on this Mac to create captions. Nothing is uploaded.
         CFBundleDocumentTypes:
           - CFBundleTypeName: Splicewright Project
             CFBundleTypeRole: Editor

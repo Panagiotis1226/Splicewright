@@ -21,11 +21,18 @@ public struct SplicewrightCommands: Commands {
             Button("Link Media…") { workspace?.linkMedia() }
                 .disabled(workspace?.offlineMediaIDs.isEmpty ?? true)
             Button("Open Auto-Save…") { AutoSaver.chooseVersionToOpen() }
+            Button("Import Captions…") { workspace?.importCaptions() }
+                .disabled(workspace?.activeSequenceID == nil)
             Divider()
             Menu("Export") {
                 // Not Premiere's ⌘M: that's Window ▸ Minimize on the Mac.
                 Button("Media…") { workspace?.requestExport() }
                     .shortcut(.exportMedia, keys)
+                if let track = workspace?.captionTrack {
+                    ForEach(SubRip.Format.allCases, id: \.self) { format in
+                        Button("Captions as \(format.displayName)…") { workspace?.exportCaptions(track.id, format: format) }
+                    }
+                }
             }
             .disabled(workspace?.activeSequenceID == nil)
         }
@@ -38,6 +45,10 @@ public struct SplicewrightCommands: Commands {
             Button("New Sequence…") { workspace?.requestNewSequence() }
                 .shortcut(.newSequence, keys)
             Button("Sequence Settings…") { workspace?.requestSequenceSettings() }
+                .disabled(workspace?.activeSequenceID == nil)
+            Button("Transcribe & Create Captions…") { workspace?.isTranscribeSheetPresented = true }
+                .disabled(workspace?.activeSequenceID == nil)
+            Button("Add Subtitle Track") { workspace?.addCaptionTrack() }
                 .disabled(workspace?.activeSequenceID == nil)
             Divider()
             Button("Insert") { workspace?.editFromSource(overwrite: false) }

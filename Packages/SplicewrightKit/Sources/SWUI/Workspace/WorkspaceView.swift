@@ -26,6 +26,7 @@ public struct WorkspaceView: View {
                         PanelTab(id: .source, title: sourceTitle),
                         PanelTab(id: .effectControls, title: "Effect Controls"),
                         PanelTab(id: .effects, title: "Effects"),
+                        PanelTab(id: .captions, title: "Captions"),
                     ],
                     selectedTab: sourceTab,
                     workspace: workspace
@@ -33,6 +34,7 @@ public struct WorkspaceView: View {
                     switch sourceTab.wrappedValue {
                     case .effectControls: EffectControlsPanel(workspace: workspace)
                     case .effects: EffectsPanel(workspace: workspace)
+                    case .captions: CaptionsPanel(workspace: workspace)
                     default: SourceMonitorPanel(workspace: workspace)
                     }
                 }
@@ -67,7 +69,7 @@ public struct WorkspaceView: View {
         .onAppear { workspace.attach(document: document, undoManager: undoManager) }
         .onChange(of: undoManager) { _, newValue in workspace.undoManager = newValue }
         .onChange(of: workspace.activePanel) { _, panel in
-            if panel == .source || panel == .effectControls || panel == .effects { sourceTab.wrappedValue = panel }
+            if [.source, .effectControls, .effects, .captions].contains(panel) { sourceTab.wrappedValue = panel }
         }
         .fileImporter(
             isPresented: $workspace.isImporterPresented,
@@ -81,6 +83,9 @@ public struct WorkspaceView: View {
         }
         .sheet(isPresented: $workspace.isExportSheetPresented) {
             ExportSheet(workspace: workspace)
+        }
+        .sheet(isPresented: $workspace.isTranscribeSheetPresented) {
+            TranscribeSheet(workspace: workspace)
         }
         .alert(item: $workspace.importReport) { report in
             Alert(

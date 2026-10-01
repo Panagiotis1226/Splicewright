@@ -70,6 +70,7 @@ extension TimelineCanvas {
             }
             return
         }
+        if captionMouseDown(at: point, event: event, in: sequence) { return }
         if point.x < TimelineLayout.headerWidth {
             headerClicked(at: point, in: sequence)
             return
@@ -266,6 +267,8 @@ extension TimelineCanvas {
             copy.slip(clipID, by: -delta, media: media)
         case .slide(let clipID):
             copy.slide(clipID, by: delta, media: media)
+        case .caption(let id, let edge):
+            return captionPreview(id, edge: edge, original: original, delta: delta)
         case .transitionDuration(let id, let edge, let original, let symmetric):
             // Centered transitions grow on both sides, so an edge moves half as far as the duration.
             let change = (symmetric ? 2 : 1) * (edge == .end ? delta : -delta)
@@ -342,6 +345,9 @@ extension TimelineCanvas {
         case .hand: return .openHand
         case .razor, .zoom: return .crosshair
         case .selection, .rippleEdit, .rollingEdit:
+            if captionRow(at: point, in: sequence) != nil {
+                return captionHit(at: point, in: sequence)?.edge != nil ? .resizeLeftRight : .arrow
+            }
             return clipHit(at: point, in: sequence)?.edge != nil ? .resizeLeftRight : .arrow
         case .slip, .slide: return clipHit(at: point, in: sequence) != nil ? .resizeLeftRight : .arrow
         default: return .arrow

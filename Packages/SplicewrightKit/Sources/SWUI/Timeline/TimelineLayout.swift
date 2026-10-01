@@ -20,10 +20,35 @@ enum TimelineLayout {
         var rect: CGRect
     }
 
+    static let captionHeight: CGFloat = 30
+
+    /// A subtitle track's row, above the video tracks.
+    struct CaptionRow {
+        var trackID: UUID
+        var index: Int
+        var name: String
+        var rect: CGRect
+    }
+
+    /// Caption rows, top down (the newest track on top), in content coordinates.
+    static func captionRows(for sequence: EditSequence, width: CGFloat) -> [CaptionRow] {
+        var y = rulerHeight
+        return sequence.captionTracks.enumerated().reversed().map { index, track in
+            defer { y += captionHeight + 1 }
+            return CaptionRow(trackID: track.id, index: index, name: "ST\(index + 1)",
+                              rect: CGRect(x: 0, y: y, width: width, height: captionHeight))
+        }
+    }
+
+    /// Space the caption rows take, including the gap below them.
+    static func captionsHeight(for sequence: EditSequence) -> CGFloat {
+        sequence.captionTracks.isEmpty ? 0 : CGFloat(sequence.captionTracks.count) * (captionHeight + 1) + kindGap
+    }
+
     /// Rows in display order, in content coordinates (before vertical scrolling).
     static func rows(for sequence: EditSequence, width: CGFloat) -> [Row] {
         var rows: [Row] = []
-        var y = rulerHeight
+        var y = rulerHeight + captionsHeight(for: sequence)
         for (index, track) in sequence.videoTracks.enumerated().reversed() {
             rows.append(Row(trackID: track.id, kind: .video, index: index, name: "V\(index + 1)",
                             rect: CGRect(x: 0, y: y, width: width, height: trackHeight)))
@@ -40,7 +65,7 @@ enum TimelineLayout {
 
     static func contentHeight(for sequence: EditSequence) -> CGFloat {
         let tracks = CGFloat(sequence.videoTracks.count + sequence.audioTracks.count)
-        return rulerHeight + tracks * (trackHeight + 1) + kindGap
+        return rulerHeight + captionsHeight(for: sequence) + tracks * (trackHeight + 1) + kindGap
     }
 
     /// Tick spacing for the ruler: a "nice" number of frames at least `minimumPoints` apart.

@@ -8,7 +8,7 @@ import SWPlayback
 
 /// The panels of the Premiere-style workspace. The active panel receives transport shortcuts.
 public enum PanelID: String, Sendable {
-    case project, source, program, timeline, effects, effectControls
+    case project, source, program, timeline, effects, effectControls, captions
 }
 
 public enum ProjectViewMode: String, Sendable {
@@ -70,6 +70,11 @@ public final class WorkspaceController: ObservableObject {
     var liveEditOriginal: Project?
     /// A short message about media (relinked, reloaded) shown at the bottom of the Project panel.
     @Published public var mediaNotice: String?
+    /// Captions: the track the Captions panel shows, the caption being edited, and transcription.
+    @Published public var activeCaptionTrackID: UUID?
+    @Published public var focusedCaptionID: UUID?
+    @Published public var isTranscribeSheetPresented = false
+    @Published public var captionJob: CaptionJob?
     /// Media whose file is missing.
     @Published public internal(set) var offlineMediaIDs: Set<UUID> = []
     var checkedMediaPaths: [String] = []

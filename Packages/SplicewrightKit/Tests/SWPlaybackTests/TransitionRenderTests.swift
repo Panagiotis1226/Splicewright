@@ -284,6 +284,25 @@ final class TitleRenderTests: XCTestCase {
         XCTAssertLessThan(elsewhere, 10)
     }
 
+    func testCaptionsBurnInAtTheBottomOnlyWhenEnabled() async throws {
+        var sequence = EditSequence(name: "C", settings: SequenceSettings(width: 640, height: 360, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        // An invisible title makes the sequence two seconds long.
+        sequence.addTitle(TitleSpec(text: " ", shadow: nil), at: 0, duration: 60, trackID: sequence.videoTracks[0].id)
+        var style = CaptionStyle.standard
+        style.title.background = nil
+        style.title.size = 0.15
+        let track = sequence.addCaptionTrack(name: "S", language: "en", style: style,
+                                             captions: [Caption(start: 10, duration: 30, text: "\u{2588}\u{2588}")])
+        let shown = try green(try await render(sequence, frame: 20), x: 0.5, y: style.title.positionY)
+        let before = try green(try await render(sequence, frame: 5), x: 0.5, y: style.title.positionY)
+        XCTAssertGreaterThan(shown, 200, "the caption's glyphs at the bottom")
+        XCTAssertLessThan(before, 10, "nothing before the caption starts")
+        sequence.updateCaptionTrack(track) { $0.isOutputEnabled = false }
+        let hidden = try green(try await render(sequence, frame: 20), x: 0.5, y: style.title.positionY)
+        XCTAssertLessThan(hidden, 10, "a hidden track isn't drawn")
+    }
+
     func testTitleWhiteIsReferenceWhiteInPQ() throws {
         let renderer = try XCTUnwrap(MetalRenderer.shared)
         var buffer: CVPixelBuffer?

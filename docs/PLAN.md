@@ -147,7 +147,14 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Notarization dropped** for now: it needs a paid Apple Developer account. Releases stay unsigned (ad hoc), opened once via Privacy & Security ▸ Open Anyway.
   - **Keyframes were pulled forward** from the post-v1 list: Position, Scale (uniform or not), Rotation, Anchor Point, Opacity and Volume, with Linear, Ease In/Out and Hold, stored in source time so they stay with the picture when clips are trimmed. The Program monitor has a transform box.
 
-Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: audio mixer, Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), bezier keyframe curves, nested sequences, multicam, dockable workspaces, captions, OTIO/XML interchange, and plugins.
+**M9 — Captions (added after v1 planning)**
+- *As built:*
+  - **Recognition.** On-device only, with no bundled model and no third-party code. macOS 26: `SpeechAnalyzer` + `SpeechTranscriber` with per-word audio time ranges, and the language model installs on demand through `AssetInventory`. macOS 15: `SFSpeechRecognizer` with `requiresOnDeviceRecognition`, in 50 s pieces with a 1 s overlap split at its middle. The sequence's audio is mixed down through the playback `CompositionBuilder` (16 kHz mono), so gain, fades, keyframes and mute/solo all apply and the timing matches the timeline.
+  - **Model.** Caption tracks on `EditSequence` (schema 5) hold captions with text and the word timings they came from, plus a style (a `TitleSpec` and line limits). Edits keep captions sorted and non-overlapping. The segmenter breaks at sentence ends, pauses over 0.7 s and line limits, between 0.8 and 7 s per caption, with two balanced lines.
+  - **Rendering.** Enabled caption tracks become title layers on top of all video, so the Program monitor and burn-in share the title renderer. Export turns on only the track chosen for burn-in and writes the sidecar SRT/VTT clipped to the exported range.
+  - **CI** moved to the macOS 26 runner (Xcode 26) to compile SpeechAnalyzer. With Xcode 16 the app still builds and uses the older engine. Real recognition tests run only with `SPLICEWRIGHT_TEST_SPEECH=1`, because CI machines can't grant speech permission.
+
+Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: audio mixer, Lumetri-style color and LUTs, Basic 3D (Z position and 3D rotation), bezier keyframe curves, nested sequences, multicam, dockable workspaces, OTIO/XML interchange, and plugins.
 
 ## Risks and mitigations
 - **Composition track limits.** AVFoundation has a practical cap on how many video layers it can decode at once. Mitigation: reuse composition tracks by packing non-overlapping clips onto the same track (A/B-roll allocation), and warn beyond about 8 simultaneous layers.

@@ -53,6 +53,8 @@
 	<string>Splicewright reads media you import from network volumes.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>Splicewright reads media you import from external drives.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Splicewright transcribes speech on this Mac to create captions. Nothing is uploaded.</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

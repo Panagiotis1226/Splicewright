@@ -74,6 +74,8 @@ checks = {
     "clips copied and pasted": r.get("clipsPasted"),
     "auto-save written": r.get("autoSaveWritten"),
     "log written": r.get("logWritten"),
+    "caption track added": r.get("captionTrackAdded"),
+    "captions burned in and .srt written": r.get("captionFileWritten"),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

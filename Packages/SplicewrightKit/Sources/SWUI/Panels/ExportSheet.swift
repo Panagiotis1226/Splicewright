@@ -36,12 +36,19 @@ private struct ExportSettingsForm: View {
     @State private var folder = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
         ?? FileManager.default.homeDirectoryForCurrentUser
     @State private var fileName = ""
+    @State private var burnIn: UUID?
+    @State private var sidecar: UUID?
+    @State private var sidecarFormat: SubRip.Format = .srt
 
     private var presets: [ExportPreset] { ExportPreset.builtIn(for: sequence) }
     private var preset: ExportPreset { presets.first { $0.id == presetID } ?? presets[0] }
     private var settings: ExportSettings {
-        ExportSettings(preset: preset, range: range, size: size, quality: quality, frameRate: frameRate,
-                       customMegabits: usesCustomBitRate && preset.codec.usesBitRate ? customMegabits : nil)
+        var settings = ExportSettings(preset: preset, range: range, size: size, quality: quality, frameRate: frameRate,
+                                      customMegabits: usesCustomBitRate && preset.codec.usesBitRate ? customMegabits : nil)
+        settings.burnInCaptions = burnIn
+        settings.sidecarCaptions = sidecar
+        settings.sidecarFormat = sidecarFormat
+        return settings
     }
     private var destination: URL {
         let base = (fileName as NSString).deletingPathExtension
@@ -99,13 +106,32 @@ private struct ExportSettingsForm: View {
                         }
                     }
                 }
+                if !sequence.captionTracks.isEmpty {
+                    Picker("Burn In Captions", selection: $burnIn) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(sequence.captionTracks) { Text($0.name).tag(UUID?.some($0.id)) }
+                    }
+                    .help("Draws the captions into the picture; they can't be turned off afterwards")
+                    Picker("Caption File", selection: $sidecar) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(sequence.captionTracks) { Text($0.name).tag(UUID?.some($0.id)) }
+                    }
+                    .help("Writes the captions next to the video, for YouTube, Vimeo or a player")
+                    if sidecar != nil {
+                        Picker("Caption Format", selection: $sidecarFormat) {
+                            ForEach(SubRip.Format.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
                 LabeledContent("Save As") {
                     HStack {
                         TextField("File name", text: $fileName).textFieldStyle(.roundedBorder)
                         Button("Choose…", action: chooseDestination)
                     }
                 }
-                Text(destination.path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Text(destination.path + (sidecar == nil ? "" : "  +  .\(sidecarFormat.fileExtension)"))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             }
             summary
             HStack {
@@ -183,6 +209,14 @@ private struct ExportSettingsForm: View {
             presetID = presets[0].id
         }
         range = sequence.marks.range == nil ? .entireSequence : .inToOut
+        if let last = workspace.lastExportSettings {
+            let ids = Set(sequence.captionTracks.map(\.id))
+            burnIn = last.burnInCaptions.flatMap { ids.contains($0) ? $0 : nil }
+            sidecar = last.sidecarCaptions.flatMap { ids.contains($0) ? $0 : nil }
+            sidecarFormat = last.sidecarFormat ?? .srt
+        } else {
+            sidecar = sequence.captionTracks.first?.id
+        }
         fileName = ExportSettings.defaultFileName(for: sequence, preset: preset)
     }
 

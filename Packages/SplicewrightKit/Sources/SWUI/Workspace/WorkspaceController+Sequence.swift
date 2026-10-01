@@ -157,7 +157,12 @@ extension WorkspaceController {
     public func deleteSelectedClips(ripple: Bool) {
         guard let sequence = activeSequence, !timeline.selection.isEmpty else { return }
         let ids = sequence.expandingLinks(timeline.selection)
-        editSequence(ripple ? "Ripple Delete" : "Delete") { sequence, _ in sequence.delete(ids, ripple: ripple) }
+        // The selection can hold captions too; they're removed without rippling.
+        let captions = captionIDs(in: timeline.selection)
+        editSequence(ripple ? "Ripple Delete" : "Delete") { sequence, _ in
+            sequence.delete(ids.subtracting(captions), ripple: ripple)
+            sequence.deleteCaptions(captions)
+        }
         timeline.selection = []
     }
 

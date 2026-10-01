@@ -216,4 +216,46 @@ public enum FixtureWriter {
         try file.write(from: buffer)
         return url
     }
+
+    /// Spoken text from the system's text-to-speech voice, or nil when no voice is available.
+    @MainActor
+    public static func writeSpeech(_ text: String, name: String) async throws -> URL? {
+        let url = directory.appending(path: name)
+        try? FileManager.default.removeItem(at: url)
+        let synthesizer = AVSpeechSynthesizer()
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.9
+        let writer = SpeechFileWriter(url: url)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            synthesizer.write(utterance) { buffer in
+                if writer.append(buffer) { continuation.resume() }
+            }
+        }
+        return writer.wroteAudio ? url : nil
+    }
+}
+
+/// Collects text-to-speech buffers into a file; `append` returns true at the end.
+private final class SpeechFileWriter: @unchecked Sendable {
+    private let url: URL
+    private var file: AVAudioFile?
+    private var finished = false
+    private(set) var wroteAudio = false
+
+    init(url: URL) {
+        self.url = url
+    }
+
+    func append(_ buffer: AVAudioBuffer) -> Bool {
+        guard !finished else { return false }
+        guard let pcm = buffer as? AVAudioPCMBuffer, pcm.frameLength > 0 else {
+            finished = true
+            file = nil
+            return true
+        }
+        if file == nil { file = try? AVAudioFile(forWriting: url, settings: pcm.format.settings) }
+        if (try? file?.write(from: pcm)) != nil { wroteAudio = true }
+        return false
+    }
 }
