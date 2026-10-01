@@ -122,6 +122,11 @@ XcodeGen project (committed), SPM modules, Makefile, README quick start, CI on a
 **M6 — Transitions and titles (≈3 wk)**
 - Cross dissolve, dip to black, dip to white and film dissolve (a gamma-space dissolve), with adjustable duration and alignment (center / start / end on cut). Handles are validated so a transition can't run past the clip's source media.
 - Titles: a Title clip type. Core Text renders it into a cached texture (font, size, color, stroke, shadow, position, safe-area guides). On HDR sequences, title white sits at reference white.
+- *As built:*
+  - **Anchoring.** Transitions live on tracks and refer to their clips by ID, so they follow every edit. Razor re-anchors them, and an edit that separates the clips prunes them.
+  - **Rendering.** The builder packs a track's clips onto A/B composition tracks only where a transition needs both at once. Where the source has no handle, it holds the first or last frame instead of refusing the transition, as Premiere does; the timeline marks such transitions with a red corner. Each side renders to a scratch texture and the two are mixed premultiplied, so lower tracks stay hidden behind an opaque dissolve.
+  - **Extras.** Wipes and constant-power/gain audio crossfades were added.
+  - **Titles.** Titles are per-clip (`Clip.title`) rather than project items.
 
 **M7 — Proxies (≈2 wk)**
 - "Create Proxies" on bin items writes ProRes 422 Proxy at 1920×1080 (or half resolution) through AVAssetWriter in a background queue. Proxies keep the source's color tags and are saved in `Cache/Proxies`.

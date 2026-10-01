@@ -193,6 +193,19 @@ enum Shaders {
         return float4(lin, u.color.z);
     }
 
+    // --- Titles ----------------------------------------------------------------------------
+    // A premultiplied sRGB texture the size of the frame. White maps to 1.0, reference white.
+
+    fragment float4 titleFragment(VertexOut in [[stage_in]],
+                                  texture2d<float> title [[texture(0)]],
+                                  constant LayerUniforms& u [[buffer(0)]]) {
+        constexpr sampler s(filter::linear, address::clamp_to_edge);
+        float4 c = title.sample(s, in.uv);
+        if (c.a <= 0.0) { return float4(0.0); }
+        float3 lin = toRec2020(srgbToLinear(clamp(c.rgb / c.a, 0.0, 1.0)), 0);
+        return float4(lin, c.a * u.color.z);
+    }
+
     // --- Transition pass ----------------------------------------------------------------
     // Both sides arrive premultiplied (drawn over transparent); the result is premultiplied
     // and composited over the layers below.

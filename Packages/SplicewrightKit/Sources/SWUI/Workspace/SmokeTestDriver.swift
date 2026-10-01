@@ -28,6 +28,8 @@ enum SmokeTestDriver {
         var exportSucceeded = false
         var exportedFrames: Int64 = 0
         var exportedCodec = ""
+        var transitionsApplied = 0
+        var titleAdded = false
         var undoWorks = false
         var undoDiagnostics = ""
         var errors: [String] = []
@@ -80,6 +82,7 @@ enum SmokeTestDriver {
         report.clipCount = sequence.allTracks.reduce(0) { $0 + $1.clips.count }
 
         (report.undoWorks, report.undoDiagnostics) = await checkUndo(workspace)
+        addTransitionAndTitle(workspace, report: &report)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)
         if let clip = sequence.videoTracks[0].clips.first { workspace.timeline.selection = [clip.id] }
@@ -101,6 +104,22 @@ enum SmokeTestDriver {
         // Give the script time to take a real screenshot while the window is still up.
         FileManager.default.createFile(atPath: outputDirectory.appending(path: "snapshot.ready").path, contents: nil)
         try? await Task.sleep(nanoseconds: 3_000_000_000)
+    }
+
+    /// A cross dissolve at V1's first cut and a title at the start, as a user would add them.
+    private static func addTransitionAndTitle(_ workspace: WorkspaceController, report: inout Report) {
+        if let cut = workspace.activeSequence?.videoTracks[0].clips.first?.end {
+            workspace.editSequence("Add Cross Dissolve") { sequence, _ in
+                sequence.addTransition(.crossDissolve, trackID: sequence.videoTracks[0].id, at: cut, duration: 10)
+            }
+        }
+        workspace.program.seek(toFrame: 0)
+        workspace.newTitle()
+        let sequence = workspace.activeSequence
+        report.transitionsApplied = sequence?.videoTracks.reduce(0) { $0 + $1.resolvedTransitions.count } ?? 0
+        report.titleAdded = sequence?.videoTracks.contains { $0.clips.contains(where: \.isTitle) } ?? false
+        if report.transitionsApplied == 0 { report.errors.append("No transition was applied") }
+        if !report.titleAdded { report.errors.append("No title was added") }
     }
 
     /// Exports frames 10...39 as H.264 SDR and probes the result.

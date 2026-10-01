@@ -218,3 +218,99 @@ final class TransitionRenderTests: XCTestCase {
         }
     }
 }
+
+/// Titles through the real compositor (no media needed).
+final class TitleRenderTests: XCTestCase {
+    override func setUp() async throws {
+        guard MTLCreateSystemDefaultDevice() != nil, MetalRenderer.shared != nil else { throw XCTSkip("No Metal device") }
+    }
+
+    /// Just an opaque white box (the text is a space), so the centre pixel is known.
+    private var boxed: TitleSpec {
+        TitleSpec(text: " ", size: 0.2, color: .black, shadow: nil, background: .white)
+    }
+
+    private func render(_ sequence: EditSequence, frame: Int64) async throws -> CGImage {
+        let output = await CompositionBuilder().build(sequence, project: Project(), cache: MediaAssetCache())
+        let generator = AVAssetImageGenerator(asset: output.composition)
+        generator.videoComposition = output.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        return try await generator.image(at: RationalTime(frames: frame, rate: sequence.rate).cmTime).image
+    }
+
+    private func green(_ image: CGImage, x: Double, y: Double) throws -> Int {
+        var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        bytes.withUnsafeMutableBytes { raw in
+            let context = CGContext(data: raw.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
+                                    bytesPerRow: image.width * 4, space: space,
+                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            context?.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        }
+        let px = min(image.width - 1, Int(Double(image.width) * x))
+        let py = min(image.height - 1, Int(Double(image.height) * y))
+        return Int(bytes[(py * image.width + px) * 4 + 1])
+    }
+
+    func testTitleDrawsOverBlackAndFadesIn() async throws {
+        var sequence = EditSequence(name: "T", settings: SequenceSettings(width: 640, height: 360, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        let v1 = sequence.videoTracks[0].id
+        sequence.addTitle(boxed, at: 0, duration: 60, trackID: v1)
+        let image = try await render(sequence, frame: 40)
+        let box = try green(image, x: 0.5, y: 0.5)
+        let outside = try green(image, x: 0.05, y: 0.05)
+        XCTAssertGreaterThan(box, 240, "white box")
+        XCTAssertLessThan(outside, 10, "black outside the title")
+
+        sequence.addTransition(.crossDissolve, trackID: v1, at: 0, duration: 30)
+        let fading = try await render(sequence, frame: 15)
+        let level = try green(fading, x: 0.5, y: 0.5)
+        XCTAssertGreaterThan(level, 120)
+        XCTAssertLessThan(level, 235)
+    }
+
+    func testGlyphsAreDrawnAtTheTitlePosition() async throws {
+        var sequence = EditSequence(name: "T", settings: SequenceSettings(width: 640, height: 360, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        // A full block, white, in the top-left quarter.
+        let spec = TitleSpec(text: "\u{2588}\u{2588}", size: 0.3, positionX: 0.25, positionY: 0.3, shadow: nil)
+        sequence.addTitle(spec, at: 0, duration: 30, trackID: sequence.videoTracks[0].id)
+        let image = try await render(sequence, frame: 5)
+        let glyph = try green(image, x: 0.25, y: 0.3)
+        let elsewhere = try green(image, x: 0.75, y: 0.75)
+        XCTAssertGreaterThan(glyph, 200, "the block glyph")
+        XCTAssertLessThan(elsewhere, 10)
+    }
+
+    func testTitleWhiteIsReferenceWhiteInPQ() throws {
+        let renderer = try XCTUnwrap(MetalRenderer.shared)
+        var buffer: CVPixelBuffer?
+        let attributes = [kCVPixelBufferMetalCompatibilityKey as String: true] as CFDictionary
+        XCTAssertEqual(CVPixelBufferCreate(nil, 160, 90, kCVPixelFormatType_64RGBAHalf, attributes, &buffer),
+                       kCVReturnSuccess)
+        let output = try XCTUnwrap(buffer)
+        var spec = boxed
+        spec.text = " "
+        spec.size = 0.4
+        try renderer.render(items: [.layer(.title(TitleFrame(spec: spec, opacity: 1)))], into: output, space: .rec2100PQ)
+        CVPixelBufferLockBaseAddress(output, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(output, .readOnly) }
+        let base = try XCTUnwrap(CVPixelBufferGetBaseAddress(output))
+        let row = CVPixelBufferGetBytesPerRow(output)
+        let centre = base.advanced(by: 45 * row + 80 * 8).assumingMemoryBound(to: UInt16.self)
+        let green = Self.half(centre[1])
+        // 203 cd/m² (BT.2408 reference white) is 58% PQ.
+        XCTAssertEqual(green, 0.58, accuracy: 0.02)
+    }
+
+    /// IEEE half-precision bits to Float.
+    private static func half(_ bits: UInt16) -> Float {
+        let sign: Float = bits & 0x8000 == 0 ? 1 : -1
+        let exponent = Int((bits >> 10) & 0x1F)
+        let fraction = Float(bits & 0x3FF)
+        if exponent == 0 { return sign * fraction * pow(2, -24) }
+        return sign * (1 + fraction / 1024) * pow(2, Float(exponent - 15))
+    }
+}

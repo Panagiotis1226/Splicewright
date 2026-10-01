@@ -48,7 +48,22 @@ extension TimelineCanvas {
         return (frame, row?.trackID)
     }
 
+    private func isTitleDrop(_ info: NSDraggingInfo) -> Bool {
+        (info.draggingPasteboard.pasteboardItems ?? []).contains { $0.string(forType: .string) == EffectsPanel.titlePayload }
+    }
+
     private func updateDropTarget(_ info: NSDraggingInfo) -> NSDragOperation {
+        if isTitleDrop(info) {
+            let location = dropLocation(info)
+            guard let sequence = workspace.activeSequence, let trackID = location.trackID,
+                  sequence.videoTracks.contains(where: { $0.id == trackID }) else {
+                timeline.dropTarget = nil
+                return workspace.activeSequence == nil ? .copy : []
+            }
+            timeline.dropTarget = TimelineState.DropTarget(frame: location.frame, trackID: trackID,
+                                                           length: sequence.defaultTitleDuration)
+            return .copy
+        }
         if let kind = droppedTransition(info) {
             guard let drop = transitionDrop(kind, info) else {
                 timeline.dropTarget = nil
@@ -93,6 +108,14 @@ extension TimelineCanvas {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         defer { timeline.dropTarget = nil }
+        if isTitleDrop(sender) {
+            let location = dropLocation(sender)
+            let isVideo = workspace.activeSequence?.videoTracks.contains { $0.id == location.trackID } ?? true
+            guard isVideo else { return false }
+            workspace.newTitle(trackID: location.trackID, frame: location.frame)
+            window?.makeFirstResponder(self)
+            return true
+        }
         if let kind = droppedTransition(sender) {
             guard let drop = transitionDrop(kind, sender) else { return false }
             workspace.addTransition(kind, trackID: drop.trackID, at: drop.edge)

@@ -15,6 +15,8 @@ struct InstructionLayer {
     var forcedColor: ColorDescription?
     /// Set when this layer is one side of a transition.
     var transition: InstructionTransition?
+    /// Set for a title layer, which has no source track (`trackID` is invalid).
+    var title: TitleSpec?
 }
 
 /// A layer's part in a transition, in composition time.
@@ -63,14 +65,16 @@ final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProto
     let outputSpace: SequenceColorSpace
     let overlay: OverlayMode
 
+    /// `everyFrame` asks AVFoundation for every output frame even when nothing changes;
+    /// without it, an export faster than the sequence would only get the source's frames.
     init(timeRange: CMTimeRange, layers: [InstructionLayer], outputSpace: SequenceColorSpace,
-         overlay: OverlayMode = .none) {
+         overlay: OverlayMode = .none, everyFrame: Bool = false) {
         self.timeRange = timeRange
         self.layers = layers
         self.outputSpace = outputSpace
         self.overlay = overlay
-        containsTweening = layers.contains { $0.transition != nil }
-        let ids = Array(Set(layers.map(\.trackID))).sorted()
+        containsTweening = everyFrame || layers.contains { $0.transition != nil }
+        let ids = Array(Set(layers.map(\.trackID).filter { $0 != kCMPersistentTrackID_Invalid })).sorted()
         requiredSourceTrackIDs = ids.isEmpty ? nil : ids.map { NSNumber(value: $0) }
     }
 }
@@ -137,11 +141,12 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
             try renderer.render(layers: [], into: output, space: .rec709)
             return output
         }
-        func frame(_ layer: InstructionLayer) -> LayerFrame? {
+        func frame(_ layer: InstructionLayer) -> LayerSource? {
+            if let title = layer.title { return .title(TitleFrame(spec: title, opacity: layer.opacity)) }
             guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { return nil }
-            return LayerFrame(pixelBuffer: buffer, transform: layer.transform, sourceWidth: layer.sourceWidth,
-                              sourceHeight: layer.sourceHeight, opacity: layer.opacity,
-                              fallbackColor: layer.fallbackColor, forcedColor: layer.forcedColor)
+            return .video(LayerFrame(pixelBuffer: buffer, transform: layer.transform, sourceWidth: layer.sourceWidth,
+                                     sourceHeight: layer.sourceHeight, opacity: layer.opacity,
+                                     fallbackColor: layer.fallbackColor, forcedColor: layer.forcedColor))
         }
         var items: [RenderItem] = []
         var index = instruction.layers.startIndex

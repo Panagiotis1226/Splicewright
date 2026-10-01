@@ -178,3 +178,62 @@ struct TransitionTests {
         #expect(old.sequences[0].videoTracks[0].transitions.isEmpty)
     }
 }
+
+@Suite("Titles")
+struct TitleTests {
+    private func sequence() -> EditSequence {
+        EditSequence(name: "T", settings: SequenceSettings(width: 1920, height: 1080, frameRate: .fps30,
+                                                           colorSpace: .rec709))
+    }
+
+    @Test func addTitleGoesAboveV1() throws {
+        var seq = sequence()
+        seq.overwrite([TrackPlacement(trackID: seq.videoTracks[0].id, clip: Clip(
+            mediaID: UUID(), name: "A", start: 0, duration: 300, sourceStart: .zero))])
+        let added = seq.addTitle(TitleSpec(text: "Hello\nWorld"), at: 30)
+        let id = try #require(added)
+        let clip = try #require(seq.videoTracks[1].clips.first)
+        #expect(clip.id == id && clip.isTitle && clip.mediaID == Clip.generatedMediaID)
+        #expect(clip.name == "Hello" && clip.range == FrameRange(start: 30, end: 180))
+        // V2 is now busy there, so the next title goes on V3, then a new V4.
+        seq.addTitle(at: 60)
+        #expect(seq.videoTracks[2].clips.count == 1)
+        seq.addTitle(at: 60)
+        #expect(seq.videoTracks.count == 4 && seq.videoTracks[3].clips.count == 1)
+    }
+
+    @Test func updateTitleClampsAndRenames() throws {
+        var seq = sequence()
+        let added = seq.addTitle(at: 0)
+        let id = try #require(added)
+        seq.updateTitle(id) { spec in
+            spec.text = "Credits"
+            spec.size = 5
+            spec.positionX = -1
+        }
+        let title = try #require(seq.clip(id)?.title)
+        #expect(title.size == TitleSpec.sizeRange.upperBound && title.positionX == 0)
+        #expect(seq.clip(id)?.name == "Credits")
+    }
+
+    @Test func titlesRenderWithoutMediaAndTakeTransitions() throws {
+        var seq = sequence()
+        let added = seq.addTitle(at: 0, duration: 60, trackID: seq.videoTracks[0].id)
+        let id = try #require(added)
+        seq.addTransition(.crossDissolve, trackID: seq.videoTracks[0].id, at: 0, duration: 15)
+        let segments = RenderPlan.videoSegments(for: seq, isAvailable: { _ in false })
+        #expect(segments.first?.layers.first?.clipID == id)
+        #expect(segments.first?.layers.first?.title?.text == "Title")
+        #expect(segments.first?.layers.first?.transition?.role == .incoming)
+        // Titles have no media, so trims aren't bounded by it.
+        let trimmed = seq.trim(id, edge: .end, by: 600, media: [:])
+        #expect(trimmed == 600)
+    }
+
+    @Test func titleSpecRoundTrips() throws {
+        var spec = TitleSpec(text: "Ünïcode ✓", stroke: TitleStroke(), background: .black)
+        spec.alignment = .left
+        let data = try JSONEncoder().encode(spec)
+        #expect(try JSONDecoder().decode(TitleSpec.self, from: data) == spec)
+    }
+}

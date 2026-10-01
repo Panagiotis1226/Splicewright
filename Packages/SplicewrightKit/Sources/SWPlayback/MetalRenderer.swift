@@ -38,17 +38,29 @@ struct TransitionUniforms {
     var params: SIMD4<Float>
 }
 
+/// A title to draw over the whole frame.
+struct TitleFrame {
+    var spec: TitleSpec
+    var opacity: Double
+}
+
+/// One layer's pixels: a decoded video frame or a rasterized title.
+enum LayerSource {
+    case video(LayerFrame)
+    case title(TitleFrame)
+}
+
 /// The two sides of a transition on one track. Either side may be missing (a fade).
 struct TransitionFrame {
-    var outgoing: LayerFrame?
-    var incoming: LayerFrame?
+    var outgoing: LayerSource?
+    var incoming: LayerSource?
     var kind: TransitionKind
     var progress: Double
 }
 
 /// What to draw, bottom first.
 enum RenderItem {
-    case layer(LayerFrame)
+    case layer(LayerSource)
     case transition(TransitionFrame)
 }
 
@@ -68,6 +80,8 @@ final class MetalRenderer {
     private let layerPipeline: MTLRenderPipelineState
     private let outputPipeline: MTLRenderPipelineState
     private let transitionPipeline: MTLRenderPipelineState
+    private let titlePipeline: MTLRenderPipelineState
+    private let titles: TitleRasterizer
     private let textureCache: CVMetalTextureCache
     private var workingTexture: MTLTexture?
     /// Each side of a transition is drawn here first (transparent where it doesn't cover).
@@ -99,6 +113,9 @@ final class MetalRenderer {
         layer.colorAttachments[0].sourceAlphaBlendFactor = .one
         layer.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
         layerPipeline = try device.makeRenderPipelineState(descriptor: layer)
+        layer.fragmentFunction = library.makeFunction(name: "titleFragment")
+        titlePipeline = try device.makeRenderPipelineState(descriptor: layer)
+        titles = TitleRasterizer(device: device)
 
         let output = MTLRenderPipelineDescriptor()
         output.vertexFunction = library.makeFunction(name: "fullScreenVertex")
@@ -128,7 +145,7 @@ final class MetalRenderer {
     /// Renders `layers` over black into `output` (a 64RGBAHalf buffer) encoded for `space`.
     func render(layers: [LayerFrame], into output: CVPixelBuffer, space: SequenceColorSpace,
                 overlay: OverlayMode = .none) throws {
-        try render(items: layers.map(RenderItem.layer), into: output, space: space, overlay: overlay)
+        try render(items: layers.map { .layer(.video($0)) }, into: output, space: space, overlay: overlay)
     }
 
     /// Renders `items` over black into `output` (a 64RGBAHalf buffer) encoded for `space`.
@@ -208,9 +225,13 @@ final class MetalRenderer {
         return encoder
     }
 
-    private func draw(_ layer: LayerFrame, with encoder: MTLRenderCommandEncoder, space: SequenceColorSpace,
+    private func draw(_ source: LayerSource, with encoder: MTLRenderCommandEncoder, space: SequenceColorSpace,
                       size: (width: Int, height: Int), keepAlive: inout [CVMetalTexture]) throws {
         let (width, height) = size
+        guard case .video(let layer) = source else {
+            if case .title(let title) = source { drawTitle(title, with: encoder, width: width, height: height) }
+            return
+        }
         guard let format = PlanarFormat(CVPixelBufferGetPixelFormatType(layer.pixelBuffer)) else { return }
         let luma = try texture(from: layer.pixelBuffer, plane: 0, format: format.lumaFormat, keepAlive: &keepAlive)
         let chroma = try texture(from: layer.pixelBuffer, plane: 1, format: format.chromaFormat, keepAlive: &keepAlive)
@@ -220,6 +241,20 @@ final class MetalRenderer {
         encoder.setFragmentTexture(luma, index: 0)
         encoder.setFragmentTexture(chroma, index: 1)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+    }
+
+    /// Titles are frame-sized sRGB textures; white lands at reference white in every space.
+    private func drawTitle(_ title: TitleFrame, with encoder: MTLRenderCommandEncoder, width: Int, height: Int) {
+        guard let texture = titles.texture(for: title.spec, width: width, height: height) else { return }
+        let size = SIMD4(Float(width), Float(height), Float(width), Float(height))
+        var uniforms = LayerUniforms(row0: SIMD4(1, 0, 0, 0), row1: SIMD4(0, 1, 0, 0), sizes: size, ycbcr: .zero,
+                                     color: SIMD4(0, 0, Float(min(max(title.opacity, 0), 1)), 0), tone: .zero)
+        encoder.setRenderPipelineState(titlePipeline)
+        encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
+        encoder.setFragmentTexture(texture, index: 0)
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder.setRenderPipelineState(layerPipeline)
     }
 
     static func transitionIndex(_ kind: TransitionKind) -> Int {

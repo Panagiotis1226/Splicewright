@@ -51,6 +51,11 @@ public struct SplicewrightCommands: Commands {
             Button("Add Video Track") { workspace?.addTrack(.video) }
             Button("Add Audio Track") { workspace?.addTrack(.audio) }
         }
+        CommandMenu("Graphics") {
+            Button("New Title") { workspace?.newTitle() }
+                .shortcut(.newTitle, keys)
+                .disabled(workspace == nil)
+        }
         CommandMenu("Marker") {
             Button("Mark In") { workspace?.handle(.markIn) }
             Button("Mark Out") { workspace?.handle(.markOut) }

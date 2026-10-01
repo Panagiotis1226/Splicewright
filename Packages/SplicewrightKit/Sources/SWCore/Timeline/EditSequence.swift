@@ -125,10 +125,12 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     public var opacity: Double
     /// Audio clip gain in dB.
     public var gainDB: Double
+    /// Set for a title (generated text) clip, whose `mediaID` is `Clip.generatedMediaID`.
+    public var title: TitleSpec?
 
     public init(id: UUID = UUID(), mediaID: UUID, name: String, start: Int64, duration: Int64,
                 sourceStart: RationalTime, linkID: UUID? = nil, isEnabled: Bool = true,
-                opacity: Double = 1, gainDB: Double = 0) {
+                opacity: Double = 1, gainDB: Double = 0, title: TitleSpec? = nil) {
         self.id = id
         self.mediaID = mediaID
         self.name = name
@@ -139,6 +141,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         self.isEnabled = isEnabled
         self.opacity = opacity
         self.gainDB = gainDB
+        self.title = title
     }
 
     public var end: Int64 { start + duration }

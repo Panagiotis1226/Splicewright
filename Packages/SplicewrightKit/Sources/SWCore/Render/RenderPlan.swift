@@ -89,13 +89,17 @@ public struct RenderLayer: Sendable, Hashable {
     public var mediaID: UUID
     public var opacity: Double
     public var transition: LayerTransition?
+    /// Set for a title clip, which has no media.
+    public var title: TitleSpec?
 
-    public init(trackIndex: Int, clipID: UUID, mediaID: UUID, opacity: Double, transition: LayerTransition? = nil) {
+    public init(trackIndex: Int, clipID: UUID, mediaID: UUID, opacity: Double, transition: LayerTransition? = nil,
+                title: TitleSpec? = nil) {
         self.trackIndex = trackIndex
         self.clipID = clipID
         self.mediaID = mediaID
         self.opacity = opacity
         self.transition = transition
+        self.title = title
     }
 }
 
@@ -166,9 +170,11 @@ public enum RenderPlan {
             var layers: [RenderLayer] = []
             for (index, track) in sequence.videoTracks.enumerated() where track.isOutputEnabled {
                 func layer(_ clip: Clip?, _ transition: LayerTransition? = nil) -> RenderLayer? {
-                    guard let clip, clip.isEnabled, clip.opacity > 0, isAvailable(clip.mediaID) else { return nil }
+                    guard let clip, clip.isEnabled, clip.opacity > 0, clip.isTitle || isAvailable(clip.mediaID) else {
+                        return nil
+                    }
                     return RenderLayer(trackIndex: index, clipID: clip.id, mediaID: clip.mediaID,
-                                       opacity: min(1, clip.opacity), transition: transition)
+                                       opacity: min(1, clip.opacity), transition: transition, title: clip.title)
                 }
                 if let active = transitions[index].first(where: { $0.range.contains(start) }) {
                     let range = active.range

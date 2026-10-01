@@ -202,10 +202,18 @@ public struct CompositionBuilder {
         videoComposition.colorYCbCrMatrix = tags.matrix as String
 
         let segments = RenderPlan.videoSegments(for: sequence, minimumFrames: totalFrames) { mediaID in
+            // (Title clips render without media.)
             loaded[mediaID]?.video != nil
         }
         videoComposition.instructions = segments.map { segment in
             let layers: [InstructionLayer] = segment.layers.compactMap { layer in
+                let transition = layer.transition.map { InstructionTransition($0, rate: rate) }
+                if let title = layer.title {
+                    return InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity,
+                                            transform: .identity, sourceWidth: renderWidth, sourceHeight: renderHeight,
+                                            fallbackColor: .rec709, forcedColor: nil, transition: transition,
+                                            title: title)
+                }
                 guard let media = loaded[layer.mediaID], let trackID = clipTracks[layer.clipID] else { return nil }
                 let orientation = Affine2D(media.preferredTransform)
                 let transform = Affine2D.fit(sourceWidth: media.naturalSize.width, sourceHeight: media.naturalSize.height,
@@ -216,12 +224,12 @@ public struct CompositionBuilder {
                                         transform: transform, sourceWidth: media.naturalSize.width,
                                         sourceHeight: media.naturalSize.height,
                                         fallbackColor: item?.info.video?.color ?? .untagged,
-                                        forcedColor: item?.colorOverride,
-                                        transition: layer.transition.map { InstructionTransition($0, rate: rate) })
+                                        forcedColor: item?.colorOverride, transition: transition)
             }
             let range = CMTimeRange(start: RationalTime(frames: segment.range.start, rate: rate).cmTime,
                                     end: RationalTime(frames: segment.range.end, rate: rate).cmTime)
-            return CompositionInstruction(timeRange: range, layers: layers, outputSpace: outputSpace, overlay: overlay)
+            return CompositionInstruction(timeRange: range, layers: layers, outputSpace: outputSpace, overlay: overlay,
+                                          everyFrame: (frameRate ?? rate) != rate)
         }
         return videoComposition
     }

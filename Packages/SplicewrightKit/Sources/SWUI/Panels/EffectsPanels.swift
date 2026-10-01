@@ -10,6 +10,8 @@ struct EffectsPanel: View {
 
     /// Pasteboard prefix for transition drags (the rest is the kind's raw value).
     static let transitionPrefix = "splicewright.transition:"
+    /// Pasteboard string for dragging a new title.
+    static let titlePayload = "splicewright.title"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,6 +22,17 @@ struct EffectsPanel: View {
             List {
                 section("Video Transitions", TransitionKind.video)
                 section("Audio Transitions", TransitionKind.audio)
+                if search.isEmpty || "title".localizedCaseInsensitiveContains(search) {
+                    Section("Graphics") {
+                        Label("Title", systemImage: "textformat")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textPrimary)
+                            .contentShape(Rectangle())
+                            .draggable(Self.titlePayload)
+                            .onTapGesture(count: 2) { workspace.newTitle() }
+                            .help("Drag onto a video track, or double-click to add a title at the playhead")
+                    }
+                }
             }
             .scrollContentBackground(.hidden)
             Text("Drag onto a cut, or double-click to apply at the playhead. Right-click to set the default (⌘D, ⇧⌘D).")
@@ -95,6 +108,8 @@ struct EffectControlsPanel: View {
         Group {
             if let selected = workspace.selectedTransition, let sequence = workspace.activeSequence {
                 TransitionControls(workspace: workspace, transition: selected.transition, rate: sequence.rate)
+            } else if let title = workspace.selectedTitleClip, let spec = title.title {
+                TitleControls(workspace: workspace, clipID: title.id, spec: spec, opacity: title.opacity)
             } else if let clip = selectedClip {
                 ClipControls(workspace: workspace, clip: clip, isVideo: isVideo(clip))
             } else {

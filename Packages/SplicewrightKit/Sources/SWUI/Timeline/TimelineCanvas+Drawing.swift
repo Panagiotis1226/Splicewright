@@ -85,9 +85,10 @@ extension TimelineCanvas {
     private func drawClip(_ clip: Clip, in row: TimelineLayout.Row, track: Track) {
         let rect = clipRect(clip, in: row)
         let item = workspace.project.item(clip.mediaID)
-        let online = item.map { MediaLocator.isOnline($0) } ?? false
+        let online = clip.isTitle || (item.map { MediaLocator.isOnline($0) } ?? false)
         let selected = timeline.selection.contains(clip.id)
         var base = row.kind == .video ? NSColor(Theme.videoTrack) : NSColor(Theme.audioTrack)
+        if clip.isTitle { base = NSColor(Theme.titleClip) }
         if !online { base = NSColor(Theme.offline) }
         if !clip.isEnabled || !track.isOutputEnabled { base = base.blended(withFraction: 0.6, of: .darkGray) ?? base }
         if selected { base = base.blended(withFraction: 0.35, of: .white) ?? base }

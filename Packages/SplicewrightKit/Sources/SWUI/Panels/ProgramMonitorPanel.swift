@@ -7,6 +7,7 @@ struct ProgramMonitorPanel: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject var engine: PlaybackEngine
     @ObservedObject private var keys = KeyBindingsStore.shared
+    @State private var showsSafeMargins = false
 
     init(workspace: WorkspaceController) {
         self.workspace = workspace
@@ -23,6 +24,11 @@ struct ProgramMonitorPanel: View {
                     Text("No sequence").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
                 } else {
                     PlayerSurface(player: engine.player)
+                    if showsSafeMargins || workspace.activeTool == .type {
+                        GeometryReader { geometry in
+                            frameOverlay(in: fittedRect(geometry.size))
+                        }
+                    }
                     if engine.isBuilding {
                         ProgressView().controlSize(.small).padding(8)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -44,6 +50,11 @@ struct ProgramMonitorPanel: View {
                 .font(Theme.timecodeFont)
                 .foregroundStyle(Theme.timecode)
             Spacer()
+            Toggle(isOn: $showsSafeMargins) { Image(systemName: "rectangle.dashed") }
+                .toggleStyle(.button)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Safe margins: action safe (90%) and title safe (80%)")
             Toggle(isOn: $engine.showsClipping) { Image(systemName: "exclamationmark.triangle") }
                 .toggleStyle(.button)
                 .buttonStyle(.borderless)
@@ -72,6 +83,56 @@ struct ProgramMonitorPanel: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 28)
+    }
+
+    /// Where the picture sits inside the monitor (aspect fit).
+    private func fittedRect(_ size: CGSize) -> CGRect {
+        guard let settings = workspace.activeSequence?.settings, settings.width > 0, settings.height > 0 else {
+            return CGRect(origin: .zero, size: size)
+        }
+        let scale = min(size.width / CGFloat(settings.width), size.height / CGFloat(settings.height))
+        let width = CGFloat(settings.width) * scale
+        let height = CGFloat(settings.height) * scale
+        return CGRect(x: (size.width - width) / 2, y: (size.height - height) / 2, width: width, height: height)
+    }
+
+    @ViewBuilder
+    private func frameOverlay(in rect: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            if showsSafeMargins {
+                ForEach([0.9, 0.8], id: \.self) { fraction in
+                    Rectangle()
+                        .stroke(Color.white.opacity(0.55), lineWidth: 1)
+                        .frame(width: rect.width * fraction, height: rect.height * fraction)
+                        .position(x: rect.midX, y: rect.midY)
+                }
+            }
+            if workspace.activeTool == .type {
+                // Type tool: click to place a new title there, or to move the selected one.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                    .onTapGesture(coordinateSpace: .local) { location in
+                        let point = CGPoint(x: min(max(location.x / max(rect.width, 1), 0), 1),
+                                            y: min(max(location.y / max(rect.height, 1), 0), 1))
+                        placeTitle(at: point)
+                    }
+                    .help("Type tool: click to add a title, or to move the selected title")
+            }
+        }
+        .allowsHitTesting(workspace.activeTool == .type)
+    }
+
+    private func placeTitle(at point: CGPoint) {
+        if let title = workspace.selectedTitleClip {
+            workspace.updateTitle(title.id, "Move Title") { spec in
+                spec.positionX = Double(point.x)
+                spec.positionY = Double(point.y)
+            }
+        } else {
+            workspace.newTitle(at: point)
+        }
     }
 
     private var transport: some View {

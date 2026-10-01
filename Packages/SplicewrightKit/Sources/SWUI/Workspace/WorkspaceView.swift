@@ -67,7 +67,7 @@ public struct WorkspaceView: View {
         .onAppear { workspace.attach(document: document, undoManager: undoManager) }
         .onChange(of: undoManager) { _, newValue in workspace.undoManager = newValue }
         .onChange(of: workspace.activePanel) { _, panel in
-            if panel == .source { sourceTab = .source }
+            if panel == .source || panel == .effectControls || panel == .effects { sourceTab = panel }
         }
         .fileImporter(
             isPresented: $workspace.isImporterPresented,

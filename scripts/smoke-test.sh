@@ -63,6 +63,8 @@ checks = {
     "undo works": r["undoWorks"],
     "export wrote 30 frames of H.264": r.get("exportSucceeded") and r.get("exportedFrames") == 30
         and r.get("exportedCodec") == "H.264",
+    "transition applied": r.get("transitionsApplied", 0) >= 1,
+    "title added": r.get("titleAdded"),
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

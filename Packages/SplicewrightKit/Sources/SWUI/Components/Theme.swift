@@ -16,6 +16,7 @@ enum Theme {
     static let playhead = Color(red: 0.29, green: 0.64, blue: 1.0)
     static let videoTrack = Color(red: 0.36, green: 0.42, blue: 0.62)
     static let audioTrack = Color(red: 0.29, green: 0.52, blue: 0.40)
+    static let titleClip = Color(red: 0.55, green: 0.38, blue: 0.68)
     static let offline = Color(red: 0.85, green: 0.25, blue: 0.25)
     static let waveform = Color(red: 0.36, green: 0.78, blue: 0.55)
 
