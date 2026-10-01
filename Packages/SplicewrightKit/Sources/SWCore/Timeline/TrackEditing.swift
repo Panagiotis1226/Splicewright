@@ -27,9 +27,7 @@ extension Track {
                 if clip.start < range.start, let link = clip.linkID {
                     right.linkID = Self.splitLink(link, &linkMap)
                 }
-                right.sourceStart = clip.sourceTime(atSequenceFrame: range.end, rate: rate)
-                right.start = range.end
-                right.duration = clip.end - range.end
+                right.moveStart(by: range.end - clip.start, rate: rate)
                 result.append(right)
             }
         }
@@ -45,9 +43,7 @@ extension Track {
         var right = clip
         right.id = UUID()
         right.linkID = clip.linkID.map { Self.splitLink($0, &linkMap) }
-        right.start = frame
-        right.duration = clip.end - frame
-        right.sourceStart = clip.sourceTime(atSequenceFrame: frame, rate: rate)
+        right.moveStart(by: frame - clip.start, rate: rate)
         clips.replaceSubrange(index...index, with: [left, right])
         reanchorEnd(of: clip.id, to: right.id)
     }

@@ -10,6 +10,9 @@ public enum ClipProperty: String, Sendable, Hashable, Codable, CaseIterable, Ide
     case opacity
     /// Audio clips: level in dB.
     case volume
+    /// Time Remapping: playback speed in percent. Its keyframes are timed from the clip's
+    /// start (sequence time), not in source time like the others.
+    case speed
 
     public var id: String { rawValue }
 
@@ -22,6 +25,7 @@ public enum ClipProperty: String, Sendable, Hashable, Codable, CaseIterable, Ide
         case .anchorPoint: return "Anchor Point"
         case .opacity: return "Opacity"
         case .volume: return "Level"
+        case .speed: return "Speed"
         }
     }
 
@@ -38,7 +42,7 @@ public enum ClipProperty: String, Sendable, Hashable, Codable, CaseIterable, Ide
     public var unit: String {
         switch self {
         case .position, .anchorPoint: return "px"
-        case .scale, .scaleWidth, .opacity: return "%"
+        case .scale, .scaleWidth, .opacity, .speed: return "%"
         case .rotation: return "°"
         case .volume: return "dB"
         }
@@ -47,7 +51,7 @@ public enum ClipProperty: String, Sendable, Hashable, Codable, CaseIterable, Ide
     public var defaultValues: [Double] {
         switch self {
         case .position, .anchorPoint: return [0, 0]
-        case .scale, .scaleWidth, .opacity: return [100]
+        case .scale, .scaleWidth, .opacity, .speed: return [100]
         case .rotation, .volume: return [0]
         }
     }
@@ -60,6 +64,7 @@ public enum ClipProperty: String, Sendable, Hashable, Codable, CaseIterable, Ide
         case .rotation: return -36_000...36_000
         case .opacity: return 0...100
         case .volume: return -96...15
+        case .speed: return ClipTiming.remapSpeedRange
         }
     }
 
@@ -68,7 +73,7 @@ public enum ClipProperty: String, Sendable, Hashable, Codable, CaseIterable, Ide
         switch self {
         case .position, .anchorPoint: return 1
         case .scale, .scaleWidth, .rotation: return 0.5
-        case .opacity: return 0.5
+        case .opacity, .speed: return 0.5
         case .volume: return 0.1
         }
     }
@@ -105,7 +110,9 @@ public struct Motion: Sendable, Hashable, Codable {
             case .scaleWidth: return scaleWidth
             case .rotation: return rotation
             case .anchorPoint: return anchorPoint
-            case .opacity, .volume: return opacity
+            case .opacity: return opacity
+            // Not motion properties (see `Clip.property`).
+            case .volume, .speed: return opacity
             }
         }
         set {
@@ -115,7 +122,8 @@ public struct Motion: Sendable, Hashable, Codable {
             case .scaleWidth: scaleWidth = newValue
             case .rotation: rotation = newValue
             case .anchorPoint: anchorPoint = newValue
-            case .opacity, .volume: opacity = newValue
+            case .opacity: opacity = newValue
+            case .volume, .speed: break
             }
         }
     }

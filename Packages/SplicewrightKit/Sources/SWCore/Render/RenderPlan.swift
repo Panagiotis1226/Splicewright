@@ -96,6 +96,8 @@ public struct RenderLayer: Sendable, Hashable {
     /// Where the clip starts in the sequence and in its source, to evaluate keyframes.
     public var clipStart: Int64
     public var sourceStart: RationalTime
+    /// Set for clips not at 100% forwards, to map sequence time to source time.
+    public var timing: ClipTiming?
 
     public init(trackIndex: Int, clipID: UUID, mediaID: UUID, opacity: Double, transition: LayerTransition? = nil,
                 title: TitleSpec? = nil, motion: Motion = Motion(), clipStart: Int64 = 0, sourceStart: RationalTime = .zero) {
@@ -187,9 +189,11 @@ public enum RenderPlan {
                     guard let clip, clip.isEnabled, clip.isVisible, clip.isTitle || isAvailable(clip.mediaID) else {
                         return nil
                     }
-                    return RenderLayer(trackIndex: index, clipID: clip.id, mediaID: clip.mediaID,
-                                       opacity: min(1, clip.opacity), transition: transition, title: clip.title,
-                                       motion: clip.motion, clipStart: clip.start, sourceStart: clip.sourceStart)
+                    var layer = RenderLayer(trackIndex: index, clipID: clip.id, mediaID: clip.mediaID,
+                                            opacity: min(1, clip.opacity), transition: transition, title: clip.title,
+                                            motion: clip.motion, clipStart: clip.start, sourceStart: clip.sourceStart)
+                    if clip.isRetimed { layer.timing = clip.timing(rate: sequence.rate) }
+                    return layer
                 }
                 if let active = transitions[index].first(where: { $0.range.contains(start) }) {
                     let range = active.range

@@ -129,6 +129,13 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     public var motion: Motion
     /// Audio: level in dB, keyframeable (Premiere's Volume effect).
     public var volume: AnimatableProperty
+    /// Playback speed in percent: constant (Speed/Duration) or keyframed (Time Remapping,
+    /// timed from the clip's start). Schema 6.
+    public var speed: AnimatableProperty
+    /// Plays the source backwards (constant speed only).
+    public var isReversed: Bool
+    /// Keeps the pitch of sped-up or slowed-down audio.
+    public var maintainsPitch: Bool
 
     public init(id: UUID = UUID(), mediaID: UUID, name: String, start: Int64, duration: Int64,
                 sourceStart: RationalTime, linkID: UUID? = nil, isEnabled: Bool = true,
@@ -145,6 +152,9 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         self.title = title
         motion = Motion()
         volume = AnimatableProperty([0])
+        speed = AnimatableProperty([100])
+        isReversed = false
+        maintainsPitch = true
         self.opacity = opacity
     }
 
@@ -162,16 +172,21 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
 
     /// Source media time shown at sequence frame `frame`.
     public func sourceTime(atSequenceFrame frame: Int64, rate: FrameRate) -> RationalTime {
-        sourceStart + RationalTime(frames: frame - start, rate: rate)
+        guard isRetimed else { return sourceStart + RationalTime(frames: frame - start, rate: rate) }
+        return sourceTime(atSequencePosition: Double(frame), rate: rate)
     }
 
     /// The sequence frame showing source time `time`.
     public func sequenceFrame(atSourceTime time: RationalTime, rate: FrameRate) -> Int64 {
-        start + (time - sourceStart).frameIndex(at: rate)
+        guard isRetimed else { return start + (time - sourceStart).frameIndex(at: rate) }
+        let position = timing(rate: rate).clipFrame(atSourceOffset: (time - sourceStart).seconds)
+        guard position.isFinite else { return position > 0 ? end : start }
+        return start + Int64((position + 1e-6).rounded(.down))
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaID, name, start, duration, sourceStart, linkID, isEnabled, gainDB, title, motion, volume
+        case speed, isReversed, maintainsPitch
         /// Schema 3 and earlier stored a constant opacity (0...1).
         case opacity
     }
@@ -190,6 +205,9 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         title = try container.decodeIfPresent(TitleSpec.self, forKey: .title)
         motion = try container.decodeIfPresent(Motion.self, forKey: .motion) ?? Motion()
         volume = try container.decodeIfPresent(AnimatableProperty.self, forKey: .volume) ?? AnimatableProperty([0])
+        speed = try container.decodeIfPresent(AnimatableProperty.self, forKey: .speed) ?? AnimatableProperty([100])
+        isReversed = try container.decodeIfPresent(Bool.self, forKey: .isReversed) ?? false
+        maintainsPitch = try container.decodeIfPresent(Bool.self, forKey: .maintainsPitch) ?? true
         if try container.decodeIfPresent(Motion.self, forKey: .motion) == nil,
            let legacy = try container.decodeIfPresent(Double.self, forKey: .opacity) {
             opacity = legacy
@@ -210,6 +228,10 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         try container.encodeIfPresent(title, forKey: .title)
         try container.encode(motion, forKey: .motion)
         try container.encode(volume, forKey: .volume)
+        // 100% forwards is the default; leave it out so unchanged clips read as before.
+        if speed != AnimatableProperty([100]) { try container.encode(speed, forKey: .speed) }
+        if isReversed { try container.encode(isReversed, forKey: .isReversed) }
+        if !maintainsPitch { try container.encode(maintainsPitch, forKey: .maintainsPitch) }
     }
 }
 

@@ -29,12 +29,12 @@ public extension EditSequence {
             switch edge {
             case .start:
                 bounds.atMost(clip.duration - 1)
-                bounds.atLeast(-framesBefore(clip))
+                bounds.atLeast(-framesBefore(clip, media))
                 bounds.atLeast((previousClip(before: clip, on: track)?.end ?? 0) - clip.start)
             case .end:
                 bounds.atLeast(1 - clip.duration)
-                if let available = availableFrames(of: clip.mediaID, after: clip.sourceStart, media: media) {
-                    bounds.atMost(available - clip.duration)
+                if let longest = maxDuration(clip, media) {
+                    bounds.atMost(longest - clip.duration)
                 }
                 if let next = nextClip(after: clip, on: track) { bounds.atMost(next.start - clip.end) }
             }
@@ -46,9 +46,7 @@ public extension EditSequence {
             updateClip(clip.id, on: trackID) { clip in
                 switch edge {
                 case .start:
-                    clip.start += applied
-                    clip.duration -= applied
-                    clip.sourceStart += RationalTime(frames: applied, rate: rate)
+                    clip.moveStart(by: applied, rate: rate)
                 case .end:
                     clip.duration += applied
                 }
@@ -68,11 +66,11 @@ public extension EditSequence {
             switch edge {
             case .start:
                 bounds.atMost(clip.duration - 1)
-                bounds.atLeast(-framesBefore(clip))
+                bounds.atLeast(-framesBefore(clip, media))
             case .end:
                 bounds.atLeast(1 - clip.duration)
-                if let available = availableFrames(of: clip.mediaID, after: clip.sourceStart, media: media) {
-                    bounds.atMost(available - clip.duration)
+                if let longest = maxDuration(clip, media) {
+                    bounds.atMost(longest - clip.duration)
                 }
             }
         }
@@ -90,9 +88,7 @@ public extension EditSequence {
             insertGap(at: reference.start, length: extra, targets: trackIDs)
             for (trackID, clip) in group {
                 updateClip(clip.id, on: trackID) { clip in
-                    clip.start -= extra
-                    clip.duration += extra
-                    clip.sourceStart -= RationalTime(frames: extra, rate: rate)
+                    clip.moveStart(by: -extra, rate: rate)
                 }
             }
         case (.end, false):
@@ -131,14 +127,14 @@ public extension EditSequence {
             guard let track = track(trackID) else { continue }
             if let left {
                 bounds.atLeast(1 - left.duration)
-                if let available = availableFrames(of: left.mediaID, after: left.sourceStart, media: media) {
-                    bounds.atMost(available - left.duration)
+                if let longest = maxDuration(left, media) {
+                    bounds.atMost(longest - left.duration)
                 }
                 if right == nil, let next = nextClip(after: left, on: track) { bounds.atMost(next.start - left.end) }
             }
             if let right {
                 bounds.atMost(right.duration - 1)
-                bounds.atLeast(-framesBefore(right))
+                bounds.atLeast(-framesBefore(right, media))
                 if left == nil { bounds.atLeast((previousClip(before: right, on: track)?.end ?? 0) - right.start) }
             }
         }
@@ -150,9 +146,7 @@ public extension EditSequence {
             if let left { updateClip(left.id, on: trackID) { $0.duration += applied } }
             if let right {
                 updateClip(right.id, on: trackID) { clip in
-                    clip.start += applied
-                    clip.duration -= applied
-                    clip.sourceStart += RationalTime(frames: applied, rate: rate)
+                    clip.moveStart(by: applied, rate: rate)
                 }
             }
         }
@@ -165,9 +159,11 @@ public extension EditSequence {
         let group = editGroup(for: clipID, edge: nil)
         var bounds = DeltaBounds()
         for (_, clip) in group {
-            bounds.atLeast(-framesBefore(clip))
-            if let available = availableFrames(of: clip.mediaID, after: clip.sourceStart, media: media) {
-                bounds.atMost(available - clip.duration)
+            // Slip moves the source under the clip; the bounds are the source's ends.
+            let (lower, upper) = clip.timing(rate: rate).sourceRange
+            bounds.atLeast(-Int64((lower * rate.framesPerSecond + 1e-6).rounded(.down)))
+            if let length = media[clip.mediaID] {
+                bounds.atMost(Int64(((length.seconds - upper) * rate.framesPerSecond + 1e-6).rounded(.down)))
             }
         }
         let applied = bounds.clamp(delta)
@@ -191,15 +187,15 @@ public extension EditSequence {
             let next = nextClip(after: clip, on: track)
             if let previous, previous.end == clip.start {
                 bounds.atLeast(1 - previous.duration)
-                if let available = availableFrames(of: previous.mediaID, after: previous.sourceStart, media: media) {
-                    bounds.atMost(available - previous.duration)
+                if let longest = maxDuration(previous, media) {
+                    bounds.atMost(longest - previous.duration)
                 }
             } else {
                 bounds.atLeast((previous?.end ?? 0) - clip.start)
             }
             if let next, next.start == clip.end {
                 bounds.atMost(next.duration - 1)
-                bounds.atLeast(-framesBefore(next))
+                bounds.atLeast(-framesBefore(next, media))
             } else if let next {
                 bounds.atMost(next.start - clip.end)
             }
@@ -214,9 +210,7 @@ public extension EditSequence {
             }
             if let next = nextClip(after: clip, on: track), next.start == clip.end {
                 updateClip(next.id, on: trackID) { next in
-                    next.start += applied
-                    next.duration -= applied
-                    next.sourceStart += RationalTime(frames: applied, rate: rate)
+                    next.moveStart(by: applied, rate: rate)
                 }
             }
             updateClip(clip.id, on: trackID) { $0.start += applied }
@@ -246,8 +240,13 @@ public extension EditSequence {
         return group
     }
 
-    internal func framesBefore(_ clip: Clip) -> Int64 {
-        max(0, clip.sourceStart.frameIndex(at: rate))
+    internal func framesBefore(_ clip: Clip, _ media: MediaDurations) -> Int64 {
+        clip.framesBefore(media: media[clip.mediaID], rate: rate)
+    }
+
+    /// The longest `clip` can be before its source runs out, or nil if unknown.
+    internal func maxDuration(_ clip: Clip, _ media: MediaDurations) -> Int64? {
+        clip.maximumDuration(media: media[clip.mediaID], rate: rate)
     }
 
     internal func previousClip(before clip: Clip, on track: Track) -> Clip? {

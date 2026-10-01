@@ -2,7 +2,11 @@ import Foundation
 
 public extension Clip {
     func property(_ property: ClipProperty) -> AnimatableProperty {
-        property == .volume ? volume : motion[property]
+        switch property {
+        case .volume: return volume
+        case .speed: return speed
+        default: return motion[property]
+        }
     }
 
     mutating func updateProperty(_ property: ClipProperty, _ change: (inout AnimatableProperty) -> Void) {
@@ -10,7 +14,13 @@ public extension Clip {
         change(&value)
         // Keep every value inside the property's range.
         value.values = value.values.map { min(max($0, property.range.lowerBound), property.range.upperBound) }
-        if property == .volume { volume = value } else { motion[property] = value }
+        switch property {
+        case .volume: volume = value
+        case .speed:
+            speed = value
+            if value.isAnimated { isReversed = false }
+        default: motion[property] = value
+        }
     }
 
     /// Level in dB at a source time (constant or keyframed).
@@ -19,7 +29,7 @@ public extension Clip {
     }
 
     /// Whether any of the clip's properties are keyframed.
-    var isAnimated: Bool { motion.isAnimated || volume.isAnimated }
+    var isAnimated: Bool { motion.isAnimated || volume.isAnimated || speed.isAnimated }
 }
 
 public extension EditSequence {
@@ -32,7 +42,7 @@ public extension EditSequence {
     /// Sets a property's value at sequence frame `frame` (a keyframe if it's animated).
     mutating func setProperty(_ property: ClipProperty, of clipID: UUID, to values: [Double], atFrame frame: Int64) {
         guard let clip = clip(clipID) else { return }
-        let time = clip.sourceTime(atSequenceFrame: frame, rate: rate)
+        let time = clip.keyframeTime(for: property, atSequenceFrame: frame, rate: rate)
         let tolerance = rate.frameDuration
         updateProperty(property, of: clipID) { $0.set(values, at: time, tolerance: tolerance) }
     }
@@ -117,8 +127,7 @@ public extension RenderPlan {
 
     /// Linear gain of an audio clip at a (fractional) sequence frame.
     static func audioGain(for clip: Clip, fades: ClipFades?, atFrame frame: Double, rate: FrameRate) -> Double {
-        let time = clip.sourceStart + RationalTime(seconds: (frame - Double(clip.start)) / rate.framesPerSecond,
-                                                   timescale: 48_000)
+        let time = clip.sourceTime(atSequencePosition: frame, rate: rate)
         let level = linearGain(dB: clip.gainDB + clip.volumeDB(at: time))
         return level * (fades?.gain(at: frame) ?? 1)
     }
