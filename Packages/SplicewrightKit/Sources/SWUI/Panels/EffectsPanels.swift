@@ -132,6 +132,8 @@ struct EffectControlsPanel: View {
     @ObservedObject var workspace: WorkspaceController
     @ObservedObject var timeline: TimelineState
 
+    @State private var titleSplit: CGFloat = 0.55
+
     init(workspace: WorkspaceController) {
         self.workspace = workspace
         timeline = workspace.timeline
@@ -141,10 +143,17 @@ struct EffectControlsPanel: View {
         Group {
             if let selected = workspace.selectedTransition, let sequence = workspace.activeSequence {
                 TransitionControls(workspace: workspace, transition: selected.transition, rate: sequence.rate)
-            } else if let title = workspace.selectedTitleClip, let spec = title.title {
-                TitleControls(workspace: workspace, clipID: title.id, spec: spec, opacity: title.opacity)
-            } else if let clip = selectedClip {
-                ClipControls(workspace: workspace, clip: clip, isVideo: isVideo(clip))
+            } else if let selected = workspace.effectControlsClip {
+                if let spec = selected.clip.title {
+                    SplitPane(.vertical, fraction: $titleSplit, minFirst: 120, minSecond: 120) {
+                        TitleControls(workspace: workspace, clipID: selected.clip.id, spec: spec,
+                                      opacity: selected.clip.opacity)
+                    } second: {
+                        MotionControls(workspace: workspace, clip: selected.clip, isVideo: true)
+                    }
+                } else {
+                    MotionControls(workspace: workspace, clip: selected.clip, isVideo: selected.isVideo)
+                }
             } else {
                 Text("Select a clip or transition in the timeline")
                     .font(.system(size: 11))
@@ -152,17 +161,6 @@ struct EffectControlsPanel: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-    }
-
-    private var selectedClip: Clip? {
-        guard let sequence = workspace.activeSequence else { return nil }
-        let clips = timeline.selection.compactMap { sequence.clip($0) }
-        // With linked clips selected, show the video one.
-        return clips.first { isVideo($0) } ?? clips.first
-    }
-
-    private func isVideo(_ clip: Clip) -> Bool {
-        workspace.activeSequence?.videoTracks.contains { $0.clips.contains { $0.id == clip.id } } ?? false
     }
 }
 
@@ -222,42 +220,5 @@ private struct TransitionControls: View {
         let value = Int64(max(1, frames))
         guard value != transition.transition.duration else { return }
         workspace.updateTransition(transition.id, "Transition Duration") { $0.duration = value }
-    }
-}
-
-private struct ClipControls: View {
-    @ObservedObject var workspace: WorkspaceController
-    let clip: Clip
-    let isVideo: Bool
-    @State private var value: Double = 0
-
-    var body: some View {
-        Form {
-            Section(clip.name) {
-                if isVideo {
-                    LabeledContent("Opacity") {
-                        Slider(value: $value, in: 0...100) { editing in
-                            if !editing { workspace.setClipOpacity([clip.id], value / 100) }
-                        }
-                        Text("\(Int(value.rounded()))%").monospacedDigit().frame(width: 40, alignment: .trailing)
-                    }
-                } else {
-                    LabeledContent("Gain") {
-                        Slider(value: $value, in: -60...24) { editing in
-                            if !editing { workspace.setClipGain([clip.id], value) }
-                        }
-                        Text(String(format: "%+.1f dB", value)).monospacedDigit().frame(width: 56, alignment: .trailing)
-                    }
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .font(.system(size: 11))
-        .onAppear(perform: load)
-        .onChange(of: clip) { _, _ in load() }
-    }
-
-    private func load() {
-        value = isVideo ? clip.opacity * 100 : clip.gainDB
     }
 }

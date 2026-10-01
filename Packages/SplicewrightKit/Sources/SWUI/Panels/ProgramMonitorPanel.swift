@@ -28,6 +28,11 @@ struct ProgramMonitorPanel: View {
                             frameOverlay(in: fittedRect(geometry.size))
                         }
                     }
+                    if workspace.activeTool == .selection, let selected = transformTarget {
+                        GeometryReader { geometry in
+                            TransformHandles(workspace: workspace, clip: selected, pictureRect: fittedRect(geometry.size))
+                        }
+                    }
                     if engine.isBuilding {
                         ProgressView().controlSize(.small).padding(8)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -88,6 +93,13 @@ struct ProgramMonitorPanel: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 28)
+    }
+
+    /// The selected video clip, if it's on screen at the playhead (for the transform box).
+    private var transformTarget: Clip? {
+        guard let selected = workspace.effectControlsClip, selected.isVideo,
+              selected.clip.range.contains(engine.currentFrame) else { return nil }
+        return selected.clip
     }
 
     /// Where the picture sits inside the monitor (aspect fit).

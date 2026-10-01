@@ -66,6 +66,8 @@ public final class WorkspaceController: ObservableObject {
     var cancellables: Set<AnyCancellable> = []
     /// Set while a workspace is being applied, so applying it isn't recorded as a change.
     var isApplyingLayout = false
+    /// The project before a live edit (a drag in Effect Controls or the Program monitor) began.
+    var liveEditOriginal: Project?
 
     public init() {
         NotificationCenter.default.publisher(for: .splicewrightProxiesChanged)

@@ -18,8 +18,8 @@ public extension Clip {
         volume.value(at: time).first ?? 0
     }
 
-    /// Whether anything about the clip changes over time (so it must be rendered every frame).
-    var isAnimated: Bool { motion.isAnimated }
+    /// Whether any of the clip's properties are keyframed.
+    var isAnimated: Bool { motion.isAnimated || volume.isAnimated }
 }
 
 public extension EditSequence {
