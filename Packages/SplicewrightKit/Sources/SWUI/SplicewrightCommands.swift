@@ -1,4 +1,5 @@
 import SwiftUI
+import SWCore
 
 /// Menu bar additions. Items act on the frontmost project window's workspace.
 public struct SplicewrightCommands: Commands {
