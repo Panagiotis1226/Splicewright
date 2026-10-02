@@ -253,6 +253,14 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Rendering.** Worked out once per clip per composition build (one transform per frame) and looked up per frame, so playback costs nothing extra. The Program monitor handles use the same transform.
   - **Effects** follow by tracking a mask on the effect itself (M19); no link is needed.
 
+**M22 — Voiceover, Noise Reduction, Clean Up Dialogue**
+- *As built:*
+  - **Voiceover.** AVAudioEngine's input is tapped into a 32-bit float CAF at the input's own rate and channels. There's a 3-second count-in, playback runs muted during the take (no speaker feedback), and a live peak meter shows the level. Stopping imports the file and overwrites it onto the targeted audio track at the start frame. The app declares microphone use, plus the audio-input entitlement the hardened runtime needs.
+  - **Noise Reduction.** A decision-directed Wiener filter (Ephraim–Malah a-priori SNR, α 0.98) on 1024-sample frames with 75% overlap, through √Hann analysis and synthesis windows (perfect reconstruction when it does nothing). The noise power per frequency is a recursive average over frames within 3× of it; louder frames only let it rise about 3 dB a second. It learns quickly for its first fraction of a second, once a frame is full of audio. Amount sets the over-subtraction (1–4), and Max Reduction the gain floor. The transforms use Accelerate (vDSP) on the Mac, so it keeps up in real time even in a debug build (an audio tap that falls behind leaves the mix silent), and a plain Swift FFT on Linux, where it's tested: 18 dB down on white noise at the default, with a tone kept within 1.5 dB.
+  - **Clean Up Dialogue.** EQ (−12 dB shelf at 90 Hz, +2.5 dB at 3 kHz), Noise Reduction (50 %, 15 dB), Compressor (−22 dB, 3:1, 5/120 ms, +4 dB) and Hard Limiter (−1 dB), as ordinary effects.
+  - **Fixed:** export loudness normalization read only audio buffers stored in one contiguous block. A buffer in several pieces was skipped, so an export could measure as silent and not be normalized, or be left partly without its gain. Every piece is read and written now.
+  - **Not done yet:** input device choice inside the app, punch-in over an existing clip's range, and latency compensation for Noise Reduction.
+
 Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: the rest of Lumetri (color wheels, HSL secondaries, scopes), Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, and plugins.
 
 ## Risks and mitigations

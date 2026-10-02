@@ -2,7 +2,7 @@
 
 A native macOS video editor for Apple silicon, laid out like Premiere Pro. It handles SDR (Rec.709) and HDR (HLG, PQ) footage in H.264, HEVC and ProRes, in `.mov` and `.mp4`, up to 4K60.
 
-Status: **M21**. You can:
+Status: **M22**. You can:
 
 - import media into bins and check its format details
 - mark In/Out in the Source monitor
@@ -17,6 +17,7 @@ Status: **M21**. You can:
 - steady shaky footage with the Stabilizer (smooth the camera's motion or lock it still, with automatic crop)
 - make a title or graphic follow a tracked object (Motion ▸ Follow)
 - mix audio in the Audio Track Mixer (track faders, pan, mute/solo, a Mix fader, live meters), apply audio effects (Parametric EQ, Compressor, Hard Limiter), and normalize exports to -14, -16 or -23 LUFS
+- record voiceovers straight onto the timeline, reduce background noise, and clean up dialogue in one click
 - animate Position, Scale, Rotation, Anchor Point, Opacity and Volume with keyframes in Effect Controls, shape the curves with Bezier handles in a value graph, see and drag keyframes and Opacity/Volume lines on the timeline, or move, scale and rotate clips directly in the Program monitor
 - make HEVC, H.264 or ProRes proxies for smooth editing of 4K/HDR footage (export always uses the originals)
 - copy and paste clips and Paste Attributes between them
@@ -83,6 +84,9 @@ When the app opens, choose **New Document**, then:
     - **Stabilizer:** drag **Stabilizer** onto a shaky clip. It analyses the shot right away (progress and Cancel in Effect Controls), following details across the whole frame and ignoring things that move on their own, like people walking through. Then choose the **Result**: **Smooth Motion** keeps your pans and moves but removes the shake (raise **Smoothness** for steadier, floatier motion), and **No Motion** holds the shot still as on a tripod. **Method** is Position only, or Position, Scale & Rotation (the default; it also steadies tilt and zoom wobble). **Framing**: **Stabilize, Crop & Auto-Scale** zooms in just enough that the moving edges never show (up to **Maximum Scale**), and **Stabilize Only** leaves the edges visible. Masks, Crop and Motion keep working on top. If you lengthen the clip later, Effect Controls tells you to analyse again.
     - **Adjustment layers:** choose **Graphics ▸ New Adjustment Layer** or drag **Adjustment Layer** from the Effects panel onto a video track. Its effects apply to every track below it for as long as it lasts; tracks above it aren't affected. Lower its Opacity to blend the result with the original. Trim and move it like any clip.
 16. **Audio mixing:** the **Audio Track Mixer** tab sits next to Project. Each audio track has a pan knob (drag up/down), M (mute) and S (solo), a fader (⌥ for fine control) and a meter with peak hold. The Mix strip on the right sets the overall level. Double-click a fader or knob to reset it. Faders change what you hear during playback right away and are saved with the sequence. Audio effects come from the **Effects** panel's Audio Effects section: drag one onto an audio clip and set it in Effect Controls (every value has a stopwatch). The level meters next to the timeline show the real Mix.
+    - **Voiceover:** click the **microphone** in the Timeline's toolbar (or **Clip ▸ Record Voiceover**). After a 3-second count-in it records your Mac's input (choose it in System Settings ▸ Sound ▸ Input) while the sequence plays muted. The first time, macOS asks for microphone access. Click again or press **Space** to stop: the take lands on the targeted audio track (the highlighted A1/A2… in the track headers) from where you started, and the file is kept in `~/Movies/Splicewright/Voiceovers`. The level meter shows red near clipping.
+    - **Noise Reduction** (Audio Effects) lowers steady background noise (hiss, hum, fans, room tone). It learns the noise as it plays, so there's nothing to capture first. **Amount** sets how hard, and **Max Reduction** how far down the noise may go (lower it if voices sound watery). It's meant for speech: a steady tone or held music note can be mistaken for noise. It delays the clip's audio by about 21 ms.
+    - **Clean Up Dialogue** (Clip menu, or Effects ▸ Audio Presets) adds Parametric EQ (rumble cut, a little presence), Noise Reduction, Compressor and Hard Limiter, tuned for speech, to the selected audio clips. Each is an ordinary effect you can adjust or remove.
 17. **Premiere Pro, Resolve and Final Cut timelines:** Splicewright can't open `.prproj` or `.drp` project files (they're closed formats that even those apps can't exchange), but it reads and writes the timeline files they export for exactly this:
     - From **Premiere Pro**: select the sequence, **File ▸ Export ▸ Final Cut Pro XML…**
     - From **DaVinci Resolve** (free or Studio): right-click the timeline ▸ **Timelines ▸ Export ▸ FCPXML**, **XML** or **OpenTimelineIO** (or File ▸ Export ▸ Timeline…).
