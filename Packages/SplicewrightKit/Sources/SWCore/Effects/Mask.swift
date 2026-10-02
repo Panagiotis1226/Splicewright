@@ -39,6 +39,8 @@ public struct Mask: Sendable, Hashable, Codable, Identifiable {
     public var opacity: AnimatableProperty
     /// Pixels the edge grows (negative shrinks).
     public var expansion: AnimatableProperty
+    /// How Track follows an object with this mask (nil: the defaults).
+    public var tracking: TrackingSettings?
 
     public init(id: UUID = UUID(), name: String = "Mask", vertices: [Vertex], mode: Mode = .add, isInverted: Bool = false,
                 feather: Double = 10) {
