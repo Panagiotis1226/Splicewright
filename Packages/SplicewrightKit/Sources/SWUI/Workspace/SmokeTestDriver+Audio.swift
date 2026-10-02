@@ -22,7 +22,9 @@ extension SmokeTestDriver {
         var parts: [String] = []
         for (name, candidate, from) in [("effects", sequence, frames.lowerBound), ("effects from 0", sequence, Int64(0)),
                                         ("no effects", plain, frames.lowerBound)] {
-            parts.append("\(name): " + (await readMix(candidate, project: project, frames: from..<frames.upperBound)))
+            _ = AudioTapStats.shared.take()
+            let mix = await readMix(candidate, project: project, frames: from..<frames.upperBound)
+            parts.append("\(name): \(mix); taps: \(AudioTapStats.shared.take())")
         }
         return parts.joined(separator: " | ")
     }

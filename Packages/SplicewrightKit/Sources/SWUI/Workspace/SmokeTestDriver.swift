@@ -327,7 +327,9 @@ enum SmokeTestDriver {
             try await Task.sleep(nanoseconds: 90_000_000_000)
             session.cancel()
         }
+        _ = AudioTapStats.shared.take()
         let state = await session.run()
+        let exportTaps = AudioTapStats.shared.take()
         watchdog.cancel()
         if state == .cancelled {
             report.errors.append("Export stalled at \(Int(session.progress * 100))% and was cancelled after 90 s")
@@ -339,8 +341,8 @@ enum SmokeTestDriver {
         }
         report.loudnessNormalized = session.loudnessResult?.summary ?? ""
         if session.loudnessResult == nil {
-            report.loudnessDetail = await mixDetail(settings.preparedSequence(sequence), project: workspace.project,
-                                                    frames: 10..<40)
+            report.loudnessDetail = "export taps: \(exportTaps) | "
+                + (await mixDetail(settings.preparedSequence(sequence), project: workspace.project, frames: 10..<40))
         }
         if let text = settings.sidecarText(for: sequence),
            let captionURL = WorkspaceController.writeCaptionFile(text, settings: settings, videoURL: url),

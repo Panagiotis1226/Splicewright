@@ -71,6 +71,29 @@ public final class AudioMeters: @unchecked Sendable {
     }
 }
 
+/// Counts of what the taps did (buffers, silent input, effects that ran or were skipped), for
+/// tests and the smoke test's report when audio goes missing.
+public final class AudioTapStats: @unchecked Sendable {
+    public static let shared = AudioTapStats()
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+
+    func count(_ key: String) {
+        lock.lock()
+        counts[key, default: 0] += 1
+        lock.unlock()
+    }
+
+    /// The counts since the last call, as "key n" pairs.
+    public func take() -> String {
+        lock.lock()
+        let taken = counts
+        counts = [:]
+        lock.unlock()
+        return taken.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
+    }
+}
+
 /// What one tap needs: the sequence track it belongs to and the clips placed on its
 /// composition track (for their audio effects).
 final class TapContext: @unchecked Sendable {
@@ -99,6 +122,7 @@ final class TapContext: @unchecked Sendable {
     }
 
     func prepare(maxFrames: Int, format: AudioStreamBasicDescription) {
+        AudioTapStats.shared.count("prepare \(maxFrames)")
         stateLock.lock()
         defer { stateLock.unlock() }
         sampleRate = format.mSampleRate
@@ -121,11 +145,25 @@ final class TapContext: @unchecked Sendable {
     }
 
     func process(_ list: UnsafeMutablePointer<AudioBufferList>, frames: Int, start: CMTime) {
-        guard frames > 0 else { return }
+        guard frames > 0 else {
+            AudioTapStats.shared.count("no frames")
+            return
+        }
         let buffers = UnsafeMutableAudioBufferListPointer(list)
         let channels = (0..<channelCount).compactMap { channel($0, in: buffers) }
         guard !channels.isEmpty else { return }
-        applyEffects(channels, frames: frames, start: start)
+        let stats = AudioTapStats.shared
+        stats.count("buffers")
+        func silent() -> Bool {
+            for (pointer, stride) in channels {
+                for frame in 0..<frames where pointer[frame * stride] != 0 { return false }
+            }
+            return true
+        }
+        let silentIn = silent()
+        if silentIn { stats.count("silent in") }
+        stats.count(applyEffects(channels, frames: frames, start: start))
+        if !silentIn, silent() { stats.count("silenced by effects") }
 
         // Fader, pan and the Mix fader, then the meter.
         let gains = levels.gains(for: trackID)
@@ -144,18 +182,21 @@ final class TapContext: @unchecked Sendable {
     }
 
     /// Runs the active clip's audio effects, keeping their state while that clip plays.
-    private func applyEffects(_ channels: [(UnsafeMutablePointer<Float>, Int)], frames: Int, start: CMTime) {
-        guard start.isNumeric else { return }
+    /// Returns what happened, for `AudioTapStats`.
+    private func applyEffects(_ channels: [(UnsafeMutablePointer<Float>, Int)], frames: Int, start: CMTime) -> String {
+        guard start.isNumeric else { return "no time" }
         // Never wait on the audio thread: if `prepare` holds the state, skip this buffer's effects.
-        guard stateLock.try() else { return }
+        guard stateLock.try() else { return "busy" }
         defer { stateLock.unlock() }
         let frame = Int64((start.seconds * rate.framesPerSecond).rounded(.down))
-        guard let clip = clips.first(where: { $0.range.contains(frame) }), !clip.effects.isEmpty else { return }
+        guard let clip = clips.first(where: { $0.range.contains(frame) }), !clip.effects.isEmpty else { return "no effects" }
         let effects = clip.resolvedAudioEffects(at: clip.sourceTime(atSequenceFrame: frame, rate: rate))
-        guard !effects.isEmpty, channels.count == scratch.count, frames <= scratch[0].capacity else { return }
+        guard !effects.isEmpty else { return "no effects" }
+        guard channels.count == scratch.count, frames <= scratch[0].capacity else { return "unprepared" }
         if chainClipID != clip.id || chain == nil {
             chain = AudioEffectChain(sampleRate: sampleRate, channels: channels.count)
             chainClipID = clip.id
+            AudioTapStats.shared.count("new chain")
         }
         // Move the arrays out and back (rather than copying them) so the audio thread reuses
         // their storage instead of allocating.
@@ -170,6 +211,7 @@ final class TapContext: @unchecked Sendable {
             for frame in 0..<frames { pointer[frame * stride] = buffers[index][frame] }
         }
         scratch = buffers
+        return "effects"
     }
 
     private static func context(_ tap: MTAudioProcessingTap) -> TapContext {
@@ -190,7 +232,10 @@ final class TapContext: @unchecked Sendable {
             process: { tap, frames, _, bufferList, framesOut, flagsOut in
                 var range = CMTimeRange()
                 guard MTAudioProcessingTapGetSourceAudio(tap, frames, bufferList, flagsOut, &range, framesOut) == noErr
-                else { return }
+                else {
+                    AudioTapStats.shared.count("source failed")
+                    return
+                }
                 TapContext.context(tap).process(bufferList, frames: Int(framesOut.pointee), start: range.start)
             })
         var tap: MTAudioProcessingTap?
