@@ -36,6 +36,23 @@ echo "--- app log (tail)"
 tail -n 40 "$out/app.log" || true
 if [[ ! -f "$out/report.json" ]]; then
   echo "Smoke test failed: the app didn't write a report."
+  # A crash leaves a report; show the crashed thread's frames.
+  crash=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/Splicewright*.ips 2>/dev/null | head -n 1 || true)
+  if [[ -n "$crash" ]]; then
+    echo "--- crash report ($crash)"
+    python3 - "$crash" <<'PY' || head -c 6000 "$crash"
+import json, sys
+text = open(sys.argv[1]).read()
+body = json.loads(text[text.index("\n") + 1:])
+print(body.get("exception"), body.get("termination", {}).get("indicator"))
+images = body.get("usedImages", [])
+for thread in body.get("threads", []):
+    if thread.get("triggered"):
+        for frame in thread.get("frames", [])[:40]:
+            image = images[frame.get("imageIndex", 0)].get("name", "?") if images else "?"
+            print(f"  {image}  {frame.get('symbol', '?')} +{frame.get('symbolLocation', 0)}")
+PY
+  fi
   exit 1
 fi
 echo "--- report"

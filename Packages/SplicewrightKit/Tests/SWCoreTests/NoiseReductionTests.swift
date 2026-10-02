@@ -106,3 +106,23 @@ struct DialoguePresetTests {
         #expect(seq.clip(video.id)?.effects.isEmpty == true)
     }
 }
+
+@Suite("Noise Reduction under load")
+struct NoiseReductionStressTests {
+    /// Odd buffer sizes, mono and stereo, and the effect list changing mid-stream, as playback does.
+    @Test func handlesAnyBufferShape() {
+        var generator = SeededGenerator(seed: 77)
+        for channels in [1, 2] {
+            var chain = AudioEffectChain(sampleRate: 44_100, channels: channels)
+            let reduce = ResolvedEffect(kind: .noiseReduction, values: ["amount": 80, "reduction": 30])
+            let limit = ResolvedEffect(kind: .hardLimiter, values: ["ceiling": -1, "inputBoost": 0])
+            for size in [0, 1, 7, 255, 256, 257, 1023, 1024, 4096, 333, 512] {
+                var buffers = (0..<channels).map { _ in
+                    (0..<size).map { _ in Float.random(in: -1...1, using: &generator) }
+                }
+                chain.process(size % 2 == 0 ? [reduce, limit] : [reduce], &buffers)
+                #expect(buffers.allSatisfy { $0.count == size && $0.allSatisfy { $0.isFinite } })
+            }
+        }
+    }
+}
