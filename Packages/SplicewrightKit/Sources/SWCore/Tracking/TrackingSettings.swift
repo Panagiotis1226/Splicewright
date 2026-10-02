@@ -75,7 +75,7 @@ public struct TrackingSettings: Sendable, Hashable, Codable {
         public var displayName: String { rawValue.capitalized }
 
         /// Pyramid levels: each halves the picture, doubling how far a match can be found.
-        var pyramidLevels: Int {
+        public var pyramidLevels: Int {
             switch self {
             case .small: return 2
             case .normal: return 3
