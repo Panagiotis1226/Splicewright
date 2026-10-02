@@ -246,6 +246,13 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Rendering.** The correction goes between a layer's fit and its Motion, scaled to the asset's own pixels so proxies match. Masks, the Program monitor handles and export all use the same mapping.
   - **Not done yet:** rolling-shutter and lens-warp correction (Premiere's Subspace Warp), and partial re-analysis of an extended clip.
 
+**M21 — Follow a tracked mask**
+- *As built:*
+  - **Link.** A clip's Follow link names a mask on another clip, the frame it was attached on, and whether it follows scale and rotation (schema 11, optional).
+  - **Motion.** Each frame, the mask's path there and on the anchor frame are both mapped into sequence pixels, through the target's Stabilizer, fit and Motion (as the Program monitor draws them). The similarity between them is fitted by least squares. The follower moves by it after its own Motion, about the mask's center; without Scale or Rotation those parts are dropped. Beyond the target clip, it holds its first or last position.
+  - **Rendering.** Worked out once per clip per composition build (one transform per frame) and looked up per frame, so playback costs nothing extra. The Program monitor handles use the same transform.
+  - **Effects** follow by tracking a mask on the effect itself (M19); no link is needed.
+
 Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: the rest of Lumetri (color wheels, HSL secondaries, scopes), Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, and plugins.
 
 ## Risks and mitigations
