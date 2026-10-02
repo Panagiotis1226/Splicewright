@@ -21,6 +21,19 @@ extension WorkspaceController {
         }
     }
 
+    /// Clip ▸ Clean Up Dialogue: EQ, Noise Reduction, Compressor and Limiter, tuned for speech, on
+    /// the selected audio clips (each stays an ordinary effect to adjust).
+    public func cleanUpDialogue() {
+        var count = 0
+        let ids = timeline.selection
+        editSequence("Clean Up Dialogue") { sequence, _ in count = sequence.cleanUpDialogue(ids) }
+        guard count > 0 else {
+            NSSound.beep()
+            return
+        }
+        activePanel = .effectControls
+    }
+
     func updateEffect(_ effectID: UUID, of clipID: UUID, _ actionName: String,
                       _ change: @escaping (inout ClipEffect) -> Void) {
         editSequence(actionName) { sequence, _ in sequence.updateEffect(effectID, of: clipID, change) }

@@ -42,6 +42,7 @@ struct TimelinePanel: View {
                     .help("Sequence Settings")
             }
             Spacer()
+            VoiceoverButton(workspace: workspace)
             Toggle(isOn: $timeline.isSnapping) { Image(systemName: "arrow.left.and.line.vertical.and.arrow.right") }
                 .toggleStyle(.button)
                 .help("Snap in Timeline (S)")

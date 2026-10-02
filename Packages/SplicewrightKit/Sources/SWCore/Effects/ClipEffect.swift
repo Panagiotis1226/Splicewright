@@ -8,12 +8,14 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
     /// Smooths camera shake from an analysis of the shot (like Warp Stabilizer).
     case stabilizer
     case parametricEQ, compressor, hardLimiter
+    /// Lowers steady background noise (hiss, hum, fans, room tone), learned as it plays.
+    case noiseReduction
 
     public var id: String { rawValue }
 
     public var isAudio: Bool {
         switch self {
-        case .parametricEQ, .compressor, .hardLimiter: return true
+        case .parametricEQ, .compressor, .hardLimiter, .noiseReduction: return true
         default: return false
         }
     }
@@ -44,6 +46,7 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         case .parametricEQ: return "Parametric EQ"
         case .compressor: return "Compressor"
         case .hardLimiter: return "Hard Limiter"
+        case .noiseReduction: return "Noise Reduction"
         }
     }
 
@@ -96,6 +99,9 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
                     .init("attack", "Attack", unit: "ms", range: 0.1...200, step: 0.1, default: 10),
                     .init("release", "Release", unit: "ms", range: 5...2000, step: 1, default: 100),
                     .init("makeup", "Makeup Gain", unit: "dB", range: 0...24, step: 0.1)]
+        case .noiseReduction:
+            return [.init("amount", "Amount", unit: "%", range: 0...100, step: 0.5, default: 50),
+                    .init("reduction", "Max Reduction", unit: "dB", range: 0...40, step: 0.1, default: 18)]
         case .hardLimiter:
             return [.init("ceiling", "Maximum Amplitude", unit: "dB", range: -24...0, step: 0.1, default: -1),
                     .init("inputBoost", "Input Boost", unit: "dB", range: 0...24, step: 0.1)]
@@ -117,6 +123,7 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         case .parametricEQ: return "slider.vertical.3"
         case .compressor: return "arrow.down.right.and.arrow.up.left"
         case .hardLimiter: return "chart.line.flattrend.xyaxis"
+        case .noiseReduction: return "waveform.badge.minus"
         }
     }
 }
@@ -249,6 +256,7 @@ public struct ResolvedEffect: Sendable, Hashable {
         case .horizontalFlip, .verticalFlip, .mirror, .hardLimiter: return false
         case .parametricEQ: return ["lowGain", "midGain", "highGain"].allSatisfy { self[$0] == 0 }
         case .compressor: return self["ratio"] <= 1 && self["makeup"] <= 0
+        case .noiseReduction: return self["amount"] <= 0 || self["reduction"] <= 0
         case .colorCorrection:
             let neutral = kind.parameters.allSatisfy { abs(self[$0.key] - $0.defaultValue) < 1e-9 }
             return neutral && (curves?.isIdentity ?? true)

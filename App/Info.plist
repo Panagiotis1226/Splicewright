@@ -49,6 +49,8 @@
 	<string>Splicewright reads media you import from your Downloads folder.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Splicewright records voiceovers from your microphone onto the timeline.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
 	<string>Splicewright reads media you import from network volumes.</string>
 	<key>NSRemovableVolumesUsageDescription</key>

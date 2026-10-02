@@ -101,7 +101,7 @@ enum EffectRendering {
             return passes
         case .lut:
             if let path = effect.lutPath { return [.lut(path: path, intensity: effect["intensity"] / 100)] }
-        case .parametricEQ, .compressor, .hardLimiter, .stabilizer:
+        case .parametricEQ, .compressor, .hardLimiter, .noiseReduction, .stabilizer:
             // Audio, or (the Stabilizer) moved with the layer's transform.
             break
         }

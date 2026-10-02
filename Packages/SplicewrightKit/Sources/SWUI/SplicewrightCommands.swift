@@ -102,6 +102,11 @@ public struct SplicewrightCommands: Commands {
             Button("Speed/Duration…") { workspace?.requestSpeedDuration() }
                 .shortcut(.speedDuration, keys)
                 .disabled(workspace?.activeSequenceID == nil)
+            Button("Clean Up Dialogue") { workspace?.cleanUpDialogue() }
+                .disabled(workspace?.activeSequenceID == nil)
+            Divider()
+            Button(workspace?.voiceover == nil ? "Record Voiceover" : "Stop Recording") { workspace?.toggleVoiceover() }
+                .disabled(workspace?.activeSequenceID == nil)
         }
         CommandMenu("Graphics") {
             Button("New Title") { workspace?.newTitle() }

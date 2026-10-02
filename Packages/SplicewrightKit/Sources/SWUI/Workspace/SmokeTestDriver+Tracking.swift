@@ -56,4 +56,33 @@ extension SmokeTestDriver {
         else { return "not following" }
         return "ok"
     }
+
+    /// Clean Up Dialogue on the tone (A2): the four effects go on, and the export later runs them.
+    static func checkDialogue(_ workspace: WorkspaceController) -> String {
+        guard let tone = workspace.activeSequence?.audioTracks[1].clips.first else { return "no audio clip" }
+        workspace.timeline.selection = [tone.id]
+        workspace.cleanUpDialogue()
+        let kinds = workspace.activeSequence?.clip(tone.id)?.effects.map(\.kind) ?? []
+        return kinds == [.parametricEQ, .noiseReduction, .compressor, .hardLimiter] ? "ok" : "\(kinds)"
+    }
+
+    /// Writes the sequence as FCPXML and imports it back as a new sequence, as File ▸ Export ▸
+    /// Timeline and File ▸ Import Timeline would. Returns "ok", or what differed.
+    static func checkTimelineRoundTrip(_ workspace: WorkspaceController, in directory: URL) async -> String {
+        guard let original = workspace.activeSequence else { return "no sequence" }
+        var report = InterchangeReport()
+        let timeline = InterchangeTimeline(original, project: workspace.project, report: &report)
+        let url = directory.appending(path: "timeline.fcpxml")
+        do { try InterchangeFormat.fcpxml.write(timeline).write(to: url) } catch { return "write: \(error)" }
+        await workspace.importTimeline(from: url)
+        workspace.interchangeMessage = nil
+        guard let imported = workspace.activeSequence, imported.id != original.id else { return "not imported" }
+        func media(_ sequence: EditSequence) -> [String] {
+            sequence.videoTracks.flatMap(\.clips).filter { !$0.isGenerated }
+                .map { "\($0.start)-\($0.duration)" }.sorted()
+        }
+        let before = media(original)
+        let after = media(imported)
+        return before == after ? "ok" : "video clips \(before) → \(after)"
+    }
 }

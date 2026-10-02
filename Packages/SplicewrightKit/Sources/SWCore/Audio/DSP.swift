@@ -183,6 +183,7 @@ public struct AudioEffectChain: Sendable {
         case eq(ParametricEQ)
         case compressor(Compressor)
         case limiter(HardLimiter)
+        case noise(NoiseReducer)
     }
 
     private var processors: [Processor] = []
@@ -205,6 +206,7 @@ public struct AudioEffectChain: Sendable {
                 case .parametricEQ: return .eq(ParametricEQ(effect, sampleRate: sampleRate, channels: channels))
                 case .compressor: return .compressor(Compressor(effect, sampleRate: sampleRate))
                 case .hardLimiter: return .limiter(HardLimiter(effect, sampleRate: sampleRate))
+                case .noiseReduction: return .noise(NoiseReducer(effect, sampleRate: sampleRate, channels: channels))
                 default: return nil
                 }
             }
@@ -223,6 +225,10 @@ public struct AudioEffectChain: Sendable {
                 limiter.update(effect, sampleRate: sampleRate)
                 limiter.process(&buffers)
                 processors[index] = .limiter(limiter)
+            case .noise(var reducer):
+                reducer.update(effect)
+                reducer.process(&buffers)
+                processors[index] = .noise(reducer)
             }
         }
     }

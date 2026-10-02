@@ -89,6 +89,9 @@ public final class WorkspaceController: ObservableObject {
     @Published public var trackingMessage: MaskTrackingMessage?
     /// The Stabilizer analysis running, if any.
     @Published public internal(set) var stabilizationJob: StabilizationJob?
+    /// A voiceover being recorded, and why the last one couldn't start.
+    @Published public internal(set) var voiceover: VoiceoverSession?
+    @Published public var voiceoverMessage: String?
     /// The marker highlighted in the ruler and Markers panel, and the one open in the Marker sheet.
     @Published public var selectedMarkerID: UUID?
     @Published public var editingMarkerID: UUID?

@@ -260,6 +260,8 @@ extension WorkspaceController {
         guard let sequence = activeSequence else { return false }
         let engine = program
         switch action {
+        // Space while recording a voiceover stops it (and places the take).
+        case .togglePlay where voiceover != nil: stopVoiceover()
         case .togglePlay: engine.togglePlay()
         case .shuttleForward: engine.shuttleForward()
         case .shuttleReverse: engine.shuttleReverse()

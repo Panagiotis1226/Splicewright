@@ -60,6 +60,7 @@ enum SmokeTestDriver {
         var maskTracked = ""
         var stabilized = ""
         var followed = ""
+        var dialogue = ""
         var errors: [String] = []
     }
 
@@ -119,6 +120,7 @@ enum SmokeTestDriver {
         report.maskTracked = await checkTracking(workspace)
         report.followed = await checkFollow(workspace)
         report.stabilized = await checkStabilizer(workspace)
+        report.dialogue = checkDialogue(workspace)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)
         if let clip = sequence.videoTracks[0].clips.first { workspace.timeline.selection = [clip.id] }
@@ -361,26 +363,6 @@ enum SmokeTestDriver {
         }
         let log = AppLog.shared.lines().filter { $0.contains("chapter") }.suffix(3)
         return (false, detail + " log=\(Array(log))")
-    }
-
-    /// Writes the sequence as FCPXML and imports it back as a new sequence, as File ▸ Export ▸
-    /// Timeline and File ▸ Import Timeline would. Returns "ok", or what differed.
-    private static func checkTimelineRoundTrip(_ workspace: WorkspaceController, in directory: URL) async -> String {
-        guard let original = workspace.activeSequence else { return "no sequence" }
-        var report = InterchangeReport()
-        let timeline = InterchangeTimeline(original, project: workspace.project, report: &report)
-        let url = directory.appending(path: "timeline.fcpxml")
-        do { try InterchangeFormat.fcpxml.write(timeline).write(to: url) } catch { return "write: \(error)" }
-        await workspace.importTimeline(from: url)
-        workspace.interchangeMessage = nil
-        guard let imported = workspace.activeSequence, imported.id != original.id else { return "not imported" }
-        func media(_ sequence: EditSequence) -> [String] {
-            sequence.videoTracks.flatMap(\.clips).filter { !$0.isGenerated }
-                .map { "\($0.start)-\($0.duration)" }.sorted()
-        }
-        let before = media(original)
-        let after = media(imported)
-        return before == after ? "ok" : "video clips \(before) → \(after)"
     }
 
     /// Makes an edit, then sends Edit ▸ Undo through the responder chain, as ⌘Z does.

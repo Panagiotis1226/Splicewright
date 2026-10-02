@@ -32,6 +32,7 @@ struct EffectsPanel: View {
                     section("Audio Transitions", TransitionKind.audio)
                     effects("Video Effects", EffectKind.video, help: "Drag onto a clip or adjustment layer")
                     effects("Audio Effects", EffectKind.audio, help: "Drag onto an audio clip")
+                    presets
                     graphics
                 }
                 .padding(.horizontal, 6)
@@ -55,6 +56,23 @@ struct EffectsPanel: View {
                           payload: Self.effectPrefix + kind.rawValue, onDoubleClick: { workspace.addEffect(kind) })
                     .help(help + ", or double-click to apply to the selected clips")
             }
+        }
+    }
+
+    /// Clean Up Dialogue: a chain of audio effects for speech, applied to the selection.
+    @ViewBuilder
+    private var presets: some View {
+        if search.isEmpty || "clean up dialogue".localizedCaseInsensitiveContains(search) {
+            header("Audio Presets")
+            Button { workspace.cleanUpDialogue() } label: {
+                Label("Clean Up Dialogue", systemImage: "person.wave.2")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 6)
+            .frame(height: 22)
+            .help("Adds EQ (rumble cut, a little presence), Noise Reduction, Compressor and Hard Limiter to the selected "
+                  + "audio clips, tuned for speech. Each stays an effect you can adjust.")
         }
     }
 
