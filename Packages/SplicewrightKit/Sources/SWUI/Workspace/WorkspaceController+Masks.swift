@@ -103,4 +103,26 @@ extension WorkspaceController {
         maskPen = target
         activeTool = .selection
     }
+
+    // MARK: - Follow
+
+    func setFollow(_ link: FollowLink?, of clipID: UUID) {
+        editSequence(link == nil ? "Stop Following" : "Follow Options") { sequence, _ in
+            sequence.updateClipProperties([clipID]) { $0.follow = link }
+        }
+    }
+
+    /// Makes a clip move with a tracked mask from the playhead on.
+    func follow(_ clipID: UUID, target: UUID, owner: MaskOwner, mask: UUID) {
+        guard let sequence = activeSequence, let clip = sequence.clip(clipID), let other = sequence.clip(target) else { return }
+        let low = max(clip.start, other.start)
+        let high = min(clip.end, other.end) - 1
+        let anchor = min(max(playheadFrame, low), max(high, low))
+        var link = FollowLink(targetClipID: target, owner: owner, maskID: mask, anchorFrame: anchor)
+        if let old = clip.follow {
+            link.followsScale = old.followsScale
+            link.followsRotation = old.followsRotation
+        }
+        editSequence("Follow Mask") { sequence, _ in sequence.updateClipProperties([clipID]) { $0.follow = link } }
+    }
 }

@@ -45,6 +45,7 @@ struct MotionControls: View {
                         uniformScaleRow
                         row(.rotation)
                         row(.anchorPoint)
+                        FollowControls(workspace: workspace, clip: clip)
                         sectionTitle("Opacity")
                         row(.opacity)
                         masks(.opacity)

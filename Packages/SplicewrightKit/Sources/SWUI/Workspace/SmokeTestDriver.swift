@@ -59,6 +59,7 @@ enum SmokeTestDriver {
         var maskApplied = false
         var maskTracked = ""
         var stabilized = ""
+        var followed = ""
         var errors: [String] = []
     }
 
@@ -116,6 +117,7 @@ enum SmokeTestDriver {
         await checkHardening(workspace, report: &report)
         addEffects(workspace, report: &report)
         report.maskTracked = await checkTracking(workspace)
+        report.followed = await checkFollow(workspace)
         report.stabilized = await checkStabilizer(workspace)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)

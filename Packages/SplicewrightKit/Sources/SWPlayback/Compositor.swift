@@ -37,6 +37,8 @@ struct InstructionLayer {
     /// set: its size and its transform to render pixels before motion. Nil when that's the
     /// encoded picture itself (unrotated media, titles, adjustment layers).
     var picture: DisplayedPicture?
+    /// For a clip following a tracked mask: how it moves on each of its frames (sequence pixels).
+    var follow: FollowSamples?
 
     /// The effects at a composition time, split into what the layer draw does itself (Crop,
     /// Flip, Mirror) and what needs passes of its own (in render pixels), masks included.
@@ -90,15 +92,30 @@ struct InstructionLayer {
         return Affine2D.scale(1 / k, 1 / k).concatenating(fix).concatenating(.scale(k, k))
     }
 
-    /// `base`, then the clip's motion at a composition time.
+    /// `base`, then the clip's motion at a composition time, then the mask it follows.
     private func withMotion(_ base: Affine2D, at time: CMTime, renderWidth: Double, renderHeight: Double) -> Affine2D {
-        guard !motion.isIdentity else { return base }
-        return base.concatenating(motion.transform(at: sourceTime(at: time), renderWidth: renderWidth,
-                                                   renderHeight: renderHeight, scale: pixelScale))
+        let moved = motion.isIdentity ? base : base.concatenating(motion.transform(
+            at: sourceTime(at: time), renderWidth: renderWidth, renderHeight: renderHeight, scale: pixelScale))
+        guard let follow, let step = follow.transform(at: (time - clipStart).seconds) else { return moved }
+        // Sequence pixels → render pixels.
+        let p = max(pixelScale, 1e-9)
+        return moved.concatenating(Affine2D.scale(1 / p, 1 / p).concatenating(step).concatenating(.scale(p, p)))
     }
 
     func opacity(at time: CMTime) -> Double {
         motion.opacity(at: sourceTime(at: time))
+    }
+}
+
+/// A following clip's motion, one transform per frame from its first.
+struct FollowSamples {
+    var transforms: [Affine2D]
+    var fps: Double
+
+    func transform(at elapsed: Double) -> Affine2D? {
+        guard !transforms.isEmpty else { return nil }
+        let index = min(max(Int((elapsed * fps).rounded()), 0), transforms.count - 1)
+        return transforms[index]
     }
 }
 
@@ -189,7 +206,7 @@ final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProto
         self.outputSpace = outputSpace
         self.overlay = overlay
         containsTweening = everyFrame || layers.contains {
-            $0.effects.contains { $0.kind == .stabilizer && $0.isEnabled && $0.stabilization != nil } ||
+            $0.effects.contains { $0.kind == .stabilizer && $0.isEnabled && $0.stabilization != nil } || $0.follow != nil ||
             $0.transition != nil || $0.motion.isAnimated || $0.isAdjustment || $0.effects.contains(where: \.isAnimated)
                 || $0.opacityMasks.contains(where: \.isAnimated)
         }

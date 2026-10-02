@@ -143,6 +143,8 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     public var isAdjustment: Bool
     /// Masks on Opacity: the clip shows only inside them (schema 10).
     public var opacityMasks: [Mask] = []
+    /// Moves with a tracked mask on another clip (a title following a person). Schema 11.
+    public var follow: FollowLink?
 
     public init(id: UUID = UUID(), mediaID: UUID, name: String, start: Int64, duration: Int64,
                 sourceStart: RationalTime, linkID: UUID? = nil, isEnabled: Bool = true,
@@ -195,7 +197,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaID, name, start, duration, sourceStart, linkID, isEnabled, gainDB, title, motion, volume
-        case speed, isReversed, maintainsPitch, effects, isAdjustment, opacityMasks
+        case speed, isReversed, maintainsPitch, effects, isAdjustment, opacityMasks, follow
         /// Schema 3 and earlier stored a constant opacity (0...1).
         case opacity
     }
@@ -220,6 +222,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         effects = try container.decodeIfPresent([ClipEffect].self, forKey: .effects) ?? []
         isAdjustment = try container.decodeIfPresent(Bool.self, forKey: .isAdjustment) ?? false
         opacityMasks = try container.decodeIfPresent([Mask].self, forKey: .opacityMasks) ?? []
+        follow = try container.decodeIfPresent(FollowLink.self, forKey: .follow)
         if try container.decodeIfPresent(Motion.self, forKey: .motion) == nil,
            let legacy = try container.decodeIfPresent(Double.self, forKey: .opacity) {
             opacity = legacy
@@ -247,6 +250,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         if !effects.isEmpty { try container.encode(effects, forKey: .effects) }
         if isAdjustment { try container.encode(isAdjustment, forKey: .isAdjustment) }
         if !opacityMasks.isEmpty { try container.encode(opacityMasks, forKey: .opacityMasks) }
+        try container.encodeIfPresent(follow, forKey: .follow)
     }
 }
 

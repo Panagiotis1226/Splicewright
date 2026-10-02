@@ -88,6 +88,7 @@ checks = {
     "opacity mask applied": r.get("maskApplied"),
     "mask tracked": r.get("maskTracked") == "ok",
     "stabilizer analysed": r.get("stabilized") == "ok",
+    "title follows the tracked mask": r.get("followed") == "ok",
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

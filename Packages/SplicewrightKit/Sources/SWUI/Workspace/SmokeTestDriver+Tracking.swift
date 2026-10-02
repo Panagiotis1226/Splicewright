@@ -37,4 +37,23 @@ extension SmokeTestDriver {
         }
         return data.corrections.count == data.frameCount && data.zoom >= 1 ? "ok" : "no corrections"
     }
+
+    /// Makes the title follow the mask tracked in `checkTracking`; it should move with it.
+    static func checkFollow(_ workspace: WorkspaceController) async -> String {
+        guard let sequence = workspace.activeSequence,
+              let target = sequence.videoTracks[0].clips.first(where: { $0.opacityMasks.first?.path.isAnimated == true }),
+              let mask = target.opacityMasks.first,
+              let title = sequence.videoTracks.flatMap(\.clips).first(where: {
+                  $0.title != nil && $0.start < target.end && target.start < $0.end
+              }) else { return "no title over a tracked clip" }
+        guard sequence.followableMasks(for: title).contains(where: { $0.mask.id == mask.id }) else { return "not offered" }
+        workspace.program.seek(toFrame: max(title.start, target.start))
+        _ = await waitFor(seconds: 5) { workspace.program.currentFrame == max(title.start, target.start) }
+        workspace.follow(title.id, target: target.id, owner: .opacity, mask: mask.id)
+        guard let following = workspace.activeSequence?.clip(title.id), following.follow?.maskID == mask.id,
+              workspace.activeSequence?.followTransform(of: following, atFrame: following.follow?.anchorFrame ?? 0,
+                                                        pictureSize: { workspace.maskPictureSize(of: $0) }) != nil
+        else { return "not following" }
+        return "ok"
+    }
 }

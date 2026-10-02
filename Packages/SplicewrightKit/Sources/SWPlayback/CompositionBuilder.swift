@@ -327,6 +327,7 @@ public struct CompositionBuilder {
             // (Title clips render without media.) Missing video files show Media Offline.
             loaded[mediaID]?.video != nil || (loaded[mediaID] == nil && project.item(mediaID)?.info.video != nil)
         }
+        let follows = Self.followSamples(sequence, project: project)
         videoComposition.instructions = segments.map { segment in
             func instructionLayer(for layer: RenderLayer) -> InstructionLayer? {
                 let transition = layer.transition.map { InstructionTransition($0, rate: rate) }
@@ -378,6 +379,7 @@ public struct CompositionBuilder {
                 built?.effects = layer.effects
                 built?.isAdjustment = layer.isAdjustment
                 built?.opacityMasks = layer.opacityMasks
+                built?.follow = follows[layer.clipID]
                 return built
             }
             let range = CMTimeRange(start: RationalTime(frames: segment.range.start, rate: rate).cmTime,
@@ -452,5 +454,26 @@ enum AudioEnvelope {
 extension Affine2D {
     init(_ transform: CGAffineTransform) {
         self.init(a: transform.a, b: transform.b, c: transform.c, d: transform.d, tx: transform.tx, ty: transform.ty)
+    }
+}
+
+extension CompositionBuilder {
+    /// Clips following a tracked mask: their motion on each frame, worked out once per clip.
+    static func followSamples(_ sequence: EditSequence, project: Project) -> [UUID: FollowSamples] {
+        let settings = sequence.settings
+        let pictureSize = { (clip: Clip) -> (width: Double, height: Double) in
+            if !clip.isGenerated, let video = project.item(clip.mediaID)?.info.video, video.width > 0 {
+                return (Double(video.width), Double(video.height))
+            }
+            return (Double(settings.width), Double(settings.height))
+        }
+        var follows: [UUID: FollowSamples] = [:]
+        for clip in sequence.videoTracks.flatMap(\.clips) where clip.follow != nil {
+            let transforms = (clip.start..<clip.end).map {
+                sequence.followTransform(of: clip, atFrame: $0, pictureSize: pictureSize) ?? .identity
+            }
+            follows[clip.id] = FollowSamples(transforms: transforms, fps: sequence.rate.framesPerSecond)
+        }
+        return follows
     }
 }

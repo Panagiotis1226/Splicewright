@@ -155,8 +155,15 @@ struct PictureMapping {
         let fit = min(width / mediaWidth, height / mediaHeight)
         size = (width, height)
         half = (mediaWidth * fit / 2, mediaHeight * fit / 2)
-        transform = clip.motion.transform(at: workspace.keyframeTime(in: clip), renderWidth: width, renderHeight: height,
-                                          scale: 1)
+        var transform = clip.motion.transform(at: workspace.keyframeTime(in: clip), renderWidth: width,
+                                              renderHeight: height, scale: 1)
+        // A clip following a tracked mask moves with it after its own Motion.
+        if let sequence = workspace.activeSequence, clip.follow != nil,
+           let follow = sequence.followTransform(of: clip, atFrame: min(max(workspace.playheadFrame, clip.start), clip.end - 1),
+                                                 pictureSize: { workspace.maskPictureSize(of: $0) }) {
+            transform = transform.concatenating(follow)
+        }
+        self.transform = transform
         self.pictureRect = pictureRect
         stabilization = clip.stabilization(at: workspace.keyframeTime(in: clip))
     }
