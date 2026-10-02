@@ -84,6 +84,9 @@ public final class WorkspaceController: ObservableObject {
     /// The mask the Program monitor shows for editing, and where the Pen is drawing a new one.
     @Published public var selectedMask: MaskSelection?
     @Published public var maskPen: MaskTarget?
+    /// The mask being tracked, and what the last track ended with.
+    @Published public internal(set) var trackingJob: MaskTrackingJob?
+    @Published public var trackingMessage: MaskTrackingMessage?
     /// The marker highlighted in the ruler and Markers panel, and the one open in the Marker sheet.
     @Published public var selectedMarkerID: UUID?
     @Published public var editingMarkerID: UUID?

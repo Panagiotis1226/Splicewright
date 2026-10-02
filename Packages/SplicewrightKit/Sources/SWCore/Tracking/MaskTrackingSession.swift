@@ -13,7 +13,8 @@ public struct TrackingStep: Sendable {
 /// hand it each next frame (forward or backward in time) at the same size; it returns the
 /// mask's path on that frame. Frames are `TrackingImage`s of the clip's picture as shown, and
 /// paths are in the mask's own coordinates (fractions of the picture).
-public final class MaskTrackingSession {
+/// Used from one task at a time (each frame after the last).
+public final class MaskTrackingSession: @unchecked Sendable {
     public let settings: TrackingSettings
     private let motion: TrackingSettings.Motion
     private let levels: Int

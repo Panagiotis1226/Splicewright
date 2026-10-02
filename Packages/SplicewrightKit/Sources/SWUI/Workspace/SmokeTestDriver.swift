@@ -57,6 +57,7 @@ enum SmokeTestDriver {
         var timelineKeyframes = ""
         var colorApplied = false
         var maskApplied = false
+        var maskTracked = ""
         var errors: [String] = []
     }
 
@@ -113,6 +114,7 @@ enum SmokeTestDriver {
         await checkWorkspaces(workspace, report: &report)
         await checkHardening(workspace, report: &report)
         addEffects(workspace, report: &report)
+        report.maskTracked = await checkTracking(workspace)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)
         if let clip = sequence.videoTracks[0].clips.first { workspace.timeline.selection = [clip.id] }
@@ -444,7 +446,7 @@ enum SmokeTestDriver {
         return (try? data.write(to: url)) != nil
     }
 
-    private static func waitFor(seconds: Double, _ condition: () -> Bool) async -> Bool {
+    static func waitFor(seconds: Double, _ condition: () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline {
             if condition() { return true }

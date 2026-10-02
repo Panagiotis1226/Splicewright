@@ -33,6 +33,7 @@ struct MaskControls<Row: View>: View {
                 let selection = MaskSelection(target: target, maskID: mask.id)
                 header(mask, selection)
                 pathRow(selection)
+                MaskTrackingRow(workspace: workspace, selection: selection)
                 row(selection.ref(.feather), "Mask Feather", "px", 1)
                 row(selection.ref(.opacity), "Mask Opacity", "%", 1)
                 row(selection.ref(.expansion), "Mask Expansion", "px", 1)
