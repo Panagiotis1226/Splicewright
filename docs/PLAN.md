@@ -223,6 +223,18 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Rotated video (0.16.1).** Phone video is stored sideways with a rotation flag. Masks were placed in the encoded frame while the Program monitor draws them on the upright picture, so on portrait clips they came out transposed. Each video layer now carries its displayed picture (size, quarter turns, and a fit without the rotation). Masks are placed through it, and Crop sides and Flip H/V are turned into the encoded frame the shader samples. Mirror still works in the encoded frame.
   - **Not done yet:** mask tracking, and masks on titles' individual layers; masks aren't written to FCP7 XML, FCPXML or OTIO.
 
+**M19 — Mask tracking**
+- *As built:*
+  - **No learned model:** classic computer vision in pure Swift (SWCore), so it's deterministic, offline and tested on Linux against synthetic footage with known motion.
+  - **Methods.**
+    - **Points:** Shi–Tomasi corners inside the mask, followed with pyramidal Lucas–Kanade (Bouguet) and a forward–backward check. The motion is fitted with RANSAC and refit on the inliers.
+    - **Texture:** whole-area Gauss–Newton alignment, coarse to fine, in normalized coordinates, with a per-iteration gain/offset fit so lighting changes don't break it. Confidence is the zero-mean normalized correlation.
+    - **Color:** a Cb/Cr object-versus-background likelihood learned from the first frame, followed with mean shift. Scale comes from the blob's spread and rotation from its axis (CAMShift-style).
+  - **Motions:** position; position and scale; similarity; affine; perspective (normalized DLT). All are represented as one 3 × 3 transform applied to the path's points and handle ends.
+  - **Options:** search range (pyramid levels), quality (analysis size), Adapt Each Frame (with constant-velocity prediction) or Hold the First Frame, and Stop When Lost (confidence under 0.35). They're saved per mask.
+  - **App.** Frames come upright from AVAssetImageGenerator at the analysis size (proxies when on). Tracking runs off the main thread, writes a Mask Path keyframe per frame through live edits (one undo step) and moves the playhead. Effect Controls shows progress, confidence and Stop.
+  - **Not done yet:** tracking titles and adjustment layers (no picture of their own), and planar corner-pin output to other effects.
+
 Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: the rest of Lumetri (color wheels, HSL secondaries, scopes), Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, and plugins.
 
 ## Risks and mitigations
