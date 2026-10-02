@@ -235,6 +235,17 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **App.** Frames come upright from AVAssetImageGenerator at the analysis size (proxies when on). Tracking runs off the main thread, writes a Mask Path keyframe per frame through live edits (one undo step) and moves the playhead. Effect Controls shows progress, confidence and Stop.
   - **Not done yet:** tracking titles and adjustment layers (no picture of their own), and planar corner-pin output to other effects.
 
+**M20 — Stabilizer**
+- *As built:*
+  - **Analysis.** The tracking engine runs over the whole frame: up to 400 corners spread out, Lucas–Kanade with a forward–backward check, and RANSAC for the motion most points agree on (position only, or position, scale and rotation). Moving subjects drop out as outliers. It runs on every frame the clip uses (proxies when on), off the main thread, and is cancellable.
+  - **Path.** The camera path is accumulated per frame and stored with the effect in the picture's own pixels (schema 11).
+    - *Smooth Motion* fits a straight line locally to the path's position, rotation and log scale, weighted by a Gaussian over time (σ 0.05–1 s). A line rather than an average, so pans survive up to the clip's ends.
+    - *No Motion* holds the first frame.
+    - The correction (smoothed path after the inverse of the camera) is computed when the settings change, not per frame.
+  - **Framing.** Auto-Scale finds the smallest zoom that keeps every corrected frame covering the picture (a bisection per frame), capped by Maximum Scale.
+  - **Rendering.** The correction goes between a layer's fit and its Motion, scaled to the asset's own pixels so proxies match. Masks, the Program monitor handles and export all use the same mapping.
+  - **Not done yet:** rolling-shutter and lens-warp correction (Premiere's Subspace Warp), and partial re-analysis of an extended clip.
+
 Total: roughly 6 months for one experienced Swift developer; faster with AI-assisted implementation, but real-device testing time doesn't compress. Deferred until after v1: the rest of Lumetri (color wheels, HSL secondaries, scopes), Basic 3D (Z position and 3D rotation), nested sequences, multicam, dockable workspaces, and plugins.
 
 ## Risks and mitigations
