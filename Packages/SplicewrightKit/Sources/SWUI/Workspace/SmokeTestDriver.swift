@@ -78,6 +78,7 @@ enum SmokeTestDriver {
     private static func run(workspace: WorkspaceController, mediaDirectory: URL, outputDirectory: URL) async {
         var report = Report()
         try? FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        progressURL = outputDirectory.appending(path: "progress.txt")
         defer { finish(report, to: outputDirectory) }
 
         guard await waitFor(seconds: 20, { workspace.document != nil }) else {
@@ -110,22 +111,32 @@ enum SmokeTestDriver {
         report.durationFrames = sequence.durationFrames
         report.clipCount = sequence.allTracks.reduce(0) { $0 + $1.clips.count }
 
+        mark("undo")
         (report.undoWorks, report.undoDiagnostics) = await checkUndo(workspace)
+        mark("transition and title")
         addTransitionAndTitle(workspace, report: &report)
+        mark("proxies")
         await checkProxies(workspace, video: first, report: &report)
         checkCache(&report)
         await checkWorkspaces(workspace, report: &report)
+        mark("hardening")
         await checkHardening(workspace, report: &report)
+        mark("effects")
         addEffects(workspace, report: &report)
+        mark("tracking")
         report.maskTracked = await checkTracking(workspace)
+        mark("follow")
         report.followed = await checkFollow(workspace)
+        mark("stabilizer")
         report.stabilized = await checkStabilizer(workspace)
+        mark("dialogue")
         report.dialogue = checkDialogue(workspace)
         workspace.activePanel = .timeline
         workspace.timeline.zoomToFit(durationFrames: sequence.durationFrames, laneWidth: TimelineLayout.lastLaneWidth)
         if let clip = sequence.videoTracks[0].clips.first { workspace.timeline.selection = [clip.id] }
 
         _ = await waitFor(seconds: 30) { !workspace.program.isBuilding && workspace.program.player.currentItem != nil }
+        mark("playback")
         report.playheadBefore = workspace.program.currentFrame
         workspace.program.togglePlay()
         // Time two seconds from when frames start moving: a busy CI machine can take a while
@@ -139,10 +150,13 @@ enum SmokeTestDriver {
         workspace.program.seek(toFrame: min(15, max(0, sequence.durationFrames - 1)))
         try? await Task.sleep(nanoseconds: 1_000_000_000)
 
+        mark("program frame")
         report.programFrameRendered = await saveProgramFrame(workspace, to: outputDirectory.appending(path: "program.png"),
                                                               errors: &report.errors)
         report.windowSnapshot = saveWindowSnapshot(workspace.window, to: outputDirectory.appending(path: "window.png"))
+        mark("export")
         await exportClip(workspace, to: outputDirectory.appending(path: "export.mp4"), report: &report)
+        mark("timeline round trip")
         report.timelineRoundTrip = await checkTimelineRoundTrip(workspace, in: outputDirectory)
         // Give the script time to take a real screenshot while the window is still up.
         FileManager.default.createFile(atPath: outputDirectory.appending(path: "snapshot.ready").path, contents: nil)

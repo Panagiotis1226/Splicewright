@@ -36,8 +36,16 @@ echo "--- app log (tail)"
 tail -n 40 "$out/app.log" || true
 if [[ ! -f "$out/report.json" ]]; then
   echo "Smoke test failed: the app didn't write a report."
-  # A crash leaves a report; show the crashed thread's frames.
-  crash=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/Splicewright*.ips 2>/dev/null | head -n 1 || true)
+  echo "--- progress"
+  cat "$out/progress.txt" 2>/dev/null || echo "(none)"
+  # A crash leaves a report (written a few seconds later); show the crashed thread's frames.
+  crash=""
+  for _ in $(seq 1 20); do
+    crash=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/*Splicewright*.ips \
+                 /Library/Logs/DiagnosticReports/*Splicewright*.ips 2>/dev/null | head -n 1 || true)
+    [[ -n "$crash" ]] && break
+    sleep 1
+  done
   if [[ -n "$crash" ]]; then
     echo "--- crash report ($crash)"
     python3 - "$crash" <<'PY' || head -c 6000 "$crash"

@@ -2,6 +2,23 @@ import Foundation
 import SWCore
 
 extension SmokeTestDriver {
+    /// Where `mark` records how far the run got (read by scripts/smoke-test.sh after a crash).
+    static var progressURL: URL?
+
+    /// Appends a step to progress.txt, flushed at once so it survives a crash.
+    static func mark(_ step: String) {
+        guard let url = progressURL else { return }
+        let line = Data("\(Date().timeIntervalSince1970) \(step)\n".utf8)
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(line)
+            try? handle.synchronize()
+            try? handle.close()
+        } else {
+            try? line.write(to: url)
+        }
+    }
+
     /// Tracks the mask added in `addEffects` four frames forward (Texture, not stopping when
     /// unsure, since the fixtures are synthetic); each frame should get a Mask Path keyframe.
     static func checkTracking(_ workspace: WorkspaceController) async -> String {

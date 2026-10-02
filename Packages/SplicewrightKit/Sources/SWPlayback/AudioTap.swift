@@ -86,6 +86,9 @@ final class TapContext: @unchecked Sendable {
     private var chain: AudioEffectChain?
     private var chainClipID: UUID?
     private var scratch: [[Float]] = []
+    /// `prepare` can run on another thread while audio is being processed (around seeks); the
+    /// effect chain and scratch buffers are only touched while holding this.
+    private let stateLock = NSLock()
 
     init(trackID: UUID, clips: [Clip], rate: FrameRate, levels: MixerLevels, meters: AudioMeters?) {
         self.trackID = trackID
@@ -96,6 +99,8 @@ final class TapContext: @unchecked Sendable {
     }
 
     func prepare(maxFrames: Int, format: AudioStreamBasicDescription) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         sampleRate = format.mSampleRate
         channelCount = Int(format.mChannelsPerFrame)
         interleaved = format.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
@@ -141,6 +146,9 @@ final class TapContext: @unchecked Sendable {
     /// Runs the active clip's audio effects, keeping their state while that clip plays.
     private func applyEffects(_ channels: [(UnsafeMutablePointer<Float>, Int)], frames: Int, start: CMTime) {
         guard start.isNumeric else { return }
+        // Never wait on the audio thread: if `prepare` holds the state, skip this buffer's effects.
+        guard stateLock.try() else { return }
+        defer { stateLock.unlock() }
         let frame = Int64((start.seconds * rate.framesPerSecond).rounded(.down))
         guard let clip = clips.first(where: { $0.range.contains(frame) }), !clip.effects.isEmpty else { return }
         let effects = clip.resolvedAudioEffects(at: clip.sourceTime(atSequenceFrame: frame, rate: rate))
