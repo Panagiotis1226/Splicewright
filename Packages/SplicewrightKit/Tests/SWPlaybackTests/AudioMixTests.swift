@@ -10,6 +10,8 @@ import XCTest
 final class AudioMixTests: XCTestCase {
     private static var fixture: URL?
     private var project = Project()
+    /// Samples that weren't finite in the last `peaks` read (anywhere in the mix).
+    private var nonFinite = 0
 
     private func sequenceWithTone() async throws -> (EditSequence, UUID) {
         let url = try Self.fixture ?? FixtureWriter.writeSine(name: "mixer-tone.caf", seconds: 2)
@@ -44,6 +46,7 @@ final class AudioMixTests: XCTestCase {
         reader.add(mix)
         XCTAssertTrue(reader.startReading())
         var peaks: [Float] = [0, 0]
+        nonFinite = 0
         while let sample = mix.copyNextSampleBuffer() {
             guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
             let start = Int((CMSampleBufferGetPresentationTimeStamp(sample).seconds * 48_000).rounded())
@@ -51,6 +54,7 @@ final class AudioMixTests: XCTestCase {
             _ = values.withUnsafeMutableBytes { raw in
                 CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: raw.count, destination: raw.baseAddress!)
             }
+            nonFinite += values.filter { !$0.isFinite }.count
             for frame in 0..<(values.count / 2) where (24_000..<72_000).contains(start + frame) {
                 peaks[0] = max(peaks[0], abs(values[frame * 2]))
                 peaks[1] = max(peaks[1], abs(values[frame * 2 + 1]))
@@ -109,5 +113,20 @@ final class AudioMixTests: XCTestCase {
         sequence.updateEffect(effectID, of: clipID) { $0.isEnabled = false }
         levels = try await peaks(sequence)
         XCTAssertEqual(levels[0], 0.5, accuracy: 0.02)
+    }
+
+    func testNoiseReductionAndCleanUpDialogueInTheTap() async throws {
+        var (sequence, clipID) = try await sequenceWithTone()
+        sequence.addEffect(.noiseReduction, to: [clipID])
+        var levels = try await peaks(sequence)
+        XCTAssertEqual(nonFinite, 0, "Noise Reduction: every sample finite")
+        // A steady tone is learned as noise, so it's taken down, but at most by the 18 dB default.
+        XCTAssertGreaterThan(levels[0], 0.5 / 10, "Noise Reduction: peaks \(levels)")
+
+        (sequence, clipID) = try await sequenceWithTone()
+        XCTAssertEqual(sequence.cleanUpDialogue([clipID]), 1)
+        levels = try await peaks(sequence)
+        XCTAssertEqual(nonFinite, 0, "Clean Up Dialogue: every sample finite")
+        XCTAssertGreaterThan(levels[0], 0.5 / 10, "Clean Up Dialogue: peaks \(levels)")
     }
 }

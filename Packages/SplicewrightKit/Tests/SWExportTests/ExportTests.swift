@@ -270,6 +270,20 @@ final class ExportTests: XCTestCase {
         XCTAssertLessThan(meter.truePeakDB, -0.5)
     }
 
+    func testLoudnessIsMeasuredThroughCleanUpDialogue() async throws {
+        try await standardClips()
+        let audio = Set(sequence.audioTracks.flatMap(\.clips).map(\.id))
+        XCTAssertEqual(sequence.cleanUpDialogue(audio), 1)
+        var settings = ExportSettings(preset: .h264SDR)
+        settings.loudness = .streaming
+        let url = FixtureWriter.directory.appending(path: "export-dialogue.mp4")
+        let session = ExportSession(sequence: sequence, project: project, settings: settings, outputURL: url)
+        let state = try await Self.run(session, timeout: 90)
+        XCTAssertEqual(state, .finished(url))
+        let result = try XCTUnwrap(session.loudnessResult, "the cleaned-up tone measured as silent")
+        XCTAssertGreaterThan(result.measured, -40, result.summary)
+    }
+
     func testVideoOnlySequenceHasNoAudioTrack() async throws {
         let video = try await importClip(FixtureWriter.h264SDR30(frames: 30, width: Self.width, height: Self.height,
                                                                  fill: .grey(0.5, tenBit: false)), "export-grey.mov")
