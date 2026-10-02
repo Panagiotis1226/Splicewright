@@ -13,6 +13,7 @@
 
 /* Begin PBXFileReference section */
 		1A9144C478BCA8DE12428A0F /* SplicewrightKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SplicewrightKit; path = Packages/SplicewrightKit; sourceTree = SOURCE_ROOT; };
+		85C4DE9B5FBF2E9835471D25 /* Splicewright.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Splicewright.entitlements; sourceTree = "<group>"; };
 		8B08C34A3FD9BFC8449F7736 /* SplicewrightApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplicewrightApp.swift; sourceTree = "<group>"; };
 		B373CB0DDB79AB0D8A00960C /* Splicewright.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Splicewright.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -49,6 +50,7 @@
 		A0E541A260BD17F01D249664 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				85C4DE9B5FBF2E9835471D25 /* Splicewright.entitlements */,
 				8B08C34A3FD9BFC8449F7736 /* SplicewrightApp.swift */,
 			);
 			path = App;
