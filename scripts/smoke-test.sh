@@ -121,6 +121,8 @@ for name, ok in checks.items():
     print(("PASS " if ok else "FAIL ") + name)
 if r.get("timelineRoundTrip") != "ok":
     print("     timeline: " + str(r.get("timelineRoundTrip")))
+if r.get("loudnessDetail"):
+    print("     loudness: " + r["loudnessDetail"])
 if not r.get("chaptersEmbedded"):
     print("     chapters: " + str(r.get("chapterDetail")))
 sys.exit(0 if all(checks.values()) else 1)

@@ -53,6 +53,7 @@ enum SmokeTestDriver {
         var adjustmentLayerAdded = false
         var mixerApplied = false
         var loudnessNormalized = ""
+        var loudnessDetail = ""
         var timelineRoundTrip = ""
         var timelineKeyframes = ""
         var colorApplied = false
@@ -190,13 +191,6 @@ enum SmokeTestDriver {
         report.proxyPlayback = await waitFor(seconds: 30) {
             !workspace.program.isBuilding && workspace.program.player.currentItem != nil
         } && workspace.program.useProxies
-    }
-
-    private static func checkCache(_ report: inout Report) {
-        let manager = CacheManager.shared
-        report.cacheBytes = manager.usage().values.reduce(0) { $0 + $1.bytes }
-        manager.delete([.thumbnails])
-        report.thumbnailCacheCleared = manager.usage()[.thumbnails]?.files == 0
     }
 
     /// Switches to the Assembly workspace (icon view) and back.
@@ -344,6 +338,10 @@ enum SmokeTestDriver {
             return
         }
         report.loudnessNormalized = session.loudnessResult?.summary ?? ""
+        if session.loudnessResult == nil {
+            report.loudnessDetail = await mixDetail(settings.preparedSequence(sequence), project: workspace.project,
+                                                    frames: 10..<40)
+        }
         if let text = settings.sidecarText(for: sequence),
            let captionURL = WorkspaceController.writeCaptionFile(text, settings: settings, videoURL: url),
            let written = try? String(contentsOf: captionURL, encoding: .utf8) {
