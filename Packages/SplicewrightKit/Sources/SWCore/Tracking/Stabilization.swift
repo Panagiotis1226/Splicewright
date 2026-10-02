@@ -107,11 +107,11 @@ public struct StabilizationData: Sendable, Hashable, Codable {
 
     // MARK: - Smoothing
 
-    static func affine(_ n: [Double]) -> Affine2D {
+    public static func affine(_ n: [Double]) -> Affine2D {
         n.count == 6 ? Affine2D(a: n[0], b: n[1], c: n[2], d: n[3], tx: n[4], ty: n[5]) : .identity
     }
 
-    static func numbers(_ t: Affine2D) -> [Double] { [t.a, t.b, t.c, t.d, t.tx, t.ty] }
+    public static func numbers(_ t: Affine2D) -> [Double] { [t.a, t.b, t.c, t.d, t.tx, t.ty] }
 
     /// A camera as position (of the picture's center), turn and log zoom, so each can be averaged.
     private static func decompose(_ t: Affine2D, center: (Double, Double)) -> [Double] {
