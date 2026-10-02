@@ -15,6 +15,10 @@ extension WorkspaceController {
         }
         timeline.selection = Set(added.keys)
         activePanel = .effectControls
+        // The Stabilizer needs the shot analysed; start right away, as Premiere does.
+        if kind == .stabilizer, let first = added.first {
+            analyzeStabilization(clipID: first.key, effectID: first.value)
+        }
     }
 
     func updateEffect(_ effectID: UUID, of clipID: UUID, _ actionName: String,

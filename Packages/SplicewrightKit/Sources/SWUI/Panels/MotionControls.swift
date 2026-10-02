@@ -218,6 +218,7 @@ struct MotionControls: View {
             effectHeader(effect, index: index)
             if effect.isEnabled {
                 if effect.kind == .lut { LUTChooser(workspace: workspace, clipID: clip.id, effect: effect) }
+                if effect.kind == .stabilizer { StabilizerControls(workspace: workspace, clip: clip, effect: effect) }
                 ForEach(effect.kind.parameters, id: \.key) { parameter in
                     valueRow(.effect(effect.id, parameter.key), title: parameter.displayName, components: [""],
                              unit: parameter.unit, step: parameter.dragStep)

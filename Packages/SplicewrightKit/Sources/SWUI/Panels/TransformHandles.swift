@@ -138,6 +138,8 @@ struct PictureMapping {
     private let size: (width: Double, height: Double)
     private let half: (width: Double, height: Double)
     private let pictureRect: CGRect
+    /// The Stabilizer's correction at the playhead, in its analysed picture's pixels.
+    private let stabilization: (correction: Affine2D, width: Double, height: Double)?
 
     @MainActor
     init?(workspace: WorkspaceController, clip: Clip, pictureRect: CGRect) {
@@ -156,9 +158,15 @@ struct PictureMapping {
         transform = clip.motion.transform(at: workspace.keyframeTime(in: clip), renderWidth: width, renderHeight: height,
                                           scale: 1)
         self.pictureRect = pictureRect
+        stabilization = clip.stabilization(at: workspace.keyframeTime(in: clip))
     }
 
     func point(u: Double, v: Double) -> CGPoint {
+        var (u, v) = (u, v)
+        if let fix = stabilization {
+            let moved = fix.correction.apply(x: u * fix.width, y: v * fix.height)
+            (u, v) = (moved.x / fix.width, moved.y / fix.height)
+        }
         let mapped = transform.apply(x: size.width / 2 + (2 * u - 1) * half.width,
                                      y: size.height / 2 + (2 * v - 1) * half.height)
         let scale = pictureRect.width / CGFloat(size.width)
@@ -176,6 +184,10 @@ struct PictureMapping {
         let dy = Double(point.y - pictureRect.minY) / scale - t.ty
         let x = (t.d * dx - t.c * dy) / determinant
         let y = (t.a * dy - t.b * dx) / determinant
-        return (((x - size.width / 2) / half.width + 1) / 2, ((y - size.height / 2) / half.height + 1) / 2)
+        let shown = (((x - size.width / 2) / half.width + 1) / 2, ((y - size.height / 2) / half.height + 1) / 2)
+        guard let fix = stabilization else { return shown }
+        guard let back = fix.correction.inverted else { return nil }
+        let original = back.apply(x: shown.0 * fix.width, y: shown.1 * fix.height)
+        return (original.x / fix.width, original.y / fix.height)
     }
 }

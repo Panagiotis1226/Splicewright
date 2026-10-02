@@ -87,6 +87,8 @@ public final class WorkspaceController: ObservableObject {
     /// The mask being tracked, and what the last track ended with.
     @Published public internal(set) var trackingJob: MaskTrackingJob?
     @Published public var trackingMessage: MaskTrackingMessage?
+    /// The Stabilizer analysis running, if any.
+    @Published public internal(set) var stabilizationJob: StabilizationJob?
     /// The marker highlighted in the ruler and Markers panel, and the one open in the Marker sheet.
     @Published public var selectedMarkerID: UUID?
     @Published public var editingMarkerID: UUID?

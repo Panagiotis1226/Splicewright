@@ -153,6 +153,35 @@ final class MaskRenderTests: XCTestCase {
         XCTAssertTrue(flipped.flipVertical && !flipped.flipHorizontal, "left-right shown is top-bottom encoded")
     }
 
+    /// The Stabilizer moves the picture between its fit and Motion, scaled to the asset's size
+    /// (a proxy at half size moves half as many of its own pixels).
+    func testStabilizerCorrectionMovesTheLayer() {
+        var data = StabilizationData(pictureWidth: 200, pictureHeight: 100)
+        data.times = [0]
+        data.path = [StabilizationData.numbers(.identity)]
+        data.corrections = [[1, 0, 0, 1, 10, -4]]
+        data.isComplete = true
+        var effect = ClipEffect(kind: .stabilizer)
+        effect.stabilization = data
+        // Full size: the fit doubles it into a 400 × 200 frame.
+        var layer = InstructionLayer(trackID: 1, opacity: 1, transform: .scale(2, 2), sourceWidth: 200, sourceHeight: 100,
+                                     fallbackColor: .rec709)
+        layer.effects = [effect]
+        let moved = layer.transform(at: .zero, renderWidth: 400, renderHeight: 200).apply(x: 0, y: 0)
+        XCTAssertEqual(moved.x, 20, accuracy: 1e-9)
+        XCTAssertEqual(moved.y, -8, accuracy: 1e-9)
+        // A half-size proxy, fitted ×4 into the same frame, lands in the same place.
+        var proxy = InstructionLayer(trackID: 1, opacity: 1, transform: .scale(4, 4), sourceWidth: 100, sourceHeight: 50,
+                                     fallbackColor: .rec709)
+        proxy.effects = [effect]
+        let proxyMoved = proxy.transform(at: .zero, renderWidth: 400, renderHeight: 200).apply(x: 0, y: 0)
+        XCTAssertEqual(proxyMoved.x, 20, accuracy: 1e-9)
+        XCTAssertEqual(proxyMoved.y, -8, accuracy: 1e-9)
+        effect.isEnabled = false
+        layer.effects = [effect]
+        XCTAssertEqual(layer.transform(at: .zero, renderWidth: 400, renderHeight: 200), .scale(2, 2))
+    }
+
     func testMasksFollowTheLayerTransform() {
         let space = MaskSpace(transform: Affine2D(a: 2, b: 0, c: 0, d: 2, tx: 10, ty: 20), width: 100, height: 50,
                               pixelScale: 0.5)

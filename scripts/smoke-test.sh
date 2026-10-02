@@ -87,6 +87,7 @@ checks = {
     "color correction and LUT applied": r.get("colorApplied"),
     "opacity mask applied": r.get("maskApplied"),
     "mask tracked": r.get("maskTracked") == "ok",
+    "stabilizer analysed": r.get("stabilized") == "ok",
     "no errors": not r["errors"],
 }
 for name, ok in checks.items():

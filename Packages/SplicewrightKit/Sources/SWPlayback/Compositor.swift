@@ -43,9 +43,9 @@ struct InstructionLayer {
     func effects(at time: CMTime, renderWidth: Double, renderHeight: Double) -> (LayerGeometry, [PixelEffect]) {
         guard !effects.isEmpty || !opacityMasks.isEmpty else { return (.none, []) }
         let source = sourceTime(at: time)
-        let shown = picture ?? DisplayedPicture(transform: transform, width: sourceWidth, height: sourceHeight)
-        let space = MaskSpace(transform: withMotion(shown.transform, at: time, renderWidth: renderWidth,
-                                                    renderHeight: renderHeight),
+        let shown = displayedPicture
+        let space = MaskSpace(transform: withMotion(stabilization(at: time).concatenating(shown.transform), at: time,
+                                                    renderWidth: renderWidth, renderHeight: renderHeight),
                               width: shown.width, height: shown.height, pixelScale: pixelScale)
         let resolved = effects.filter { $0.isEnabled && !$0.kind.isAudio }
             .map { $0.resolved(at: source) }.filter { !$0.isNoOp }
@@ -66,9 +66,28 @@ struct InstructionLayer {
                                           timescale: 600_000)
     }
 
-    /// Fit, then motion, at a composition time.
+    /// Fit, then motion, at a composition time (with the Stabilizer's correction between them).
     func transform(at time: CMTime, renderWidth: Double, renderHeight: Double) -> Affine2D {
-        withMotion(transform, at: time, renderWidth: renderWidth, renderHeight: renderHeight)
+        let fix = stabilization(at: time)
+        guard fix != .identity else { return withMotion(transform, at: time, renderWidth: renderWidth,
+                                                         renderHeight: renderHeight) }
+        let shown = displayedPicture
+        let base = shown.fromEncoded.concatenating(fix).concatenating(shown.transform)
+        return withMotion(base, at: time, renderWidth: renderWidth, renderHeight: renderHeight)
+    }
+
+    private var displayedPicture: DisplayedPicture {
+        picture ?? DisplayedPicture(transform: transform, width: sourceWidth, height: sourceHeight)
+    }
+
+    /// The Stabilizer's correction at a composition time, in this layer's displayed pixels
+    /// (its analysis may have been of another size: a proxy, or the original).
+    func stabilization(at time: CMTime) -> Affine2D {
+        guard let data = effects.first(where: { $0.kind == .stabilizer && $0.isEnabled })?.stabilization,
+              let fix = data.correction(at: sourceTime(at: time).seconds), data.pictureWidth > 0 else { return .identity }
+        let k = displayedPicture.width / data.pictureWidth
+        guard abs(k - 1) > 1e-9 else { return fix }
+        return Affine2D.scale(1 / k, 1 / k).concatenating(fix).concatenating(.scale(k, k))
     }
 
     /// `base`, then the clip's motion at a composition time.
@@ -87,6 +106,8 @@ struct InstructionLayer {
 struct DisplayedPicture {
     /// Displayed pixels (top left origin) → render pixels, before motion.
     var transform: Affine2D
+    /// Encoded pixels → displayed pixels (the track's rotation).
+    var fromEncoded = Affine2D.identity
     var width: Double
     var height: Double
     /// Clockwise quarter turns from the encoded frame to the displayed picture.
@@ -103,6 +124,7 @@ struct DisplayedPicture {
         width = box.maxX - box.minX
         height = box.maxY - box.minY
         quarterTurns = turns
+        fromEncoded = orientation.concatenating(.translation(-box.minX, -box.minY))
     }
 
     init(transform: Affine2D, width: Double, height: Double) {
@@ -167,6 +189,7 @@ final class CompositionInstruction: NSObject, AVVideoCompositionInstructionProto
         self.outputSpace = outputSpace
         self.overlay = overlay
         containsTweening = everyFrame || layers.contains {
+            $0.effects.contains { $0.kind == .stabilizer && $0.isEnabled && $0.stabilization != nil } ||
             $0.transition != nil || $0.motion.isAnimated || $0.isAdjustment || $0.effects.contains(where: \.isAnimated)
                 || $0.opacityMasks.contains(where: \.isAnimated)
         }

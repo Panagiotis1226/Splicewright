@@ -5,6 +5,8 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
     case crop, gaussianBlur, dropShadow, sharpen, horizontalFlip, verticalFlip, mirror
     /// Lumetri-style basic correction (with RGB curves) and a .cube look-up table.
     case colorCorrection, lut
+    /// Smooths camera shake from an analysis of the shot (like Warp Stabilizer).
+    case stabilizer
     case parametricEQ, compressor, hardLimiter
 
     public var id: String { rawValue }
@@ -38,6 +40,7 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         case .mirror: return "Mirror"
         case .colorCorrection: return "Color Correction"
         case .lut: return "LUT"
+        case .stabilizer: return "Stabilizer"
         case .parametricEQ: return "Parametric EQ"
         case .compressor: return "Compressor"
         case .hardLimiter: return "Hard Limiter"
@@ -61,7 +64,7 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
                     .init("softness", "Softness", unit: "px", range: 0...500, step: 0.5, default: 10)]
         case .sharpen:
             return [.init("amount", "Sharpen Amount", unit: "", range: 0...4000, step: 1, default: 25)]
-        case .horizontalFlip, .verticalFlip:
+        case .horizontalFlip, .verticalFlip, .stabilizer:
             return []
         case .colorCorrection:
             return [.init("exposure", "Exposure", unit: "stops", range: -4...4, step: 0.01),
@@ -110,6 +113,7 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         case .mirror: return "rectangle.lefthalf.inset.filled"
         case .colorCorrection: return "camera.filters"
         case .lut: return "cube"
+        case .stabilizer: return "camera.metering.center.weighted"
         case .parametricEQ: return "slider.vertical.3"
         case .compressor: return "arrow.down.right.and.arrow.up.left"
         case .hardLimiter: return "chart.line.flattrend.xyaxis"
@@ -150,6 +154,8 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
     public var curves: ColorCurves?
     /// The effect applies only inside these (none: everywhere). Schema 10.
     public var masks: [Mask] = []
+    /// Stabilizer: the shot's analysis and how it's smoothed. Schema 11.
+    public var stabilization: StabilizationData?
 
     public init(id: UUID = UUID(), kind: EffectKind, isEnabled: Bool = true) {
         self.id = id
@@ -159,7 +165,7 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, isEnabled, parameters, lutPath, curves, masks
+        case id, kind, isEnabled, parameters, lutPath, curves, masks, stabilization
     }
 
     public init(from decoder: Decoder) throws {
@@ -171,6 +177,7 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
         lutPath = try container.decodeIfPresent(String.self, forKey: .lutPath)
         curves = try container.decodeIfPresent(ColorCurves.self, forKey: .curves)
         masks = try container.decodeIfPresent([Mask].self, forKey: .masks) ?? []
+        stabilization = try container.decodeIfPresent(StabilizationData.self, forKey: .stabilization)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -182,6 +189,7 @@ public struct ClipEffect: Sendable, Hashable, Codable, Identifiable {
         try container.encodeIfPresent(lutPath, forKey: .lutPath)
         try container.encodeIfPresent(curves, forKey: .curves)
         if !masks.isEmpty { try container.encode(masks, forKey: .masks) }
+        try container.encodeIfPresent(stabilization, forKey: .stabilization)
     }
 
     public func parameter(_ key: String) -> AnimatableProperty {
@@ -245,6 +253,8 @@ public struct ResolvedEffect: Sendable, Hashable {
             let neutral = kind.parameters.allSatisfy { abs(self[$0.key] - $0.defaultValue) < 1e-9 }
             return neutral && (curves?.isIdentity ?? true)
         case .lut: return lutPath == nil || self["intensity"] <= 0
+        // It moves the picture rather than drawing a pass (see `Clip.stabilization`).
+        case .stabilizer: return true
         }
     }
 }
@@ -256,6 +266,14 @@ public extension Clip {
     }
 
     /// Audio effects heard at a source time, in stack order.
+    /// The Stabilizer's correction at a source time, in the analysed picture's pixels (its size
+    /// with it), if the clip has an enabled, analysed one.
+    func stabilization(at time: RationalTime) -> (correction: Affine2D, width: Double, height: Double)? {
+        guard let data = effects.first(where: { $0.kind == .stabilizer && $0.isEnabled })?.stabilization,
+              let correction = data.correction(at: time.seconds) else { return nil }
+        return (correction, data.pictureWidth, data.pictureHeight)
+    }
+
     func resolvedAudioEffects(at time: RationalTime) -> [ResolvedEffect] {
         effects.filter { $0.isEnabled && $0.kind.isAudio }.map { $0.resolved(at: time) }.filter { !$0.isNoOp }
     }
