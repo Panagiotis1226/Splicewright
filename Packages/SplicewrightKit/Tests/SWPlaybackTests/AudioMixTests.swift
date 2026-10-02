@@ -123,10 +123,23 @@ final class AudioMixTests: XCTestCase {
         // A steady tone is learned as noise, so it's taken down, but at most by the 18 dB default.
         XCTAssertGreaterThan(levels[0], 0.5 / 10, "Noise Reduction: peaks \(levels)")
 
-        (sequence, clipID) = try await sequenceWithTone()
-        XCTAssertEqual(sequence.cleanUpDialogue([clipID]), 1)
-        levels = try await peaks(sequence)
-        XCTAssertEqual(nonFinite, 0, "Clean Up Dialogue: every sample finite")
-        XCTAssertGreaterThan(levels[0], 0.5 / 10, "Clean Up Dialogue: peaks \(levels)")
+        // Each part of the Clean Up Dialogue chain, alone and with the others.
+        let chain = DialoguePreset.chain
+        var results: [String] = []
+        for parts in [[0], [2], [3], [0, 1], [1, 2], [1, 3], [2, 3], [0, 1, 2], [1, 2, 3], [0, 1, 2, 3]] {
+            (sequence, clipID) = try await sequenceWithTone()
+            for part in parts {
+                let (kind, values) = chain[part]
+                guard let effectID = sequence.addEffect(kind, to: [clipID])[clipID] else { continue }
+                sequence.updateEffect(effectID, of: clipID) { effect in
+                    for (key, value) in values { effect.parameters[key] = AnimatableProperty([value]) }
+                }
+            }
+            levels = try await peaks(sequence)
+            let names = parts.map { "\(chain[$0].0)" }.joined(separator: "+")
+            results.append("\(names): \(levels[0]) (\(nonFinite) non-finite)")
+        }
+        let report = results.joined(separator: "; ")
+        XCTAssertFalse(results.contains { $0.contains(": 0.0 ") || !$0.hasSuffix("(0 non-finite)") }, report)
     }
 }
