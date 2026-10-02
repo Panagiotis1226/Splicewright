@@ -81,22 +81,21 @@ final class LoudnessGain: @unchecked Sendable {
     }
 }
 
-/// The export reader's audio: 32-bit float, interleaved stereo.
+/// The export reader's audio: 32-bit float, interleaved stereo. The samples are copied out and
+/// back, since a buffer's data can come in more than one piece.
 enum InterleavedAudio {
-    private static func samples(of sample: CMSampleBuffer) -> UnsafeMutableBufferPointer<Float>? {
-        guard let block = CMSampleBufferGetDataBuffer(sample) else { return nil }
-        let length = CMBlockBufferGetDataLength(block)
-        guard CMBlockBufferIsRangeContiguous(block, atOffset: 0, length: length) else { return nil }
-        var pointer: UnsafeMutablePointer<CChar>?
-        guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: nil,
-                                          dataPointerOut: &pointer) == kCMBlockBufferNoErr, let pointer else { return nil }
-        let count = length / MemoryLayout<Float>.size
-        return UnsafeMutableBufferPointer(start: UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: Float.self),
-                                          count: count)
+    private static func samples(of block: CMBlockBuffer) -> [Float]? {
+        let count = CMBlockBufferGetDataLength(block) / MemoryLayout<Float>.size
+        guard count > 0 else { return nil }
+        var values = [Float](repeating: 0, count: count)
+        let status = values.withUnsafeMutableBytes { raw in
+            CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: raw.count, destination: raw.baseAddress!)
+        }
+        return status == kCMBlockBufferNoErr ? values : nil
     }
 
     /// Left and right as separate arrays.
-    private static func split(_ data: UnsafeMutableBufferPointer<Float>) -> [[Float]] {
+    private static func split(_ data: [Float]) -> [[Float]] {
         let frames = data.count / 2
         var left = [Float](repeating: 0, count: frames)
         var right = [Float](repeating: 0, count: frames)
@@ -108,18 +107,21 @@ enum InterleavedAudio {
     }
 
     static func withChannels(of sample: CMSampleBuffer, _ body: ([[Float]]) -> Void) {
-        guard let data = samples(of: sample) else { return }
+        guard let block = CMSampleBufferGetDataBuffer(sample), let data = samples(of: block) else { return }
         body(split(data))
     }
 
     static func modifyChannels(of sample: CMSampleBuffer, _ body: (inout [[Float]]) -> Void) {
-        guard let data = samples(of: sample) else { return }
+        guard let block = CMSampleBufferGetDataBuffer(sample), var data = samples(of: block) else { return }
         var channels = split(data)
         body(&channels)
-        let frames = data.count / 2
-        for frame in 0..<frames {
+        for frame in 0..<(data.count / 2) {
             data[frame * 2] = channels[0][frame]
             data[frame * 2 + 1] = channels[1][frame]
+        }
+        _ = data.withUnsafeBytes { raw in
+            CMBlockBufferReplaceDataBytes(with: raw.baseAddress!, blockBuffer: block, offsetIntoDestination: 0,
+                                          dataLength: raw.count)
         }
     }
 }

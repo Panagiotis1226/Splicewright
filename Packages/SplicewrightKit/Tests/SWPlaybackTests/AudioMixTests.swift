@@ -120,9 +120,7 @@ final class AudioMixTests: XCTestCase {
     func testNoiseReductionAndCleanUpDialogueInTheTap() async throws {
         let chain = DialoguePreset.chain
         var results: [String] = []
-        _ = AudioTapStats.shared.take()
-        // Repeated: a silent mix came and went between runs.
-        for parts in [[1], [0, 1, 2], [0, 1, 2, 3], [1], [0, 1, 2, 3], [1], [0, 1, 2, 3]] {
+        for parts in [[1], [0, 1, 2], [0, 1, 2, 3]] {
             var (sequence, clipID) = try await sequenceWithTone()
             for part in parts {
                 let (kind, values) = chain[part]
@@ -135,7 +133,7 @@ final class AudioMixTests: XCTestCase {
             // A steady tone is learned as noise, so it's taken down, but by no more than Max Reduction.
             let ok = levels[0] > 0.5 / 10 && nonFinite == 0
             results.append("\(ok ? "" : "FAIL ")\(parts.map { "\(chain[$0].0)" }.joined(separator: "+")): "
-                           + "\(levels[0]) (\(nonFinite) non-finite; taps: \(AudioTapStats.shared.take()))")
+                           + "\(levels[0]) (\(nonFinite) non-finite)")
         }
         XCTAssertFalse(results.contains { $0.hasPrefix("FAIL") }, results.joined(separator: "; "))
     }
