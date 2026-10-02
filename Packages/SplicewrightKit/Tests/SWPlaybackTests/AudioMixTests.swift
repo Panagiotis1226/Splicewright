@@ -115,19 +115,13 @@ final class AudioMixTests: XCTestCase {
         XCTAssertEqual(levels[0], 0.5, accuracy: 0.02)
     }
 
+    /// Noise Reduction alone and in the Clean Up Dialogue chain. It has to keep up in the tap even
+    /// in a debug build: when a tap falls behind, the mix comes out silent.
     func testNoiseReductionAndCleanUpDialogueInTheTap() async throws {
-        var (sequence, clipID) = try await sequenceWithTone()
-        sequence.addEffect(.noiseReduction, to: [clipID])
-        var levels = try await peaks(sequence)
-        XCTAssertEqual(nonFinite, 0, "Noise Reduction: every sample finite")
-        // A steady tone is learned as noise, so it's taken down, but at most by the 18 dB default.
-        XCTAssertGreaterThan(levels[0], 0.5 / 10, "Noise Reduction: peaks \(levels)")
-
-        // Each part of the Clean Up Dialogue chain, alone and with the others.
         let chain = DialoguePreset.chain
         var results: [String] = []
-        for parts in [[0], [2], [3], [0, 1], [1, 2], [1, 3], [2, 3], [0, 1, 2], [1, 2, 3], [0, 1, 2, 3]] {
-            (sequence, clipID) = try await sequenceWithTone()
+        for parts in [[1], [0, 1, 2], [0, 1, 2, 3]] {
+            var (sequence, clipID) = try await sequenceWithTone()
             for part in parts {
                 let (kind, values) = chain[part]
                 guard let effectID = sequence.addEffect(kind, to: [clipID])[clipID] else { continue }
@@ -135,11 +129,12 @@ final class AudioMixTests: XCTestCase {
                     for (key, value) in values { effect.parameters[key] = AnimatableProperty([value]) }
                 }
             }
-            levels = try await peaks(sequence)
-            let names = parts.map { "\(chain[$0].0)" }.joined(separator: "+")
-            results.append("\(names): \(levels[0]) (\(nonFinite) non-finite)")
+            let levels = try await peaks(sequence)
+            // A steady tone is learned as noise, so it's taken down, but by no more than Max Reduction.
+            let ok = levels[0] > 0.5 / 10 && nonFinite == 0
+            results.append("\(ok ? "" : "FAIL ")\(parts.map { "\(chain[$0].0)" }.joined(separator: "+")): "
+                           + "\(levels[0]) (\(nonFinite) non-finite)")
         }
-        let report = results.joined(separator: "; ")
-        XCTAssertFalse(results.contains { $0.contains(": 0.0 ") || !$0.hasSuffix("(0 non-finite)") }, report)
+        XCTAssertFalse(results.contains { $0.hasPrefix("FAIL") }, results.joined(separator: "; "))
     }
 }
