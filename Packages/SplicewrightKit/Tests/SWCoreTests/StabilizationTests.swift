@@ -119,9 +119,13 @@ struct StabilizationTests {
         let raw = Self.cameras.map { $0.apply(x: 120, y: 67) }
         func jitter(_ path: [(x: Double, y: Double)]) -> Double {
             // Second differences: zero for a steady pan, large for shake.
-            (1..<(path.count - 1)).reduce(0) { sum, i in
-                sum + hypot(path[i + 1].x - 2 * path[i].x + path[i - 1].x, path[i + 1].y - 2 * path[i].y + path[i - 1].y)
+            var sum = 0.0
+            for i in 1..<(path.count - 1) {
+                let ax: Double = path[i + 1].x - 2 * path[i].x + path[i - 1].x
+                let ay: Double = path[i + 1].y - 2 * path[i].y + path[i - 1].y
+                sum += hypot(ax, ay)
             }
+            return sum
         }
         #expect(jitter(positions) < jitter(raw) * 0.3, "most of the shake is gone")
         #expect(positions.last!.x - positions.first!.x > 20, "the pan is kept")
