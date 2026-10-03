@@ -186,6 +186,10 @@ public enum ExportWarning: Hashable, Sendable {
     /// H.264 at 4K above 60 fps is beyond many encoders and players.
     case h264HighFrameRate
     case upscaled
+    /// The frame isn't the shape the destination fills (a 16:9 sequence for TikTok).
+    case destinationShape(SocialDestination, width: Int, height: Int)
+    case destinationTooLong(String)
+    case destinationTooLarge(String)
 
     public var message: String {
         switch self {
@@ -198,6 +202,12 @@ public enum ExportWarning: Hashable, Sendable {
             return "H.264 at 4K above 60 fps may not encode or play everywhere; HEVC is safer."
         case .upscaled:
             return "This is larger than the sequence, so the picture is upscaled."
+        case .destinationShape(let destination, let width, let height):
+            let shape = destination.aspect.map { "\($0.width):\($0.height)" } ?? ""
+            return "\(destination.displayName) shows \(shape) best; this file is \(width)×\(height), so it will be "
+                + "letterboxed or cropped. Edit in a sequence of that shape (File ▸ New ▸ Sequence) to fill the screen."
+        case .destinationTooLong(let note), .destinationTooLarge(let note):
+            return "Over the limit: \(note)."
         }
     }
 }
@@ -222,6 +232,10 @@ public struct ExportSettings: Sendable, Hashable, Codable {
     public var embedsChapters: Bool?
     /// Normalizes the audio to this loudness (nil leaves it as mixed).
     public var loudness: LoudnessTarget?
+    /// AAC bitrate in kilobits per second (nil: 320).
+    public var audioKilobits: Int?
+    /// The platform these settings were made for, for its warnings (nil: none).
+    public var destination: SocialDestination?
 
     public static let customMegabitRange: ClosedRange<Double> = 1...800
 
@@ -330,6 +344,7 @@ public struct ExportSettings: Sendable, Hashable, Codable {
         if output.width * output.height > sequence.settings.width * sequence.settings.height {
             warnings.append(.upscaled)
         }
+        if let destination { warnings += destination.warnings(for: self, sequence: sequence) }
         return warnings
     }
 
@@ -365,7 +380,7 @@ public struct ExportSettings: Sendable, Hashable, Codable {
             videoBits = preset.codec.proResMegabitsAt1080p30 * 1_000_000 * Double(width * height) / (1920 * 1080)
                 * fps / 29.97
         }
-        let audioBits: Double = preset.audio == .aac ? 320_000 : 48_000 * 24 * 2
+        let audioBits = preset.audio == .aac ? Double(audioKilobits ?? 320) * 1000 : 48_000 * 24 * 2
         return Int64((videoBits + audioBits) * seconds / 8)
     }
 

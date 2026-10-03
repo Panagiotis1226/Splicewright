@@ -222,7 +222,8 @@ final class ExportWorker: @unchecked Sendable {
         writer.add(videoInput)
 
         if audioOutput != nil {
-            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: ExportAudio.writerSettings(preset.audio))
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: ExportAudio.writerSettings(
+                preset.audio, kilobits: settings.audioKilobits ?? 320))
             input.expectsMediaDataInRealTime = false
             guard writer.canAdd(input) else { throw ExportError.message("This file type can't hold the chosen audio.") }
             writer.add(input)
@@ -484,14 +485,14 @@ enum ExportAudio {
         AVLinearPCMIsNonInterleaved: false,
     ]
 
-    static func writerSettings(_ codec: ExportAudioCodec) -> [String: Any] {
+    static func writerSettings(_ codec: ExportAudioCodec, kilobits: Int = 320) -> [String: Any] {
         var layout = AudioChannelLayout()
         layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo
         let layoutData = Data(bytes: &layout, count: MemoryLayout<AudioChannelLayout>.size)
         switch codec {
         case .aac:
             return [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2,
-                    AVEncoderBitRateKey: 320_000, AVChannelLayoutKey: layoutData]
+                    AVEncoderBitRateKey: kilobits * 1000, AVChannelLayoutKey: layoutData]
         case .pcm24:
             return [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2,
                     AVLinearPCMBitDepthKey: 24, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,

@@ -41,6 +41,9 @@ private struct ExportSettingsForm: View {
     @State private var sidecarFormat: SubRip.Format = .srt
     @State private var embedsChapters = true
     @State private var loudness: LoudnessTarget?
+    /// A platform the settings were filled in for (its warnings stay on while editing them).
+    @State private var destination: SocialDestination?
+    @State private var audioKilobits = 320
 
     private var presets: [ExportPreset] { ExportPreset.builtIn(for: sequence) }
     private var preset: ExportPreset { presets.first { $0.id == presetID } ?? presets[0] }
@@ -52,6 +55,8 @@ private struct ExportSettingsForm: View {
         settings.sidecarFormat = sidecarFormat
         settings.embedsChapters = embedsChapters
         settings.loudness = loudness
+        settings.destination = destination
+        settings.audioKilobits = preset.audio == .aac && audioKilobits != 320 ? audioKilobits : nil
         return settings
     }
     private var destination: URL {
@@ -63,13 +68,21 @@ private struct ExportSettingsForm: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Export “\(sequence.name)”").font(.headline)
             Form {
+                Picker("Destination", selection: $destination) {
+                    Text("Custom").tag(SocialDestination?.none)
+                    ForEach(SocialDestination.allCases) { Text($0.displayName).tag(SocialDestination?.some($0)) }
+                }
+                .help("Fills in the size, frame rate, bitrate, audio and loudness each platform recommends")
+                .onChange(of: destination) { _, chosen in
+                    if let chosen { apply(chosen.settings(for: sequence)) }
+                }
                 Picker("Preset", selection: $presetID) {
                     ForEach(presets) { preset in
                         Text(preset.name).tag(preset.id)
                     }
                 }
                 LabeledContent("Format") {
-                    Text("\(preset.codec.displayName) · \(preset.container.displayName) · \(preset.audio.displayName)")
+                    Text("\(preset.codec.displayName) · \(preset.container.displayName) · \(audioName)")
                         .foregroundStyle(.secondary)
                 }
                 Picker("Range", selection: $range) {
@@ -196,6 +209,23 @@ private struct ExportSettingsForm: View {
         return text
     }
 
+    private var audioName: String {
+        preset.audio == .aac && audioKilobits != 320 ? "AAC \(audioKilobits) kbps" : preset.audio.displayName
+    }
+
+    /// Fills the form in from a platform's settings.
+    private func apply(_ chosen: ExportSettings) {
+        presetID = chosen.preset.id
+        size = chosen.size
+        frameRate = chosen.frameRate
+        if let megabits = chosen.customMegabits {
+            usesCustomBitRate = true
+            customMegabits = megabits
+        }
+        loudness = chosen.loudness
+        audioKilobits = chosen.audioKilobits ?? 320
+    }
+
     private func sizeLabel(_ option: ExportSize) -> String {
         let (width, height) = ExportSettings(preset: preset, size: option).outputSize(for: sequence)
         let upscaled = width * height > sequence.settings.width * sequence.settings.height
@@ -220,6 +250,9 @@ private struct ExportSettingsForm: View {
                 usesCustomBitRate = true
                 customMegabits = custom
             }
+            loudness = last.loudness
+            audioKilobits = last.audioKilobits ?? 320
+            destination = last.destination
         } else {
             presetID = presets[0].id
         }

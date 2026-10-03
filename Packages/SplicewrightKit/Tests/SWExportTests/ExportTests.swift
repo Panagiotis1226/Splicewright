@@ -296,6 +296,22 @@ final class ExportTests: XCTestCase {
         XCTAssertEqual(failures, [], "measured silent: \(failures.joined(separator: " | "))")
     }
 
+    func testSocialDestinationSetsTheBitratesAndAudio() async throws {
+        try await standardClips()
+        let settings = SocialDestination.instagramReels.settings(for: sequence)
+        XCTAssertEqual(settings.audioKilobits, 128)
+        let url = try await export(settings, name: "reels")
+        let asset = AVURLAsset(url: url)
+        let audio = try XCTUnwrap(try await asset.loadTracks(withMediaType: .audio).first)
+        let audioRate = try await audio.load(.estimatedDataRate)
+        XCTAssertEqual(Double(audioRate), 128_000, accuracy: 40_000, "AAC at Instagram's 128 kbps")
+        let info = try await MediaProber().probe(url)
+        XCTAssertEqual(info.video?.codec.family, .h264)
+        XCTAssertTrue(settings.warnings(for: sequence, project: project).contains {
+            if case .destinationShape = $0 { return true } else { return false }
+        }, "a 16:9 sequence for Reels gets the shape warning")
+    }
+
     func testVideoOnlySequenceHasNoAudioTrack() async throws {
         let video = try await importClip(FixtureWriter.h264SDR30(frames: 30, width: Self.width, height: Self.height,
                                                                  fill: .grey(0.5, tenBit: false)), "export-grey.mov")
