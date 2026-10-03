@@ -104,6 +104,28 @@ extension WorkspaceController {
         activeTool = .selection
     }
 
+    /// The clip the Tools panel's Pen draws on in the Program monitor: the selected video clip,
+    /// or else the top piece of footage at `frame` (titles and adjustment layers are passed over,
+    /// as they're usually what gets attached to the shape).
+    func penToolClip(at frame: Int64) -> Clip? {
+        if let selected = effectControlsClip, selected.isVideo, selected.clip.range.contains(frame) { return selected.clip }
+        for track in (activeSequence?.videoTracks ?? []).reversed() where track.isOutputEnabled {
+            if let clip = track.clips.first(where: { $0.range.contains(frame) && $0.isEnabled && !$0.isGenerated }) {
+                return clip
+            }
+        }
+        return nil
+    }
+
+    /// A shape drawn with the Tools panel's Pen: a mask on the clip's Opacity in mode None, so it
+    /// tracks without changing the picture (Effect Controls can switch it to Add or Subtract).
+    /// The clip and the mask end up selected, with Track and Follow at hand.
+    func addPenToolMask(_ vertices: [Mask.Vertex], to clipID: UUID) {
+        timeline.selection = [clipID]
+        addMask(Mask(vertices: vertices, mode: .none), to: MaskTarget(clipID: clipID, owner: .opacity))
+        activeTool = .selection
+    }
+
     // MARK: - Follow
 
     func setFollow(_ link: FollowLink?, of clipID: UUID) {

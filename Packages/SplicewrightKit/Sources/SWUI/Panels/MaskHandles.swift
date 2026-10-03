@@ -12,6 +12,9 @@ struct MaskHandles: View {
     @ObservedObject var workspace: WorkspaceController
     let clip: Clip
     let pictureRect: CGRect
+    /// Drawing with the Tools panel's Pen, rather than a Pen chosen in Effect Controls: the shape
+    /// becomes a None-mode mask on the clip's Opacity (`addPenToolMask`).
+    var drawsWithPenTool = false
 
     private enum Part: Equatable {
         case vertex(Int)
@@ -37,7 +40,7 @@ struct MaskHandles: View {
 
     var body: some View {
         if let mapping = PictureMapping(workspace: workspace, clip: clip, pictureRect: pictureRect) {
-            if workspace.maskPen?.clipID == clip.id {
+            if workspace.maskPen?.clipID == clip.id || drawsWithPenTool {
                 pen(mapping)
             } else if let selection = workspace.selectedMask, selection.target.clipID == clip.id {
                 editor(selection, mapping: mapping)
@@ -282,16 +285,24 @@ struct MaskHandles: View {
         .onChange(of: workspace.maskPen) { _, _ in penPoints = [] }
     }
 
+    private var penHint: String {
+        if penPoints.count >= 3 { return "Click the first point to close the shape" }
+        if drawsWithPenTool && penPoints.isEmpty {
+            return "Pen: click around what to track on \(clip.name) (drag to curve). The shape doesn't change the picture."
+        }
+        return "Click to place points; drag to curve"
+    }
+
     private var penBar: some View {
         HStack(spacing: 8) {
-            Text(penPoints.count >= 3 ? "Click the first point to close the mask" : "Click to place points; drag to curve")
-                .font(.system(size: 10))
+            Text(penHint).font(.system(size: 10))
             if penPoints.count >= 3 {
                 Button("Close Mask") { finishPen() }.controlSize(.small)
             }
             Button("Cancel") {
                 penPoints = []
                 workspace.maskPen = nil
+                if drawsWithPenTool { workspace.activeTool = .selection }
             }
             .controlSize(.small)
         }
@@ -331,8 +342,12 @@ struct MaskHandles: View {
     }
 
     private func finishPen() {
-        guard penPoints.count >= 3, let target = workspace.maskPen else { return }
-        workspace.addMask(Mask(name: "Mask", vertices: penPoints), to: target)
+        guard penPoints.count >= 3 else { return }
+        if let target = workspace.maskPen, target.clipID == clip.id {
+            workspace.addMask(Mask(name: "Mask", vertices: penPoints), to: target)
+        } else if drawsWithPenTool {
+            workspace.addPenToolMask(penPoints, to: clip.id)
+        }
         penPoints = []
     }
 }

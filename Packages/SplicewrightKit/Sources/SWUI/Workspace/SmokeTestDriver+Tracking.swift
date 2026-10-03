@@ -24,6 +24,7 @@ extension SmokeTestDriver {
     static func checkTracking(_ workspace: WorkspaceController) async -> String {
         guard let clip = workspace.activeSequence?.videoTracks[0].clips.first(where: { !$0.opacityMasks.isEmpty }),
               let mask = clip.opacityMasks.first else { return "no masked clip" }
+        if let problem = checkPenShape(workspace, frame: clip.start) { return problem }
         let selection = MaskSelection(target: MaskTarget(clipID: clip.id, owner: .opacity), maskID: mask.id)
         var settings = TrackingSettings()
         settings.method = .texture
@@ -37,6 +38,24 @@ extension SmokeTestDriver {
         if !finished { return "still tracking" }
         if let message = workspace.trackingMessage { return "message: \(message.text)" }
         return keyframes == 5 ? "ok" : "\(keyframes) keyframes"
+    }
+
+    /// The Tools panel's Pen with nothing selected: the shape lands on the footage at the playhead
+    /// as a selected None mask on its Opacity, and the Selection tool is back. Removed again after.
+    static func checkPenShape(_ workspace: WorkspaceController, frame: Int64) -> String? {
+        workspace.timeline.selection = []
+        workspace.activeTool = .pen
+        guard let clip = workspace.penToolClip(at: frame) else { return "pen: no clip at the playhead" }
+        let before = clip.opacityMasks.count
+        workspace.addPenToolMask([.init(x: 0.4, y: 0.4), .init(x: 0.6, y: 0.4), .init(x: 0.5, y: 0.6)], to: clip.id)
+        let masks = workspace.activeSequence?.clip(clip.id)?.opacityMasks ?? []
+        guard masks.count == before + 1, let shape = masks.last, shape.mode == Mask.Mode.none,
+              workspace.activeTool == .selection, workspace.selectedMask?.maskID == shape.id,
+              workspace.timeline.selection == [clip.id] else {
+            return "pen: \(masks.map(\.mode.displayName)), tool \(workspace.activeTool)"
+        }
+        workspace.removeMask(MaskSelection(target: MaskTarget(clipID: clip.id, owner: .opacity), maskID: shape.id))
+        return nil
     }
 
     /// Adds a Stabilizer to V1's second clip, which analyses it right away; every frame of the

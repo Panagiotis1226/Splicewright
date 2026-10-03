@@ -14,7 +14,7 @@ struct RenderMask: Hashable {
     var expansion: Double
 
     /// Whether the path can enclose anything.
-    var isDrawable: Bool { vertices.count >= 2 }
+    var isDrawable: Bool { mode.isDrawn && vertices.count >= 2 }
 }
 
 /// Where a layer's picture lands in the frame, to place its masks.

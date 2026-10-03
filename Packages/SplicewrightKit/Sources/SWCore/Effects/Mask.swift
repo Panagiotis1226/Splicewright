@@ -7,8 +7,19 @@ import Foundation
 public struct Mask: Sendable, Hashable, Codable, Identifiable {
     public enum Mode: String, Sendable, Hashable, Codable, CaseIterable {
         case add, subtract
+        /// Changes nothing in the picture: a shape to track and to attach titles and clips to.
+        case none
 
-        public var displayName: String { self == .add ? "Add" : "Subtract" }
+        public var displayName: String {
+            switch self {
+            case .add: return "Add"
+            case .subtract: return "Subtract"
+            case .none: return "None"
+            }
+        }
+
+        /// Whether the mask shapes the picture (None only tracks).
+        public var isDrawn: Bool { self != .none }
     }
 
     /// A path point and its handles (offsets from the point), in picture fractions.

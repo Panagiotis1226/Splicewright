@@ -44,7 +44,15 @@ struct ProgramMonitorPanel: View {
                             frameOverlay(in: fittedRect(geometry.size))
                         }
                     }
-                    if workspace.activeTool == .selection, let selected = maskTarget {
+                    if workspace.activeTool == .pen {
+                        // The Tools panel's Pen draws a shape on the clip to track and attach things to.
+                        if let clip = workspace.penToolClip(at: engine.currentFrame) {
+                            GeometryReader { geometry in
+                                MaskHandles(workspace: workspace, clip: clip, pictureRect: fittedRect(geometry.size),
+                                            drawsWithPenTool: true)
+                            }
+                        }
+                    } else if workspace.activeTool == .selection, let selected = maskTarget {
                         // A selected mask (or the Pen drawing one) takes over from the transform box.
                         GeometryReader { geometry in
                             MaskHandles(workspace: workspace, clip: selected, pictureRect: fittedRect(geometry.size))

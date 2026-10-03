@@ -125,6 +125,24 @@ final class MaskRenderTests: XCTestCase {
         XCTAssertEqual(graded[1], plain[1], accuracy: 3, "unchanged outside it")
     }
 
+    /// A None mask is only a shape to track: on Opacity it hides nothing, and on an effect it
+    /// doesn't limit where the effect applies.
+    func testNoneMasksDontChangeThePicture() async throws {
+        var (sequence, id) = try await greySequence()
+        let plain = try await red(sequence, at: [center, corner])
+        var shape = Mask.ellipse(radiusX: 0.3, radiusY: 0.3)
+        shape.mode = .none
+        sequence.addMask(shape, to: .opacity, of: id)
+        let tracked = try await red(sequence, at: [center, corner])
+        XCTAssertEqual(tracked[1], plain[1], accuracy: 3, "the corner, outside the shape, still shows")
+
+        let effect = try XCTUnwrap(sequence.addEffect(.colorCorrection, to: [id])[id])
+        sequence.updateEffect(effect, of: id) { $0.parameters["exposure"] = AnimatableProperty([1]) }
+        sequence.addMask(shape, to: .effect(effect), of: id)
+        let graded = try await red(sequence, at: [center, corner])
+        XCTAssertGreaterThan(graded[1], plain[1] + 20, "the effect applies outside the shape too")
+    }
+
     /// Phone video: encoded 160×90, turned 90° clockwise for display, in a 90×160 frame. Masks and
     /// Crop are set on the upright picture, so they must land there, not transposed.
     func testRotatedVideoMasksAndCropFollowTheDisplayedPicture() throws {

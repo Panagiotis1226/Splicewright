@@ -105,6 +105,29 @@ struct MaskTests {
         #expect(old.clip(clipID)?.opacityMasks.isEmpty == true)
     }
 
+    @Test func noneMasksAreShapesToTrackAndAttachTo() throws {
+        var (seq, clipID) = sequence()
+        var shape = Mask.ellipse()
+        shape.mode = .none
+        #expect(!shape.mode.isDrawn && Mask.Mode.add.isDrawn && Mask.Mode.subtract.isDrawn)
+        #expect(Mask.Mode.allCases.map(\.displayName) == ["Add", "Subtract", "None"])
+        let added = seq.addMask(shape, to: .opacity, of: clipID)
+        let maskID = try #require(added)
+        let decoded = try JSONDecoder().decode(EditSequence.self, from: JSONEncoder().encode(seq))
+        #expect(decoded.clip(clipID)?.opacityMasks.first?.mode == Mask.Mode.none)
+
+        // Once tracked (its path animated), a title over the clip can follow it.
+        seq.updateMask(maskID, of: .opacity, in: clipID) { mask in
+            mask.path.setAnimated(true, at: .zero)
+            mask.setVertices(Mask.ellipse(centerX: 0.6).vertices(at: .zero), at: RationalTime(frames: 10, rate: .fps30),
+                             tolerance: FrameRate.fps30.frameDuration)
+        }
+        let animated = seq.clip(clipID)?.opacityMasks.first?.path.isAnimated
+        #expect(animated == true)
+        let title = Clip(mediaID: UUID(), name: "t", start: 0, duration: 30, sourceStart: .zero)
+        #expect(seq.followableMasks(for: title).map(\.mask.id) == [maskID])
+    }
+
     @Test func editsAndPropertyRefs() throws {
         var (seq, clipID) = sequence()
         let addedFirst = seq.addMask(.ellipse(), to: .opacity, of: clipID)
