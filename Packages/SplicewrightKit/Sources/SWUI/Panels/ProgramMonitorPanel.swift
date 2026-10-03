@@ -46,7 +46,7 @@ struct ProgramMonitorPanel: View {
                     }
                     if workspace.activeTool == .pen {
                         // The Tools panel's Pen draws a shape on the clip to track and attach things to.
-                        if let clip = workspace.penToolClip(at: engine.currentFrame) {
+                        if let clip = workspace.footageClip(at: engine.currentFrame) {
                             GeometryReader { geometry in
                                 MaskHandles(workspace: workspace, clip: clip, pictureRect: fittedRect(geometry.size),
                                             drawsWithPenTool: true)

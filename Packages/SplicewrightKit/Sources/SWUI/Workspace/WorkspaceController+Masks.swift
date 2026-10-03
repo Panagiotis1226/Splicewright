@@ -136,10 +136,10 @@ extension WorkspaceController {
         activeTool = .selection
     }
 
-    /// The clip the Tools panel's Pen draws on in the Program monitor: the selected video clip,
+    /// The clip the Tools panel's Pen draws on, and frame holds act on: the selected video clip,
     /// or else the top piece of footage at `frame` (titles and adjustment layers are passed over,
     /// as they're usually what gets attached to the shape).
-    func penToolClip(at frame: Int64) -> Clip? {
+    func footageClip(at frame: Int64) -> Clip? {
         if let selected = effectControlsClip, selected.isVideo, selected.clip.range.contains(frame) { return selected.clip }
         for track in (activeSequence?.videoTracks ?? []).reversed() where track.isOutputEnabled {
             if let clip = track.clips.first(where: { $0.range.contains(frame) && $0.isEnabled && !$0.isGenerated }) {

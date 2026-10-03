@@ -102,6 +102,10 @@ public struct SplicewrightCommands: Commands {
             Button("Speed/Duration…") { workspace?.requestSpeedDuration() }
                 .shortcut(.speedDuration, keys)
                 .disabled(workspace?.activeSequenceID == nil)
+            Button("Add Frame Hold") { workspace?.addFrameHold() }
+                .disabled(workspace?.activeSequenceID == nil)
+            Button("Insert Frame Hold Segment") { workspace?.insertFrameHoldSegment() }
+                .disabled(workspace?.activeSequenceID == nil)
             Button("Clean Up Dialogue") { workspace?.cleanUpDialogue() }
                 .disabled(workspace?.activeSequenceID == nil)
             Divider()
