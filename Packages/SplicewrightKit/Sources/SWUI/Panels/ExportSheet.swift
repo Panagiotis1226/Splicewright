@@ -42,7 +42,7 @@ private struct ExportSettingsForm: View {
     @State private var embedsChapters = true
     @State private var loudness: LoudnessTarget?
     /// A platform the settings were filled in for (its warnings stay on while editing them).
-    @State private var destination: SocialDestination?
+    @State private var platform: SocialDestination?
     @State private var audioKilobits = 320
 
     private var presets: [ExportPreset] { ExportPreset.builtIn(for: sequence) }
@@ -55,7 +55,7 @@ private struct ExportSettingsForm: View {
         settings.sidecarFormat = sidecarFormat
         settings.embedsChapters = embedsChapters
         settings.loudness = loudness
-        settings.destination = destination
+        settings.destination = platform
         settings.audioKilobits = preset.audio == .aac && audioKilobits != 320 ? audioKilobits : nil
         return settings
     }
@@ -68,12 +68,12 @@ private struct ExportSettingsForm: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Export “\(sequence.name)”").font(.headline)
             Form {
-                Picker("Destination", selection: $destination) {
+                Picker("Platform", selection: $platform) {
                     Text("Custom").tag(SocialDestination?.none)
                     ForEach(SocialDestination.allCases) { Text($0.displayName).tag(SocialDestination?.some($0)) }
                 }
                 .help("Fills in the size, frame rate, bitrate, audio and loudness each platform recommends")
-                .onChange(of: destination) { _, chosen in
+                .onChange(of: platform) { _, chosen in
                     if let chosen { apply(chosen.settings(for: sequence)) }
                 }
                 Picker("Preset", selection: $presetID) {
@@ -252,7 +252,7 @@ private struct ExportSettingsForm: View {
             }
             loudness = last.loudness
             audioKilobits = last.audioKilobits ?? 320
-            destination = last.destination
+            platform = last.destination
         } else {
             presetID = presets[0].id
         }
