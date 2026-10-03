@@ -22,33 +22,52 @@ public struct LoudnessResult: Sendable, Equatable {
 
 /// Pass 1: the integrated loudness and true peak of the exported range's mix.
 enum LoudnessScan {
+    /// The meter, and what was read (for the log when it comes out silent).
+    struct Measured: @unchecked Sendable {
+        var meter: LoudnessMeter?
+        var note: String
+    }
+
     static func measure(_ output: CompositionOutput, range: CMTimeRange,
-                        progress: @escaping @Sendable (Double) -> Void) async throws -> LoudnessMeter? {
+                        progress: @escaping @Sendable (Double) -> Void) async throws -> Measured {
         let tracks = try await output.composition.loadTracks(withMediaType: .audio)
             .filter { track in track.segments.contains { !$0.isEmpty } }
-        guard !tracks.isEmpty else { return nil }
+        guard !tracks.isEmpty else { return Measured(meter: nil, note: "no audio tracks") }
         let reader = try AVAssetReader(asset: output.composition)
         reader.timeRange = range
         let mix = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: ExportAudio.readerSettings)
         mix.audioMix = output.audioMix
         mix.audioTimePitchAlgorithm = output.audioTimePitchAlgorithm
-        guard reader.canAdd(mix) else { return nil }
+        guard reader.canAdd(mix) else { return Measured(meter: nil, note: "the mix couldn't be read") }
         reader.add(mix)
         let box = ReaderBox(reader: reader, output: mix)
+        let trackCount = tracks.count
         // Reading blocks, so keep it off the main actor.
         return try await Task.detached {
             guard box.reader.startReading() else { throw box.reader.error ?? ExportError.message("Couldn't read the audio.") }
             var meter = LoudnessMeter(sampleRate: 48_000, channels: 2)
             let duration = max(range.duration.seconds, 1e-6)
+            var (buffers, unread, frames) = (0, 0, 0)
+            var peak: Float = 0
             while !Task.isCancelled, let sample = box.output.copyNextSampleBuffer() {
-                InterleavedAudio.withChannels(of: sample) { channels in meter.process(channels) }
+                buffers += 1
+                var read = false
+                InterleavedAudio.withChannels(of: sample) { channels in
+                    read = true
+                    frames += channels.first?.count ?? 0
+                    for channel in channels { peak = channel.reduce(peak) { max($0, abs($1)) } }
+                    meter.process(channels)
+                }
+                if !read { unread += 1 }
                 progress((CMSampleBufferGetPresentationTimeStamp(sample) - range.start).seconds / duration)
             }
             if Task.isCancelled { box.reader.cancelReading() }
             guard box.reader.status == .completed else {
                 throw box.reader.error ?? CancellationError()
             }
-            return meter
+            let note = "\(trackCount) tracks, \(buffers) buffers (\(unread) unreadable), \(frames) frames, "
+                + "peak \(peak), range \(range.start.seconds)–\(range.end.seconds) s"
+            return Measured(meter: meter, note: note)
         }.value
     }
 

@@ -339,8 +339,8 @@ enum SmokeTestDriver {
         }
         report.loudnessNormalized = session.loudnessResult?.summary ?? ""
         if session.loudnessResult == nil {
-            report.loudnessDetail = await mixDetail(settings.preparedSequence(sequence), project: workspace.project,
-                                                    frames: 10..<40)
+            let mix = await mixDetail(settings.preparedSequence(sequence), project: workspace.project, frames: 10..<40)
+            report.loudnessDetail = "\(session.loudnessNote ?? "no note") | \(mix)"
         }
         if let text = settings.sidecarText(for: sequence),
            let captionURL = WorkspaceController.writeCaptionFile(text, settings: settings, videoURL: url),

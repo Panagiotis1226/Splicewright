@@ -31,6 +31,8 @@ public final class ExportSession: ObservableObject, Identifiable {
     @Published public private(set) var startedAt: Date?
     /// Set when the export normalized its loudness.
     @Published public private(set) var loudnessResult: LoudnessResult?
+    /// Why loudness was left alone, when normalization was on but the audio measured silent.
+    @Published public private(set) var loudnessNote: String?
 
     private let sequence: EditSequence
     private let project: Project
@@ -128,13 +130,14 @@ public final class ExportSession: ObservableObject, Identifiable {
     private func measureLoudness(_ output: CompositionOutput, range: CMTimeRange) async throws -> LoudnessGain? {
         guard let target = settings.loudness else { return nil }
         encodeShare = 0.85
-        let meter = try await LoudnessScan.measure(output, range: range) { [weak self] fraction in
+        let scan = try await LoudnessScan.measure(output, range: range) { [weak self] fraction in
             Task { @MainActor in self?.progress = max(self?.progress ?? 0, 0.15 * min(fraction, 1)) }
         }
         if cancelRequested { throw CancellationError() }
-        guard let meter, let measured = meter.integratedLoudness,
+        guard let meter = scan.meter, let measured = meter.integratedLoudness,
               let normalization = meter.normalization(target: target.lufs, ceiling: LoudnessTarget.truePeakCeiling) else {
-            AppLog.shared.info("Export: the audio is silent; loudness left as is", category: "export")
+            loudnessNote = "Loudness left as is: the audio measured silent (\(scan.note))."
+            AppLog.shared.info("Export: \(loudnessNote ?? "")", category: "export")
             return nil
         }
         let result = LoudnessResult(measured: measured, target: target.lufs, gainDB: normalization.gainDB,
