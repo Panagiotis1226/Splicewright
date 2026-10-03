@@ -252,6 +252,7 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Motion.** Each frame, the mask's path there and on the anchor frame are both mapped into sequence pixels, through the target's Stabilizer, fit and Motion (as the Program monitor draws them). The similarity between them is fitted by least squares. The follower moves by it after its own Motion, about the mask's center; without Scale or Rotation those parts are dropped. Beyond the target clip, it holds its first or last position.
   - **Rendering.** Worked out once per clip per composition build (one transform per frame) and looked up per frame, so playback costs nothing extra. The Program monitor handles use the same transform.
   - **Effects** follow by tracking a mask on the effect itself (M19); no link is needed.
+  - *0.20.1:* the Tools panel's Pen (P) draws in the Program monitor without an effect chosen first: the shape goes on the selected clip (or the top footage at the playhead) as a mask on its Opacity in the new **None** mode, which the renderer skips, so it only serves to track and to attach titles to. Before, a mask could only be drawn from Effect Controls under Opacity (which cut the picture) or an effect.
 
 **M22 — Voiceover, Noise Reduction, Clean Up Dialogue**
 - *As built:*
