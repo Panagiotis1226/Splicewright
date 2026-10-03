@@ -33,7 +33,7 @@ done
 kill "$pid" 2>/dev/null || true
 
 echo "--- app log (tail)"
-tail -n 40 "$out/app.log" || true
+tail -n 160 "$out/app.log" || true
 if [[ ! -f "$out/report.json" ]]; then
   echo "Smoke test failed: the app didn't write a report."
   echo "--- progress"

@@ -80,6 +80,7 @@ enum SmokeTestDriver {
         var report = Report()
         try? FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         progressURL = outputDirectory.appending(path: "progress.txt")
+        installCrashBacktrace()
         defer { finish(report, to: outputDirectory) }
 
         guard await waitFor(seconds: 20, { workspace.document != nil }) else {

@@ -5,6 +5,22 @@ extension SmokeTestDriver {
     /// Where `mark` records how far the run got (read by scripts/smoke-test.sh after a crash).
     static var progressURL: URL?
 
+    /// On a crash, writes the crashing thread's stack to stderr (app.log) before dying as usual,
+    /// since CI machines don't always keep crash reports.
+    static func installCrashBacktrace() {
+        for signalNumber in [SIGSEGV, SIGBUS, SIGILL, SIGTRAP, SIGABRT, SIGFPE] {
+            signal(signalNumber) { received in
+                var frames = [UnsafeMutableRawPointer?](repeating: nil, count: 128)
+                let count = backtrace(&frames, Int32(frames.count))
+                let header = "\n--- crashed with signal \(received)\n"
+                _ = header.withCString { write(STDERR_FILENO, $0, strlen($0)) }
+                backtrace_symbols_fd(&frames, count, STDERR_FILENO)
+                signal(received, SIG_DFL)
+                raise(received)
+            }
+        }
+    }
+
     /// Appends a step to progress.txt, flushed at once so it survives a crash.
     static func mark(_ step: String) {
         guard let url = progressURL else { return }
@@ -45,7 +61,7 @@ extension SmokeTestDriver {
     static func checkPenShape(_ workspace: WorkspaceController, frame: Int64) -> String? {
         workspace.timeline.selection = []
         workspace.activeTool = .pen
-        guard let clip = workspace.penToolClip(at: frame) else { return "pen: no clip at the playhead" }
+        guard let clip = workspace.footageClip(at: frame) else { return "pen: no clip at the playhead" }
         let before = clip.opacityMasks.count
         workspace.addPenToolMask([.init(x: 0.4, y: 0.4), .init(x: 0.6, y: 0.4), .init(x: 0.5, y: 0.6)], to: clip.id)
         let masks = workspace.activeSequence?.clip(clip.id)?.opacityMasks ?? []
