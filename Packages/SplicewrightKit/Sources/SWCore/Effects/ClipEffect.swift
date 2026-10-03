@@ -318,7 +318,10 @@ public extension EditSequence {
     }
 
     mutating func removeEffect(_ effectID: UUID, from clipID: UUID) {
-        updateClipProperties([clipID]) { $0.effects.removeAll { $0.id == effectID } }
+        updateClipProperties([clipID]) { clip in
+            clip.detachMaskLinks { $0.owner == .effect(effectID) }
+            clip.effects.removeAll { $0.id == effectID }
+        }
     }
 
     /// Moves an effect up (-1) or down (+1) the stack.

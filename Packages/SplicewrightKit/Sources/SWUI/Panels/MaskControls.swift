@@ -32,8 +32,14 @@ struct MaskControls<Row: View>: View {
             ForEach(clip.masks(of: owner)) { mask in
                 let selection = MaskSelection(target: target, maskID: mask.id)
                 header(mask, selection)
-                pathRow(selection)
-                MaskTrackingRow(workspace: workspace, selection: selection)
+                if let link = mask.pathSource {
+                    shapeRow(selection, link)
+                    // Tracking from here tracks the shape, for everything that uses it.
+                    MaskTrackingRow(workspace: workspace, selection: workspace.pathSelection(selection))
+                } else {
+                    pathRow(selection)
+                    MaskTrackingRow(workspace: workspace, selection: selection)
+                }
                 row(selection.ref(.feather), "Mask Feather", "px", 1)
                 row(selection.ref(.opacity), "Mask Opacity", "%", 1)
                 row(selection.ref(.expansion), "Mask Expansion", "px", 1)
@@ -56,7 +62,51 @@ struct MaskControls<Row: View>: View {
                     .foregroundStyle(workspace.maskPen == target ? Theme.accent : Theme.textPrimary)
             }
             .help(workspace.maskPen == target ? "Stop drawing" : "Draw a mask with the Pen in the Program monitor")
+            shapeMenu
             Spacer()
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 8)
+        .frame(height: 24)
+    }
+
+    /// Masks elsewhere on the clip (a shape drawn with the Pen tool and tracked, say) this one can use.
+    @ViewBuilder private var shapeMenu: some View {
+        let shapes = clip.linkableMasks(for: owner)
+        if !shapes.isEmpty {
+            Menu {
+                Section("Use a Shape (it moves with its tracking)") {
+                    ForEach(Array(shapes.enumerated()), id: \.offset) { _, shape in
+                        Button("\(shape.mask.name) on \(workspace.maskOwnerName(shape.source.owner, in: clip))"
+                               + (shape.mask.path.isAnimated ? " (tracked)" : "")) {
+                            workspace.linkMask(shape.source, to: target)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "link")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Limit this to a shape from elsewhere on the clip, such as one drawn with the Pen tool and tracked")
+        }
+    }
+
+    /// A mask using another mask's shape: which one, and a way to stop.
+    private func shapeRow(_ selection: MaskSelection, _ link: MaskSource) -> some View {
+        let shape = clip.masks(of: link.owner).first { $0.id == link.maskID }
+        return HStack(spacing: 6) {
+            Spacer().frame(width: 34)
+            Text("Shape").lineLimit(1).frame(width: 82, alignment: .leading)
+            Image(systemName: "link").foregroundStyle(Theme.textSecondary)
+            Text(shape.map { "\($0.name) on \(workspace.maskOwnerName(link.owner, in: clip))" } ?? "Deleted")
+                .lineLimit(1)
+                .foregroundStyle(Theme.textSecondary)
+            Spacer(minLength: 4)
+            Button("Unlink") { workspace.unlinkMask(selection) }
+                .controlSize(.small)
+                .help("Keep the shape as this mask's own path, and stop following the original")
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 8)

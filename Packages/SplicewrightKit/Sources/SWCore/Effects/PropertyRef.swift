@@ -159,6 +159,7 @@ public extension EditSequence {
 
     mutating func removeMask(_ maskID: UUID, of owner: MaskOwner, in clipID: UUID) {
         updateClipProperties([clipID]) { clip in
+            clip.detachMaskLinks { $0 == MaskSource(owner: owner, maskID: maskID) }
             switch owner {
             case .opacity: clip.opacityMasks.removeAll { $0.id == maskID }
             case .effect(let id):

@@ -81,7 +81,7 @@ public extension EditSequence {
         videoTracks.flatMap(\.clips).filter { $0.id != clip.id && $0.start < clip.end && clip.start < $0.end }
             .flatMap { other in
                 ([MaskOwner.opacity] + other.effects.map { MaskOwner.effect($0.id) }).flatMap { owner in
-                    other.masks(of: owner).filter(\.path.isAnimated).map { (other, owner, $0) }
+                    other.masks(of: owner).filter { $0.path.isAnimated && $0.pathSource == nil }.map { (other, owner, $0) }
                 }
             }
     }

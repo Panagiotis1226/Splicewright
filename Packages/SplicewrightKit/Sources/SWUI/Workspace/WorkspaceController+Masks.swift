@@ -47,6 +47,38 @@ extension WorkspaceController {
         if let added { selectedMask = MaskSelection(target: target, maskID: added) }
     }
 
+    /// A mask on `target` that uses another mask's shape (a blur limited to a tracked shape).
+    func linkMask(_ source: MaskSource, to target: MaskTarget) {
+        var added: UUID?
+        editSequence("Use Shape") { sequence, _ in added = sequence.linkMask(to: source, on: target.owner, of: target.clipID) }
+        maskPen = nil
+        if let added { selectedMask = MaskSelection(target: target, maskID: added) }
+    }
+
+    /// The mask keeps the shape's current path as its own and stops following it.
+    func unlinkMask(_ selection: MaskSelection) {
+        let shape = activeSequence?.clip(selection.target.clipID)?.resolvingMaskLinks().masks(of: selection.target.owner)
+            .first { $0.id == selection.maskID }
+        guard let path = shape?.path else { return }
+        updateMask(selection, "Stop Using Shape") { mask in
+            mask.path = path
+            mask.pathSource = nil
+        }
+    }
+
+    /// Whose path a mask shows and edits: a linked mask's shape, or the mask itself.
+    func pathSelection(_ selection: MaskSelection) -> MaskSelection {
+        guard let link = mask(selection)?.pathSource, let clip = activeSequence?.clip(selection.target.clipID),
+              clip.masks(of: link.owner).contains(where: { $0.id == link.maskID }) else { return selection }
+        return MaskSelection(target: MaskTarget(clipID: selection.target.clipID, owner: link.owner), maskID: link.maskID)
+    }
+
+    /// "Opacity", or the effect's name.
+    func maskOwnerName(_ owner: MaskOwner, in clip: Clip) -> String {
+        guard case .effect(let id) = owner else { return "Opacity" }
+        return clip.effects.first { $0.id == id }?.kind.displayName ?? "an effect"
+    }
+
     func removeMask(_ selection: MaskSelection) {
         editSequence("Delete Mask") { sequence, _ in
             sequence.removeMask(selection.maskID, of: selection.target.owner, in: selection.target.clipID)

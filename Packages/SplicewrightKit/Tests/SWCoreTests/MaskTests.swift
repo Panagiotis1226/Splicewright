@@ -128,6 +128,42 @@ struct MaskTests {
         #expect(seq.followableMasks(for: title).map(\.mask.id) == [maskID])
     }
 
+    @Test func effectsUseATrackedShape() throws {
+        var (seq, clipID) = sequence()
+        var shape = Mask.ellipse()
+        shape.mode = .none
+        let addedShape = seq.addMask(shape, to: .opacity, of: clipID)
+        let shapeID = try #require(addedShape)
+        let blur = try #require(seq.addEffect(.gaussianBlur, to: [clipID])[clipID])
+        let source = MaskSource(owner: .opacity, maskID: shapeID)
+        #expect(seq.clip(clipID)?.linkableMasks(for: .effect(blur)).map(\.source) == [source])
+        #expect(seq.clip(clipID)?.linkableMasks(for: .opacity).isEmpty == true, "not onto its own owner")
+        let linked = seq.linkMask(to: source, on: .effect(blur), of: clipID)
+        let linkedID = try #require(linked)
+
+        // Tracking moves the shape; the blur's mask goes with it, keeping its own mode.
+        let later = RationalTime(frames: 10, rate: rate)
+        let moved = Mask.ellipse(centerX: 0.7).vertices(at: .zero)
+        seq.updateMask(shapeID, of: .opacity, in: clipID) { mask in
+            mask.path.setAnimated(true, at: .zero)
+            mask.setVertices(moved, at: later, tolerance: rate.frameDuration)
+        }
+        let resolved = try #require(seq.clip(clipID)?.resolvingMaskLinks())
+        let blurMask = try #require(resolved.effects.first?.masks.first)
+        #expect(blurMask.id == linkedID && blurMask.mode == .add && blurMask.name == "Mask (1)")
+        #expect(blurMask.vertices(at: later) == moved)
+        let layer = try #require(RenderPlan.videoSegments(for: seq).first?.layers.first)
+        #expect(layer.effects.first?.masks.first?.vertices(at: later) == moved, "the render plan uses the shape")
+        let followable = seq.followableMasks(for: Clip(mediaID: UUID(), name: "t", start: 0, duration: 30,
+                                                       sourceStart: .zero)).map(\.mask.id)
+        #expect(followable == [shapeID], "the shape, not its uses")
+
+        // Deleting the shape leaves the blur its last path.
+        seq.removeMask(shapeID, of: .opacity, in: clipID)
+        let kept = try #require(seq.clip(clipID)?.effects.first?.masks.first)
+        #expect(kept.pathSource == nil && kept.vertices(at: later) == moved)
+    }
+
     @Test func editsAndPropertyRefs() throws {
         var (seq, clipID) = sequence()
         let addedFirst = seq.addMask(.ellipse(), to: .opacity, of: clipID)

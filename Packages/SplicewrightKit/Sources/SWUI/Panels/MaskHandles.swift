@@ -43,7 +43,8 @@ struct MaskHandles: View {
             if workspace.maskPen?.clipID == clip.id || drawsWithPenTool {
                 pen(mapping)
             } else if let selection = workspace.selectedMask, selection.target.clipID == clip.id {
-                editor(selection, mapping: mapping)
+                // A mask using a tracked shape edits the shape.
+                editor(workspace.pathSelection(selection), mapping: mapping)
             }
         }
     }

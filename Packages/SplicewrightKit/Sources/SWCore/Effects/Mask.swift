@@ -52,6 +52,8 @@ public struct Mask: Sendable, Hashable, Codable, Identifiable {
     public var expansion: AnimatableProperty
     /// How Track follows an object with this mask (nil: the defaults).
     public var tracking: TrackingSettings?
+    /// Another mask on the clip whose path this one uses (an effect limited to a tracked shape).
+    public var pathSource: MaskSource?
 
     public init(id: UUID = UUID(), name: String = "Mask", vertices: [Vertex], mode: Mode = .add, isInverted: Bool = false,
                 feather: Double = 10) {

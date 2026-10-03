@@ -143,6 +143,25 @@ final class MaskRenderTests: XCTestCase {
         XCTAssertGreaterThan(graded[1], plain[1] + 20, "the effect applies outside the shape too")
     }
 
+    /// An effect using a shape drawn elsewhere on the clip (a None mask on Opacity, as the Pen
+    /// tool makes) applies only inside that shape.
+    func testAnEffectCanUseAShapeOnOpacity() async throws {
+        var (sequence, id) = try await greySequence()
+        let plain = try await red(sequence, at: [center, corner])
+        var shape = Mask.ellipse(radiusX: 0.3, radiusY: 0.3)
+        shape.mode = .none
+        shape.feather = AnimatableProperty([0])
+        let shapeID = try XCTUnwrap(sequence.addMask(shape, to: .opacity, of: id))
+        let effect = try XCTUnwrap(sequence.addEffect(.colorCorrection, to: [id])[id])
+        sequence.updateEffect(effect, of: id) { $0.parameters["exposure"] = AnimatableProperty([1]) }
+        let linked = try XCTUnwrap(sequence.linkMask(to: MaskSource(owner: .opacity, maskID: shapeID),
+                                                     on: .effect(effect), of: id))
+        sequence.updateMask(linked, of: .effect(effect), in: id) { $0.feather = AnimatableProperty([0]) }
+        let graded = try await red(sequence, at: [center, corner])
+        XCTAssertGreaterThan(graded[0], plain[0] + 20, "brighter inside the shape")
+        XCTAssertEqual(graded[1], plain[1], accuracy: 3, "unchanged outside it")
+    }
+
     /// Phone video: encoded 160×90, turned 90° clockwise for display, in a 90×160 frame. Masks and
     /// Crop are set on the upright picture, so they must land there, not transposed.
     func testRotatedVideoMasksAndCropFollowTheDisplayedPicture() throws {

@@ -229,9 +229,11 @@ public enum RenderPlan {
                                             opacity: min(1, clip.opacity), transition: transition, title: clip.title,
                                             motion: clip.motion, clipStart: clip.start, sourceStart: clip.sourceStart)
                     if clip.isRetimed { layer.timing = clip.timing(rate: sequence.rate) }
-                    layer.effects = clip.effects.filter(\.isEnabled)
+                    // Masks that use a tracked shape take its path.
+                    let linked = clip.resolvingMaskLinks()
+                    layer.effects = linked.effects.filter(\.isEnabled)
                     layer.isAdjustment = clip.isAdjustment
-                    layer.opacityMasks = clip.opacityMasks
+                    layer.opacityMasks = linked.opacityMasks
                     // An adjustment layer with nothing to apply draws nothing.
                     if clip.isAdjustment && layer.effects.isEmpty { return nil }
                     return layer
