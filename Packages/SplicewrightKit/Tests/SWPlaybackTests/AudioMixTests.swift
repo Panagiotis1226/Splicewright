@@ -137,4 +137,41 @@ final class AudioMixTests: XCTestCase {
         }
         XCTAssertFalse(results.contains { $0.hasPrefix("FAIL") }, results.joined(separator: "; "))
     }
+
+    /// The tap is told one format and handed another (separate mono buffers, fewer frames than it
+    /// was asked for): it processes what's there and never touches memory past a buffer's end.
+    func testTheTapStaysInsideTheBuffersItGets() {
+        var sequence = EditSequence(name: "T", settings: SequenceSettings(width: 320, height: 180, frameRate: .fps30,
+                                                                         colorSpace: .rec709))
+        let clip = Clip(mediaID: UUID(), name: "tone", start: 0, duration: 60, sourceStart: .zero)
+        sequence.overwrite([TrackPlacement(trackID: sequence.audioTracks[0].id, clip: clip)])
+        _ = sequence.cleanUpDialogue([clip.id])
+        let context = TapContext(trackID: sequence.audioTracks[0].id, clips: sequence.audioTracks[0].clips, rate: .fps30,
+                                 levels: MixerLevels(sequence), meters: nil)
+        let stereo = AudioStreamBasicDescription(
+            mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, mBytesPerPacket: 8, mFramesPerPacket: 1,
+            mBytesPerFrame: 8, mChannelsPerFrame: 2, mBitsPerChannel: 32, mReserved: 0)
+        context.prepare(maxFrames: 4096, format: stereo)
+
+        let frames = 512
+        let guardValue: Float = 12_345
+        let storage = (0..<2).map { _ in UnsafeMutablePointer<Float>.allocate(capacity: frames + 64) }
+        defer { storage.forEach { $0.deallocate() } }
+        let list = AudioBufferList.allocate(maximumBuffers: 2)
+        defer { free(list.unsafeMutablePointer) }
+        for (index, data) in storage.enumerated() {
+            for frame in 0..<(frames + 64) { data[frame] = frame < frames ? sin(Float(frame) / 10) * 0.5 : guardValue }
+            list[index] = AudioBuffer(mNumberChannels: 1, mDataByteSize: UInt32(frames * MemoryLayout<Float>.size),
+                                      mData: UnsafeMutableRawPointer(data))
+        }
+        for call in 0..<20 {
+            let start = CMTime(value: Int64(call * frames), timescale: 48_000)
+            context.process(list.unsafeMutablePointer, frames: 4096, start: start)
+        }
+        for data in storage {
+            XCTAssertTrue((frames..<(frames + 64)).allSatisfy { data[$0] == guardValue }, "nothing past the buffer")
+            XCTAssertTrue((0..<frames).allSatisfy { data[$0].isFinite })
+        }
+    }
 }

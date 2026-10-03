@@ -81,8 +81,8 @@ final class TapContext: @unchecked Sendable {
     let meters: AudioMeters?
 
     private var sampleRate = 48_000.0
-    private var channelCount = 2
-    private var interleaved = false
+    /// Whether the tap's samples are 32-bit floats (anything else passes through untouched).
+    private var isFloat = true
     private var chain: AudioEffectChain?
     private var chainClipID: UUID?
     private var scratch: [[Float]] = []
@@ -102,29 +102,34 @@ final class TapContext: @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         sampleRate = format.mSampleRate
-        channelCount = Int(format.mChannelsPerFrame)
-        interleaved = format.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
-        scratch = Array(repeating: [Float](repeating: 0, count: maxFrames), count: max(channelCount, 1))
+        isFloat = format.mFormatFlags & kAudioFormatFlagIsFloat != 0 && format.mBitsPerChannel == 32
+        let channels = max(Int(format.mChannelsPerFrame), 1)
+        scratch = Array(repeating: [Float](repeating: 0, count: maxFrames), count: channels)
         chain = nil
         chainClipID = nil
     }
 
-    /// Float samples of one channel: a pointer and the distance between samples.
-    private func channel(_ index: Int, in buffers: UnsafeMutableAudioBufferListPointer)
-        -> (UnsafeMutablePointer<Float>, Int)? {
-        if interleaved {
-            guard let data = buffers.first?.mData else { return nil }
-            return (data.assumingMemoryBound(to: Float.self) + index, channelCount)
+    /// The channels in the buffers as they are on this call (a pointer and the distance between
+    /// samples, interleaved or not), and how many frames every buffer really holds, so nothing
+    /// is read or written past a buffer's end whatever the format was said to be.
+    private static func channels(in buffers: UnsafeMutableAudioBufferListPointer, frames: Int)
+        -> (channels: [(UnsafeMutablePointer<Float>, Int)], frames: Int) {
+        var channels: [(UnsafeMutablePointer<Float>, Int)] = []
+        var available = frames
+        for buffer in buffers {
+            guard let data = buffer.mData, buffer.mNumberChannels > 0 else { continue }
+            let stride = Int(buffer.mNumberChannels)
+            available = min(available, Int(buffer.mDataByteSize) / (MemoryLayout<Float>.size * stride))
+            let base = data.assumingMemoryBound(to: Float.self)
+            for channel in 0..<stride { channels.append((base + channel, stride)) }
         }
-        guard index < buffers.count, let data = buffers[index].mData else { return nil }
-        return (data.assumingMemoryBound(to: Float.self), 1)
+        return (channels, max(available, 0))
     }
 
-    func process(_ list: UnsafeMutablePointer<AudioBufferList>, frames: Int, start: CMTime) {
-        guard frames > 0 else { return }
-        let buffers = UnsafeMutableAudioBufferListPointer(list)
-        let channels = (0..<channelCount).compactMap { channel($0, in: buffers) }
-        guard !channels.isEmpty else { return }
+    func process(_ list: UnsafeMutablePointer<AudioBufferList>, frames requested: Int, start: CMTime) {
+        guard requested > 0, isFloat else { return }
+        let (channels, frames) = Self.channels(in: UnsafeMutableAudioBufferListPointer(list), frames: requested)
+        guard !channels.isEmpty, frames > 0 else { return }
         applyEffects(channels, frames: frames, start: start)
 
         // Fader, pan and the Mix fader, then the meter.
@@ -152,8 +157,13 @@ final class TapContext: @unchecked Sendable {
         let frame = Int64((start.seconds * rate.framesPerSecond).rounded(.down))
         guard let clip = clips.first(where: { $0.range.contains(frame) }), !clip.effects.isEmpty else { return }
         let effects = clip.resolvedAudioEffects(at: clip.sourceTime(atSequenceFrame: frame, rate: rate))
-        guard !effects.isEmpty, channels.count == scratch.count, frames <= scratch[0].capacity else { return }
-        if chainClipID != clip.id || chain == nil {
+        guard !effects.isEmpty else { return }
+        // Buffers not shaped as `prepare` said: start over at their shape (rare, so the allocation is fine).
+        if channels.count != scratch.count || frames > (scratch.first?.capacity ?? 0) {
+            scratch = Array(repeating: [Float](repeating: 0, count: frames), count: channels.count)
+            chain = nil
+        }
+        if chainClipID != clip.id || chain == nil || chain?.channels != channels.count {
             chain = AudioEffectChain(sampleRate: sampleRate, channels: channels.count)
             chainClipID = clip.id
         }
