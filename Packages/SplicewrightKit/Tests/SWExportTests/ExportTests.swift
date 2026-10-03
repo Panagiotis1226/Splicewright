@@ -270,18 +270,30 @@ final class ExportTests: XCTestCase {
         XCTAssertLessThan(meter.truePeakDB, -0.5)
     }
 
+    /// As the smoke test exports: Clean Up Dialogue on the tone, its track down 3 dB, an In-to-Out
+    /// range, normalized to -14 LUFS. Repeated, since the measurement came out silent only now and then.
     func testLoudnessIsMeasuredThroughCleanUpDialogue() async throws {
         try await standardClips()
         let audio = Set(sequence.audioTracks.flatMap(\.clips).map(\.id))
         XCTAssertEqual(sequence.cleanUpDialogue(audio), 1)
-        var settings = ExportSettings(preset: .h264SDR)
-        settings.loudness = .streaming
-        let url = FixtureWriter.directory.appending(path: "export-dialogue.mp4")
-        let session = ExportSession(sequence: sequence, project: project, settings: settings, outputURL: url)
-        let state = try await Self.run(session, timeout: 90)
-        XCTAssertEqual(state, .finished(url))
-        let result = try XCTUnwrap(session.loudnessResult, "the cleaned-up tone measured as silent")
-        XCTAssertGreaterThan(result.measured, -40, result.summary)
+        sequence.setTrackVolume(sequence.audioTracks[0].id, dB: -3)
+        sequence.marks = SequenceMarks(inFrame: 3, outFrame: 28)
+        var failures: [String] = []
+        for (attempt, range) in [ExportRange.inToOut, .entireSequence, .inToOut, .inToOut, .entireSequence, .inToOut,
+                                 .inToOut, .inToOut].enumerated() {
+            var settings = ExportSettings(preset: .h264SDR, range: range)
+            settings.loudness = .streaming
+            let url = FixtureWriter.directory.appending(path: "export-dialogue-\(attempt).mp4")
+            let session = ExportSession(sequence: sequence, project: project, settings: settings, outputURL: url)
+            let state = try await Self.run(session, timeout: 90)
+            XCTAssertEqual(state, .finished(url))
+            if let result = session.loudnessResult {
+                if result.measured < -40 { failures.append("\(attempt) \(range): \(result.summary)") }
+            } else {
+                failures.append("\(attempt) \(range): \(session.loudnessNote ?? "no note")")
+            }
+        }
+        XCTAssertEqual(failures, [], "measured silent: \(failures.joined(separator: " | "))")
     }
 
     func testVideoOnlySequenceHasNoAudioTrack() async throws {
