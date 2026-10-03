@@ -43,6 +43,8 @@ public enum FixtureWriter {
         public var profileLevel: String?
         /// Solid color; nil draws a changing grey ramp.
         public var fill: Fill?
+        /// From this frame on, this color instead (a hard cut, for scene detection).
+        public var cut: (frame: Int, fill: Fill)?
     }
 
     public static let directory: URL = {
@@ -143,7 +145,9 @@ public enum FixtureWriter {
                 try await Task.sleep(nanoseconds: 2_000_000)
             }
             guard let pool = adaptor.pixelBufferPool,
-                  let buffer = makeBuffer(pool: pool, shade: frame, fill: spec.fill, tenBit: spec.tenBit) else {
+                  let buffer = makeBuffer(pool: pool, shade: frame,
+                                          fill: spec.cut.flatMap { frame >= $0.frame ? $0.fill : nil } ?? spec.fill,
+                                          tenBit: spec.tenBit) else {
                 return nil
             }
             let time = CMTimeMultiply(spec.frameDuration, multiplier: Int32(frame))

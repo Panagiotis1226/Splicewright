@@ -101,6 +101,9 @@ public struct WorkspaceView: View {
         .sheet(isPresented: $workspace.isRemoveSilencePresented) {
             RemoveSilenceSheet(workspace: workspace)
         }
+        .sheet(isPresented: $workspace.isSceneDetectionPresented) {
+            SceneDetectionSheet(workspace: workspace)
+        }
         .sheet(isPresented: Binding(get: { workspace.speedSheetClipIDs != nil },
                                     set: { if !$0 { workspace.speedSheetClipIDs = nil } })) {
             if let ids = workspace.speedSheetClipIDs { SpeedDurationSheet(workspace: workspace, ids: ids) }

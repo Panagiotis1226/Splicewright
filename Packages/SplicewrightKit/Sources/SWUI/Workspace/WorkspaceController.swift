@@ -82,6 +82,7 @@ public final class WorkspaceController: ObservableObject {
     /// Non-nil while the Speed/Duration sheet is shown, for these clips.
     @Published public var speedSheetClipIDs: Set<UUID>?
     @Published public var isRemoveSilencePresented = false
+    @Published public var isSceneDetectionPresented = false
     /// The mask the Program monitor shows for editing, and where the Pen is drawing a new one.
     @Published public var selectedMask: MaskSelection?
     @Published public var maskPen: MaskTarget?
