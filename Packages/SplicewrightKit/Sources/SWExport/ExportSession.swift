@@ -116,7 +116,13 @@ public final class ExportSession: ObservableObject, Identifiable {
         let rate = sequence.rate
         let range = CMTimeRange(start: RationalTime(frames: frames.start, rate: rate).cmTime,
                                 end: RationalTime(frames: frames.end, rate: rate).cmTime)
-        let gain = try await measureLoudness(output, range: range)
+        // The measuring pass reads its own copy of the composition: an audio mix's taps (and
+        // their effect state) must never be shared by two readers, even one winding down.
+        var gain: LoudnessGain?
+        if settings.loudness != nil {
+            let measured = await builder.build(sequence, project: project, cache: MediaAssetCache())
+            gain = try await measureLoudness(measured, range: range)
+        }
         try? FileManager.default.removeItem(at: outputURL)
         let worker = try await ExportWorker(output: output, settings: settings, chapters: settings.chapters(for: sequence),
                                             range: range, width: width, height: height,
