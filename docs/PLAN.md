@@ -253,6 +253,7 @@ Autosave and crash recovery, relinking missing media, preferences, performance p
   - **Rendering.** Worked out once per clip per composition build (one transform per frame) and looked up per frame, so playback costs nothing extra. The Program monitor handles use the same transform.
   - **Effects** follow by tracking a mask on the effect itself (M19); no link is needed.
   - *0.20.1:* the Tools panel's Pen (P) draws in the Program monitor without an effect chosen first: the shape goes on the selected clip (or the top footage at the playhead) as a mask on its Opacity in the new **None** mode, which the renderer skips, so it only serves to track and to attach titles to. Before, a mask could only be drawn from Effect Controls under Opacity (which cut the picture) or an effect.
+  - *0.21:* effects use tracked shapes. A mask can name another mask on the same clip as its path source (`pathSource`, optional in the file). When the render plan is built, linked masks take the source's path, so tracking or reshaping it moves every effect using it. Each keeps its own mode, feather, opacity, expansion and Inverted. Editing or tracking a linked mask acts on the source. Deleting the source (or its effect) leaves its last path as the mask's own. Follow lists sources only.
 
 **M22 — Voiceover, Noise Reduction, Clean Up Dialogue**
 - *As built:*
