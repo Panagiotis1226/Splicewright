@@ -74,6 +74,8 @@ public struct SplicewrightCommands: Commands {
             Button("Ripple Delete") { workspace?.deleteSelectedClips(ripple: true) }
             Button("Remove Silence…") { workspace?.isRemoveSilencePresented = true }
                 .disabled(workspace?.activeSequenceID == nil)
+            Button("Detect Beats…") { workspace?.isDetectBeatsPresented = true }
+                .disabled(workspace?.activeSequenceID == nil)
             Divider()
             Button("Apply Video Transition") { workspace?.applyDefaultTransition(audio: false) }
                 .shortcut(.applyVideoTransition, keys)
