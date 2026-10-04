@@ -190,6 +190,44 @@ final class MaskRenderTests: XCTestCase {
         XCTAssertTrue(flipped.flipVertical && !flipped.flipHorizontal, "left-right shown is top-bottom encoded")
     }
 
+    /// Remove Background on the grey clip (no people in it): Vision finds nobody, so only the black
+    /// below shows; keeping all the background changes nothing. On a Mac where Vision can't run,
+    /// the effect leaves the picture alone rather than failing the render.
+    func testRemoveBackgroundWithNobodyInTheShot() async throws {
+        var (sequence, id) = try await greySequence()
+        let plain = try await red(sequence, at: [center])
+        let added = sequence.addEffect(.removeBackground, to: [id])
+        let effectID = try XCTUnwrap(added[id])
+        let removed = try await red(sequence, at: [center])
+        XCTAssertTrue(removed[0] < 8 || abs(removed[0] - plain[0]) <= 3, "cut out, or untouched without Vision")
+        sequence.updateEffect(effectID, of: id) { $0.parameters["background"]?.values = [100] }
+        let kept = try await red(sequence, at: [center])
+        XCTAssertEqual(kept[0], plain[0], accuracy: 3)
+    }
+
+    /// The person matte lands on the picture: upright (the shape shown) or as stored (sideways).
+    func testPersonMatteCoversTheDisplayedPicture() {
+        let orientation = Affine2D(a: 0, b: 1, c: -1, d: 0, tx: 90, ty: 0)
+        let fit = Affine2D.fit(sourceWidth: 160, sourceHeight: 90, orientation: orientation, renderWidth: 90,
+                               renderHeight: 160)
+        var layer = InstructionLayer(trackID: 1, opacity: 1, transform: fit, sourceWidth: 160, sourceHeight: 90,
+                                     fallbackColor: .rec709)
+        layer.picture = DisplayedPicture(sourceWidth: 160, sourceHeight: 90, orientation: orientation,
+                                         renderWidth: 90, renderHeight: 160)
+        let upright = PersonSegmenter.Matte(bytes: [], width: 45, height: 80)
+        let shown = layer.matteTransform(upright, upright: true, at: .zero, renderWidth: 90, renderHeight: 160)
+        XCTAssertEqual(shown.apply(x: 45, y: 80).x, 90, accuracy: 1e-9)
+        XCTAssertEqual(shown.apply(x: 45, y: 80).y, 160, accuracy: 1e-9)
+        XCTAssertEqual(shown.apply(x: 0, y: 0).x, 0, accuracy: 1e-9)
+        // As stored, the matte's top left is the encoded top left: shown at the top right.
+        let stored = PersonSegmenter.Matte(bytes: [], width: 80, height: 45)
+        let sideways = layer.matteTransform(stored, upright: false, at: .zero, renderWidth: 90, renderHeight: 160)
+        XCTAssertEqual(sideways.apply(x: 0, y: 0).x, 90, accuracy: 1e-9)
+        XCTAssertEqual(sideways.apply(x: 0, y: 0).y, 0, accuracy: 1e-9)
+        XCTAssertEqual(sideways.apply(x: 80, y: 45).x, 0, accuracy: 1e-9)
+        XCTAssertEqual(sideways.apply(x: 80, y: 45).y, 160, accuracy: 1e-9)
+    }
+
     /// The Stabilizer moves the picture between its fit and Motion, scaled to the asset's size
     /// (a proxy at half size moves half as many of its own pixels).
     func testStabilizerCorrectionMovesTheLayer() {

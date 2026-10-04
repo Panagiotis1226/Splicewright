@@ -26,5 +26,14 @@ extension Shaders {
         uint2 p = uint2(in.position.xy);
         return mix(before.read(p), after.read(p), clamp(coverage.read(p).r, 0.0, 1.0));
     }
+
+    /// Remove Background: a person matte (drawn with the layer's transform by layerVertex) as
+    /// coverage. color.x is how much of the background stays (0 removes it).
+    fragment float4 matteFragment(VertexOut in [[stage_in]], texture2d<float> matte [[texture(0)]],
+                                  constant LayerUniforms& u [[buffer(0)]]) {
+        constexpr sampler s(filter::linear, address::clamp_to_edge);
+        float m = clamp(matte.sample(s, in.uv).r, 0.0, 1.0);
+        return float4(mix(clamp(u.color.x, 0.0, 1.0), 1.0, m));
+    }
     """
 }

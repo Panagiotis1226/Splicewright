@@ -52,6 +52,22 @@ enum PixelEffect {
     case mask([RenderMask])
     /// These passes apply only inside the masks (masks on an effect).
     case masked([PixelEffect], [RenderMask])
+    /// Remove Background, before the compositor has segmented the frame: feather in render
+    /// pixels, and how much of the background stays (0...1).
+    case personMatte(feather: Double, background: Double)
+    /// Remove Background with the frame's person matte: only the people (and `background`) show.
+    case matte(PersonMatte)
+}
+
+/// Where the people are in a frame (8-bit, 1 = person), and how it lands in the render.
+struct PersonMatte {
+    var mask: [UInt8]
+    var width: Int
+    var height: Int
+    /// Matte pixels → render pixels (the layer's picture placement, motion included).
+    var transform: Affine2D
+    var feather: Double
+    var background: Double
 }
 
 /// An adjustment layer: its effects applied to everything composited so far.
@@ -200,8 +216,11 @@ extension MetalRenderer {
             case .color, .curves, .lut:
                 let output = free(current)
                 if try runColor(effect, on: current, into: output, commandBuffer: commandBuffer) { current = output }
-            case .mask, .masked:
+            case .mask, .masked, .matte:
                 current = try runMask(effect, on: current, temps: temps, commandBuffer: commandBuffer)
+            case .personMatte:
+                // Not segmented (a title or a still has no video frame): nothing to remove.
+                continue
             }
         }
         return current

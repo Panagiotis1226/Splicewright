@@ -53,6 +53,18 @@ struct EffectTests {
         #expect(seq.clip(video)?.effects.count == 1)
     }
 
+    @Test func removeBackgroundIsAVideoEffectThatKeepsAllBackgroundAsANoOp() throws {
+        var (seq, video, audio) = sequence()
+        let added = seq.addEffect(.removeBackground, to: [video, audio])
+        #expect(added.keys.sorted() == [video] && !EffectKind.removeBackground.isAudio)
+        let effectID = try #require(added[video])
+        let effect = try #require(seq.clip(video)?.effects.first)
+        #expect(effect.value("feather", at: .zero) == 2 && effect.value("background", at: .zero) == 0)
+        #expect(seq.clip(video)?.resolvedEffects(at: .zero).map(\.kind) == [.removeBackground])
+        seq.updateEffect(effectID, of: video) { $0.parameters["background"]?.values = [100] }
+        #expect(seq.clip(video)?.resolvedEffects(at: .zero).isEmpty == true, "keeping all the background changes nothing")
+    }
+
     @Test func effectsFollowCutsAndPasteAttributes() throws {
         var (seq, video, _) = sequence()
         seq.addEffect(.crop, to: [video])

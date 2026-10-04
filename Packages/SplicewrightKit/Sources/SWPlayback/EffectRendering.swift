@@ -101,6 +101,8 @@ enum EffectRendering {
             return passes
         case .lut:
             if let path = effect.lutPath { return [.lut(path: path, intensity: effect["intensity"] / 100)] }
+        case .removeBackground:
+            return [.personMatte(feather: effect["feather"] * pixelScale, background: effect["background"] / 100)]
         case .parametricEQ, .compressor, .hardLimiter, .noiseReduction, .stabilizer:
             // Audio, or (the Stabilizer) moved with the layer's transform.
             break

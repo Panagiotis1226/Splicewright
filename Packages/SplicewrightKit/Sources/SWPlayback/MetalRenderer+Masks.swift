@@ -24,6 +24,8 @@ final class MaskResources: @unchecked Sendable {
     let combineSubtract: MTLRenderPipelineState
     let apply: MTLRenderPipelineState
     let mix: MTLRenderPipelineState
+    /// Draws a person matte into coverage, placed like the layer (layerVertex).
+    let matte: MTLRenderPipelineState
     private let device: MTLDevice
     private let lock = NSLock()
     private var rasters: [RasterKey: MTLTexture] = [:]
@@ -62,6 +64,11 @@ final class MaskResources: @unchecked Sendable {
         }
         apply = try pipeline("maskApplyFragment")
         mix = try pipeline("maskMixFragment")
+        let matteDescriptor = MTLRenderPipelineDescriptor()
+        matteDescriptor.vertexFunction = library.makeFunction(name: "layerVertex")
+        matteDescriptor.fragmentFunction = library.makeFunction(name: "matteFragment")
+        matteDescriptor.colorAttachments[0].pixelFormat = .rgba16Float
+        matte = try device.makeRenderPipelineState(descriptor: matteDescriptor)
     }
 
     func targets(width: Int, height: Int) -> Targets? {
@@ -184,9 +191,52 @@ extension MetalRenderer {
             try pass(maskResources.mix, into: output, textures: [input, after, coverage], commandBuffer: commandBuffer,
                      bytes: &uniforms)
             return output
+        case .matte(let matte):
+            let coverage = try matteCoverage(matte, width: input.width, height: input.height,
+                                             commandBuffer: commandBuffer)
+            let output = free([input])
+            var uniforms = EffectUniforms(a: .zero)
+            try pass(maskResources.apply, into: output, textures: [input, coverage], commandBuffer: commandBuffer,
+                     bytes: &uniforms)
+            return output
         default:
             return input
         }
+    }
+
+    /// A person matte as coverage: drawn where the layer's picture lands, then feathered.
+    func matteCoverage(_ matte: PersonMatte, width: Int, height: Int,
+                       commandBuffer: MTLCommandBuffer) throws -> MTLTexture {
+        guard let targets = maskResources.targets(width: width, height: height) else {
+            throw RenderError.textureCreationFailed
+        }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm, width: matte.width,
+                                                                  height: matte.height, mipmapped: false)
+        descriptor.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor: descriptor) else { throw RenderError.textureCreationFailed }
+        matte.mask.withUnsafeBytes { raw in
+            texture.replace(region: MTLRegionMake2D(0, 0, matte.width, matte.height), mipmapLevel: 0,
+                            withBytes: raw.baseAddress!, bytesPerRow: matte.width)
+        }
+        let t = matte.transform
+        var uniforms = LayerUniforms(row0: SIMD4(Float(t.a), Float(t.c), Float(t.tx), 0),
+                                     row1: SIMD4(Float(t.b), Float(t.d), Float(t.ty), 0),
+                                     sizes: SIMD4(Float(matte.width), Float(matte.height), Float(width), Float(height)),
+                                     ycbcr: .zero, color: SIMD4(Float(matte.background), 0, 0, 0), tone: .zero)
+        let encoder = try layerEncoder(commandBuffer, target: targets.coverage,
+                                       clear: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0))
+        encoder.setRenderPipelineState(maskResources.matte)
+        encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
+        encoder.setFragmentTexture(texture, index: 0)
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder.endEncoding()
+        guard matte.feather > 0.25 else { return targets.coverage }
+        try blur(targets.coverage, into: targets.blurH, BlurPass(radius: matte.feather, vertical: false),
+                 commandBuffer: commandBuffer)
+        try blur(targets.blurH, into: targets.blurV, BlurPass(radius: matte.feather, vertical: true),
+                 commandBuffer: commandBuffer)
+        return targets.blurV
     }
 
     /// All of a layer's masks folded into one coverage texture (red channel, 0...1). With no

@@ -84,6 +84,41 @@ struct InstructionLayer {
         picture ?? DisplayedPicture(transform: transform, width: sourceWidth, height: sourceHeight)
     }
 
+    /// Remove Background: the person matte's pixels → render pixels. `upright` when it covers the
+    /// picture as displayed rather than the frame as stored.
+    func matteTransform(_ matte: PersonSegmenter.Matte, upright: Bool, at time: CMTime, renderWidth: Double,
+                        renderHeight: Double) -> Affine2D {
+        let (width, height) = (matte.width, matte.height)
+        if upright {
+            let shown = displayedPicture
+            let place = withMotion(stabilization(at: time).concatenating(shown.transform), at: time,
+                                   renderWidth: renderWidth, renderHeight: renderHeight)
+            return Affine2D.scale(shown.width / Double(max(width, 1)), shown.height / Double(max(height, 1)))
+                .concatenating(place)
+        }
+        let place = transform(at: time, renderWidth: renderWidth, renderHeight: renderHeight)
+        return Affine2D.scale(sourceWidth / Double(max(width, 1)), sourceHeight / Double(max(height, 1)))
+            .concatenating(place)
+    }
+
+    /// Remove Background's placeholders, filled in with the person matte of this frame.
+    func resolvingMattes(_ passes: [PixelEffect], source: LayerSource?, at time: CMTime, renderWidth: Double,
+                         renderHeight: Double) -> [PixelEffect] {
+        guard passes.contains(where: { if case .personMatte = $0 { return true } else { return false } }),
+              case .video(let frame)? = source else { return passes }
+        let turns = displayedPicture.quarterTurns
+        guard let found = PersonSegmenter.matte(frame.pixelBuffer, quarterTurns: turns) else { return passes }
+        // Turned a quarter, an upright matte has the other shape from the stored frame.
+        let upright = turns % 2 != 0 && (found.width >= found.height) != (sourceWidth >= sourceHeight)
+        let place = matteTransform(found, upright: upright, at: time,
+                                   renderWidth: renderWidth, renderHeight: renderHeight)
+        return passes.map { pass in
+            guard case .personMatte(let feather, let background) = pass else { return pass }
+            return .matte(PersonMatte(mask: found.bytes, width: found.width, height: found.height, transform: place,
+                                      feather: feather, background: background))
+        }
+    }
+
     /// The Stabilizer's correction at a composition time, in this layer's displayed pixels
     /// (its analysis may have been of another size: a proxy, or the original).
     func stabilization(at time: CMTime) -> Affine2D {
@@ -305,7 +340,9 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
                 return .adjustment(AdjustmentFrame(geometry: geometry, effects: passes, opacity: layer.opacity(at: time)))
             }
             guard let source = frame(layer, geometry: geometry) else { return nil }
-            return passes.isEmpty ? .layer(source) : .effected(source, passes)
+            let resolved = layer.resolvingMattes(passes, source: source, at: time, renderWidth: renderSize.width,
+                                                 renderHeight: renderSize.height)
+            return resolved.isEmpty ? .layer(source) : .effected(source, resolved)
         }
         var items: [RenderItem] = []
         var index = instruction.layers.startIndex
@@ -327,10 +364,14 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
                 switch side.role {
                 case .outgoing:
                     mix.outgoing = frame(sideLayer, geometry: geometry)
-                    mix.outgoingEffects = passes
+                    mix.outgoingEffects = sideLayer.resolvingMattes(passes, source: mix.outgoing, at: time,
+                                                                    renderWidth: renderSize.width,
+                                                                    renderHeight: renderSize.height)
                 case .incoming:
                     mix.incoming = frame(sideLayer, geometry: geometry)
-                    mix.incomingEffects = passes
+                    mix.incomingEffects = sideLayer.resolvingMattes(passes, source: mix.incoming, at: time,
+                                                                    renderWidth: renderSize.width,
+                                                                    renderHeight: renderSize.height)
                 }
                 index += 1
             }

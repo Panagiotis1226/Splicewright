@@ -7,6 +7,9 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
     case colorCorrection, lut
     /// Smooths camera shake from an analysis of the shot (like Warp Stabilizer).
     case stabilizer
+    /// Keeps the people in the picture and takes out what's behind them (macOS's own person
+    /// segmentation, nothing to download).
+    case removeBackground
     case parametricEQ, compressor, hardLimiter
     /// Lowers steady background noise (hiss, hum, fans, room tone), learned as it plays.
     case noiseReduction
@@ -43,6 +46,7 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         case .colorCorrection: return "Color Correction"
         case .lut: return "LUT"
         case .stabilizer: return "Stabilizer"
+        case .removeBackground: return "Remove Background"
         case .parametricEQ: return "Parametric EQ"
         case .compressor: return "Compressor"
         case .hardLimiter: return "Hard Limiter"
@@ -69,6 +73,9 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
             return [.init("amount", "Sharpen Amount", unit: "", range: 0...4000, step: 1, default: 25)]
         case .horizontalFlip, .verticalFlip, .stabilizer:
             return []
+        case .removeBackground:
+            return [.init("feather", "Edge Feather", unit: "px", range: 0...50, step: 0.5, default: 2),
+                    .init("background", "Background", unit: "%", range: 0...100, step: 0.5)]
         case .colorCorrection:
             return [.init("exposure", "Exposure", unit: "stops", range: -4...4, step: 0.01),
                     .init("contrast", "Contrast", unit: "", range: -100...100, step: 0.5),
@@ -120,6 +127,7 @@ public enum EffectKind: String, Sendable, Hashable, Codable, CaseIterable, Ident
         case .colorCorrection: return "camera.filters"
         case .lut: return "cube"
         case .stabilizer: return "camera.metering.center.weighted"
+        case .removeBackground: return "person.crop.rectangle"
         case .parametricEQ: return "slider.vertical.3"
         case .compressor: return "arrow.down.right.and.arrow.up.left"
         case .hardLimiter: return "chart.line.flattrend.xyaxis"
@@ -263,6 +271,7 @@ public struct ResolvedEffect: Sendable, Hashable {
         case .lut: return lutPath == nil || self["intensity"] <= 0
         // It moves the picture rather than drawing a pass (see `Clip.stabilization`).
         case .stabilizer: return true
+        case .removeBackground: return self["background"] >= 100
         }
     }
 }
