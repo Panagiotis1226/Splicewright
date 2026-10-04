@@ -86,7 +86,7 @@ extension TimelineCanvas {
         }
         let location = dropLocation(info)
         let length = ids.compactMap { workspace.project.item($0) }.reduce(Int64(0)) { total, item in
-            let range = item.marks.range(duration: item.info.duration, rate: item.info.displayFrameRate)
+            let range = item.marks.range(duration: item.info.placementDuration, rate: item.info.displayFrameRate)
             return total + max(1, range.duration.frameIndex(at: sequence.rate))
         }
         if let trackID = location.trackID {

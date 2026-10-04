@@ -43,6 +43,9 @@ public actor ThumbnailProvider {
     }
 
     static func generate(url: URL, seconds: Double, maxPixels: Int) async -> CGImage? {
+        if ImportPolicy.imageExtensions.contains(url.pathExtension.lowercased()) {
+            return StillImage.image(at: url, maxPixels: maxPixels)
+        }
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true

@@ -92,6 +92,8 @@ public enum ContainerFormat: String, Sendable, Hashable, Codable {
     case aiff
     case coreAudio = "caf"
     case mp3
+    /// A still image (PNG, JPEG, HEIC, TIFF...).
+    case image
     case unknown
 
     public init(fileExtension: String) {
@@ -104,6 +106,7 @@ public enum ContainerFormat: String, Sendable, Hashable, Codable {
         case "aif", "aiff", "aifc": self = .aiff
         case "caf": self = .coreAudio
         case "mp3": self = .mp3
+        case _ where ImportPolicy.imageExtensions.contains(fileExtension.lowercased()): self = .image
         default: self = .unknown
         }
     }
@@ -118,6 +121,7 @@ public enum ContainerFormat: String, Sendable, Hashable, Codable {
         case .aiff: return "AIFF"
         case .coreAudio: return "Core Audio (.caf)"
         case .mp3: return "MP3"
+        case .image: return "Image"
         case .unknown: return "Unknown"
         }
     }

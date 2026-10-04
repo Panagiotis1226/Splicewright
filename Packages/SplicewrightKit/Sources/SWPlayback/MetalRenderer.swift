@@ -46,10 +46,22 @@ struct TitleFrame {
     var geometry: LayerGeometry = .none
 }
 
+/// A still image, at its own size (`width` × `height` picture pixels).
+struct ImageFrame {
+    var url: URL
+    var width: Double
+    var height: Double
+    var opacity: Double
+    /// Picture pixels → render pixels.
+    var transform: Affine2D
+    var geometry: LayerGeometry = .none
+}
+
 /// One layer's pixels: a decoded video frame or a rasterized title.
 enum LayerSource {
     case video(LayerFrame)
     case title(TitleFrame)
+    case image(ImageFrame)
 }
 
 /// The two sides of a transition on one track. Either side may be missing (a fade).
@@ -102,6 +114,7 @@ final class MetalRenderer {
     /// Mixes a texture into the target by the blend color (adjustment layers replace what's below).
     let replacePipeline: MTLRenderPipelineState
     private let titles: TitleRasterizer
+    private let stills: StillTextureCache
     private let textureCache: CVMetalTextureCache
     private var workingTexture: MTLTexture?
     /// Each side of a transition is drawn here first (transparent where it doesn't cover).
@@ -137,6 +150,7 @@ final class MetalRenderer {
         layer.fragmentFunction = library.makeFunction(name: "titleFragment")
         titlePipeline = try device.makeRenderPipelineState(descriptor: layer)
         titles = TitleRasterizer(device: device)
+        stills = StillTextureCache(device: device)
 
         let output = MTLRenderPipelineDescriptor()
         output.vertexFunction = library.makeFunction(name: "fullScreenVertex")
@@ -278,6 +292,7 @@ final class MetalRenderer {
         let (width, height) = size
         guard case .video(let layer) = source else {
             if case .title(let title) = source { drawTitle(title, with: encoder, width: width, height: height) }
+            if case .image(let image) = source { drawImage(image, with: encoder, width: width, height: height) }
             return
         }
         guard let format = PlanarFormat(CVPixelBufferGetPixelFormatType(layer.pixelBuffer)) else { return }
@@ -309,6 +324,29 @@ final class MetalRenderer {
                                      color: SIMD4(0, 0, Float(min(max(title.opacity, 0), 1)), 0), tone: .zero)
         uniforms.apply(title.geometry, featherUV: SIMD2(Float(title.geometry.featherPixels) / Float(width),
                                                         Float(title.geometry.featherPixels) / Float(height)))
+        encoder.setRenderPipelineState(titlePipeline)
+        encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
+        encoder.setFragmentTexture(texture, index: 0)
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder.setRenderPipelineState(layerPipeline)
+    }
+
+    /// Stills are sRGB textures like titles, at the picture's own size, placed by `transform`.
+    private func drawImage(_ image: ImageFrame, with encoder: MTLRenderCommandEncoder, width: Int, height: Int) {
+        guard let texture = stills.texture(for: image.url) else { return }
+        let t = image.transform
+        var uniforms = LayerUniforms(row0: SIMD4(Float(t.a), Float(t.c), Float(t.tx), 0),
+                                     row1: SIMD4(Float(t.b), Float(t.d), Float(t.ty), 0),
+                                     sizes: SIMD4(Float(image.width), Float(image.height), Float(width), Float(height)),
+                                     ycbcr: .zero, color: SIMD4(0, 0, Float(min(max(image.opacity, 0), 1)), 0),
+                                     tone: .zero)
+        if !image.geometry.isIdentity {
+            let drawnWidth = max(1, image.width * hypot(t.a, t.b))
+            let drawnHeight = max(1, image.height * hypot(t.c, t.d))
+            uniforms.apply(image.geometry, featherUV: SIMD2(Float(image.geometry.featherPixels / drawnWidth),
+                                                            Float(image.geometry.featherPixels / drawnHeight)))
+        }
         encoder.setRenderPipelineState(titlePipeline)
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<LayerUniforms>.stride, index: 0)

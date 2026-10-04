@@ -27,7 +27,7 @@ extension WorkspaceController {
     func analyzeStabilization(clipID: UUID, effectID: UUID) {
         guard stabilizationJob == nil, let sequence = activeSequence, let clip = sequence.clip(clipID),
               let item = project.item(clip.mediaID), let video = item.info.video, !clip.isGenerated,
-              !offlineMediaIDs.contains(item.id) else { return }
+              !item.info.isStill, !offlineMediaIDs.contains(item.id) else { return }
         let job = StabilizationJob(clipID: clipID, effectID: effectID, frameCount: Int(max(clip.duration - 1, 0)))
         stabilizationJob = job
         let url = (useProxies ? ProxyQueue.shared.proxyURL(item) : nil) ?? item.url

@@ -20,6 +20,7 @@ public struct MediaProber: Sendable {
     public init() {}
 
     public func probe(_ url: URL) async throws -> MediaInfo {
+        if ImportPolicy.imageExtensions.contains(url.pathExtension.lowercased()) { return try StillImage.probe(url) }
         let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         let (duration, isReadable) = try await asset.load(.duration, .isReadable)
         guard isReadable else { throw MediaProbeError.unreadable(url) }

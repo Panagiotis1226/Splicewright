@@ -47,7 +47,7 @@ extension WorkspaceController {
             for id in mediaIDs {
                 guard let item = project.item(id) else { continue }
                 let placements = sequence.makeClips(for: item, sourceRange: item.marks.range(
-                    duration: item.info.duration, rate: item.info.displayFrameRate), at: sequence.durationFrames,
+                    duration: item.info.placementDuration, rate: item.info.displayFrameRate), at: sequence.durationFrames,
                     videoTrackID: sequence.videoTracks[0].id, audioTrackID: sequence.audioTracks[0].id)
                 sequence.overwrite(placements)
             }
@@ -121,7 +121,7 @@ extension WorkspaceController {
             createSequence(named: item.name, settings: .matching(item.info))
         }
         guard let sequence = activeSequence else { return }
-        let range = item.marks.range(duration: item.info.duration, rate: item.info.displayFrameRate)
+        let range = item.marks.range(duration: item.info.placementDuration, rate: item.info.displayFrameRate)
         let frame = min(playheadFrame, sequence.durationFrames)
         let placements = sequence.makeClips(for: item, sourceRange: range, at: frame,
                                             videoTrackID: sequence.targetedVideoTrackID,
@@ -226,7 +226,7 @@ extension WorkspaceController {
         var placements: [TrackPlacement] = []
         var cursor = max(0, frame)
         for item in items {
-            let range = item.marks.range(duration: item.info.duration, rate: item.info.displayFrameRate)
+            let range = item.marks.range(duration: item.info.placementDuration, rate: item.info.displayFrameRate)
             let clips = sequence.makeClips(for: item, sourceRange: range, at: cursor, videoTrackID: videoTrack,
                                            audioTrackID: audioTrack)
             placements += clips

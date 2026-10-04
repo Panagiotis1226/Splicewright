@@ -17,7 +17,7 @@ extension WorkspaceController {
         guard let sequence = activeSequence else { return [] }
         let videoIDs = Set(sequence.videoTracks.flatMap { $0.clips.map(\.id) })
         let selected = timeline.selection.filter { videoIDs.contains($0) }.compactMap { sequence.clip($0) }
-            .filter { !$0.isGenerated }.sorted { $0.start < $1.start }
+            .filter { !$0.isGenerated && project.item($0.mediaID)?.info.isStill != true }.sorted { $0.start < $1.start }
         if !selected.isEmpty { return selected }
         return footageClip(at: program.currentFrame).map { [$0] } ?? []
     }

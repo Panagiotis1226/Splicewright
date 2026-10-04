@@ -17,6 +17,8 @@ struct InstructionLayer {
     var transition: InstructionTransition?
     /// Set for a title layer, which has no source track (`trackID` is invalid).
     var title: TitleSpec?
+    /// Set for a still image, drawn from the file (no source track either).
+    var image: URL?
     /// Keyframeable motion and opacity, applied after `transform`.
     var motion = Motion()
     /// Composition time of the clip's first frame, and the source time shown there.
@@ -284,6 +286,10 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
             let opacity = layer.opacity(at: time)
             if let title = layer.title {
                 return .title(TitleFrame(spec: title, opacity: opacity, transform: transform, geometry: geometry))
+            }
+            if let image = layer.image {
+                return .image(ImageFrame(url: image, width: layer.sourceWidth, height: layer.sourceHeight,
+                                         opacity: opacity, transform: transform, geometry: geometry))
             }
             guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { return nil }
             return .video(LayerFrame(pixelBuffer: buffer, transform: transform, sourceWidth: layer.sourceWidth,

@@ -19,6 +19,8 @@ public final class SourceMonitorModel: ObservableObject {
     @Published public private(set) var rate: Float = 0
     @Published public private(set) var hasVideo = false
     @Published public private(set) var waveform: WaveformPeaks?
+    /// A still image, shown instead of the player.
+    @Published public private(set) var still: CGImage?
 
     /// Plays the clip's proxy (video) with the original's audio, when a proxy exists.
     @Published public var useProxies = false {
@@ -60,6 +62,12 @@ public final class SourceMonitorModel: ObservableObject {
         hasVideo = item.info.video != nil
 
         self.item = item
+        if item.info.isStill {
+            // A still has no length of its own: marks work over its 5 s default.
+            duration = MediaInfo.stillPlacement
+            still = StillImage.image(at: item.url, maxPixels: 2048)
+            return
+        }
         let playerItem = AVPlayerItem(asset: AVURLAsset(url: item.url))
         player.replaceCurrentItem(with: playerItem)
         installTimeObserver()
@@ -79,7 +87,7 @@ public final class SourceMonitorModel: ObservableObject {
     /// Swaps between the original and a proxy composition, keeping the position.
     public func reloadForProxies() {
         proxyTask?.cancel()
-        guard let item else { return }
+        guard let item, !item.info.isStill else { return }
         let proxy = useProxies ? ProxyStore.shared.proxy(for: item) : nil
         let time = currentTime
         proxyTask = Task { [weak self] in
@@ -122,6 +130,7 @@ public final class SourceMonitorModel: ObservableObject {
         timeObserver = nil
         waveformTask?.cancel()
         waveform = nil
+        still = nil
         player.replaceCurrentItem(with: nil)
         mediaID = nil
         mediaName = ""

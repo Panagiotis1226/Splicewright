@@ -83,7 +83,7 @@ extension WorkspaceController {
     public func trackMask(_ selection: MaskSelection, forward: Bool, oneFrame: Bool, maxFrames: Int? = nil) {
         guard trackingJob == nil, let sequence = activeSequence, let clip = sequence.clip(selection.target.clipID),
               let mask = mask(selection) else { return }
-        guard !clip.isGenerated, let item = project.item(clip.mediaID), item.info.video != nil,
+        guard !clip.isGenerated, let item = project.item(clip.mediaID), item.info.video != nil, !item.info.isStill,
               !offlineMediaIDs.contains(item.id) else {
             trackingMessage = MaskTrackingMessage(selection: selection,
                                                   text: "Tracking follows a video clip's picture; this clip has none.")

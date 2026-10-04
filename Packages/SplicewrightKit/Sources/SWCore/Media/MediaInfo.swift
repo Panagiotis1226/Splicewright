@@ -106,6 +106,17 @@ public struct MediaInfo: Sendable, Hashable, Codable {
         }
     }
 
+    /// A still image: it shows the same picture for as long as its clip lasts.
+    public var isStill: Bool { container == .image }
+
+    /// How long a still can be stretched on the timeline (it has no length of its own).
+    public static let stillDuration = RationalTime(value: 3600, timescale: 1)
+    /// How long a still is when it's first placed, as Premiere's default still duration.
+    public static let stillPlacement = RationalTime(value: 5, timescale: 1)
+
+    /// The length a clip of this media gets when placed whole: the media's, or 5 s for a still.
+    public var placementDuration: RationalTime { isStill ? Self.stillPlacement : duration }
+
     /// Rate used for timecode and frame stepping. Audio-only media falls back to 30 fps
     /// until a sequence supplies its own rate.
     public var displayFrameRate: FrameRate {

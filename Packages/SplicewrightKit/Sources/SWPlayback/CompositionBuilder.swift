@@ -112,7 +112,8 @@ public struct CompositionBuilder {
         var loaded: [UUID: LoadedMedia] = [:]
         let usedMedia = Set(sequence.allTracks.flatMap { $0.clips.map(\.mediaID) })
         for id in usedMedia {
-            guard let item = project.item(id) else { continue }
+            // Stills are drawn from their files; they have no tracks.
+            guard let item = project.item(id), !item.info.isStill else { continue }
             let proxy = useProxies ? proxyStore.proxy(for: item) : nil
             if let media = await cache.media(for: item, proxy: proxy) { loaded[id] = media }
         }
@@ -346,14 +347,15 @@ public struct CompositionBuilder {
                                             title: title, motion: layer.motion, clipStart: time(layer.clipStart),
                                             sourceStart: layer.sourceStart, pixelScale: pixelScale)
                 }
+                if let item = project.item(layer.mediaID), item.info.isStill {
+                    return Self.stillLayer(layer, item: item, transition: transition,
+                                           render: (renderWidth, renderHeight, pixelScale), clipStart: time(layer.clipStart))
+                }
                 guard let media = loaded[layer.mediaID] else {
-                    guard let item = project.item(layer.mediaID) else { return nil }
-                    return InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity,
-                                            transform: .identity, sourceWidth: renderWidth, sourceHeight: renderHeight,
-                                            fallbackColor: .rec709, forcedColor: nil, transition: transition,
-                                            title: .mediaOffline(item.name), motion: Motion(),
-                                            clipStart: time(layer.clipStart), sourceStart: layer.sourceStart,
-                                            pixelScale: pixelScale)
+                    return project.item(layer.mediaID).map {
+                        Self.offlineLayer($0.name, layer, transition: transition,
+                                          render: (renderWidth, renderHeight, pixelScale), clipStart: time(layer.clipStart))
+                    }
                 }
                 guard let trackID = clipTracks[layer.clipID] else { return nil }
                 let orientation = Affine2D(media.preferredTransform)
@@ -388,6 +390,35 @@ public struct CompositionBuilder {
                                           everyFrame: (frameRate ?? rate) != rate)
         }
         return videoComposition
+    }
+}
+
+extension CompositionBuilder {
+    /// A clip whose file is missing: a "Media Offline" card.
+    static func offlineLayer(_ name: String, _ layer: RenderLayer, transition: InstructionTransition?,
+                             render: (width: Double, height: Double, pixelScale: Double),
+                             clipStart: CMTime) -> InstructionLayer {
+        InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity, transform: .identity,
+                         sourceWidth: render.width, sourceHeight: render.height, fallbackColor: .rec709, forcedColor: nil,
+                         transition: transition, title: .mediaOffline(name), motion: Motion(), clipStart: clipStart,
+                         sourceStart: layer.sourceStart, pixelScale: render.pixelScale)
+    }
+
+    /// A still image, drawn from its file and fitted to the frame like video (Media Offline when
+    /// the file is missing).
+    static func stillLayer(_ layer: RenderLayer, item: MediaItem, transition: InstructionTransition?,
+                           render: (width: Double, height: Double, pixelScale: Double),
+                           clipStart: CMTime) -> InstructionLayer {
+        guard let picture = item.info.video, FileManager.default.fileExists(atPath: item.filePath) else {
+            return offlineLayer(item.name, layer, transition: transition, render: render, clipStart: clipStart)
+        }
+        let (width, height) = (Double(picture.width), Double(picture.height))
+        let transform = Affine2D.fit(sourceWidth: width, sourceHeight: height, orientation: .identity,
+                                     renderWidth: render.width, renderHeight: render.height)
+        return InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity, transform: transform,
+                                sourceWidth: width, sourceHeight: height, fallbackColor: .rec709, forcedColor: nil,
+                                transition: transition, image: item.url, motion: layer.motion, clipStart: clipStart,
+                                sourceStart: layer.sourceStart, pixelScale: render.pixelScale)
     }
 }
 

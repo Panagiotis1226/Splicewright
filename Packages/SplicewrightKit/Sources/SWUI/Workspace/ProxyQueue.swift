@@ -54,7 +54,8 @@ public final class ProxyQueue: ObservableObject {
 
     /// Queues proxies for video items that don't have one (or are already queued).
     public func enqueue(_ items: [MediaItem], preset: ProxyPreset) {
-        for item in items where item.info.video != nil {
+        // Stills are drawn straight from the file: nothing to proxy.
+        for item in items where item.info.video != nil && !item.info.isStill {
             if let status = jobs[item.id], !isFailed(status) { continue }
             jobs[item.id] = .queued
             pending.append((item, preset))

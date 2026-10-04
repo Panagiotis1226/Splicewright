@@ -23,6 +23,8 @@ struct SourceMonitorPanel: View {
                     Text("Double-click a clip in the Project panel to view it here.")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textSecondary)
+                } else if let still = monitor.still {
+                    Image(decorative: still, scale: 1).resizable().scaledToFit()
                 } else if monitor.hasVideo {
                     PlayerSurface(player: monitor.player)
                 } else if let peaks = monitor.waveform {

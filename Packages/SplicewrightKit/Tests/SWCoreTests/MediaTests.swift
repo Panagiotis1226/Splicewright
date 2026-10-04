@@ -98,6 +98,24 @@ struct MediaMetadataTests {
         #expect(ImportPolicy.isImportable(URL(fileURLWithPath: "/a/voice.wav")))
         #expect(!ImportPolicy.isImportable(URL(fileURLWithPath: "/a/._clip.mov")))
         #expect(!ImportPolicy.isImportable(URL(fileURLWithPath: "/a/clip.mkv")))
+        for still in ["logo.PNG", "photo.jpg", "IMG_0001.HEIC", "scan.tiff"] {
+            #expect(ImportPolicy.isImportable(URL(fileURLWithPath: "/a/\(still)")), "\(still)")
+            #expect(ContainerFormat(fileExtension: (still as NSString).pathExtension) == .image)
+        }
+    }
+
+    @Test func stillsArePlacedForFiveSecondsAndStretchFarther() {
+        let picture = VideoStreamInfo(codec: VideoCodec(rawValue: "PNG"), width: 1200, height: 800, frameRate: nil,
+                                      nominalFPS: 0, bitDepth: 8, color: .rec709)
+        let still = MediaInfo(container: .image, duration: MediaInfo.stillDuration, video: picture, audio: [])
+        #expect(still.isStill && still.placementDuration == RationalTime(value: 5, timescale: 1))
+        #expect(MediaSupport.warnings(for: still).isEmpty, "an image isn't an unsupported video codec")
+        #expect(still.duration.seconds == 3600, "trims can stretch a still far past its first five seconds")
+        let movie = MediaInfo(container: .quickTime, duration: RationalTime(value: 12, timescale: 1), video: picture,
+                              audio: [])
+        #expect(!movie.isStill && movie.placementDuration == movie.duration)
+        let range = SourceMarks.empty.range(duration: still.placementDuration, rate: still.displayFrameRate)
+        #expect(range.end.seconds == 5)
     }
 }
 

@@ -42,7 +42,8 @@ public enum MediaSupport {
     public static func warnings(for info: MediaInfo) -> [MediaWarning] {
         var warnings: [MediaWarning] = []
         if info.kind == .empty { return [.noMediaStreams] }
-        guard let video = info.video else { return warnings }
+        // A still is drawn from the file: codecs and frame rates don't apply.
+        guard let video = info.video, !info.isStill else { return warnings }
 
         if !video.codec.isSupportedForEditing {
             warnings.append(.unsupportedVideoCodec(video.codec.displayName))
@@ -70,10 +71,13 @@ public enum MediaSupport {
 public enum ImportPolicy {
     public static let videoExtensions: Set<String> = ["mov", "mp4", "m4v", "qt"]
     public static let audioExtensions: Set<String> = ["m4a", "wav", "wave", "aif", "aiff", "aifc", "caf", "mp3"]
+    /// Stills: they go on the timeline like video clips, for any length.
+    public static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "heif", "tif", "tiff", "bmp",
+                                                      "gif", "webp"]
 
     public static func isImportable(fileExtension: String) -> Bool {
         let ext = fileExtension.lowercased()
-        return videoExtensions.contains(ext) || audioExtensions.contains(ext)
+        return videoExtensions.contains(ext) || audioExtensions.contains(ext) || imageExtensions.contains(ext)
     }
 
     public static func isImportable(_ url: URL) -> Bool {
