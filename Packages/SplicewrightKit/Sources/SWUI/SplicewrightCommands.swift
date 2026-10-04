@@ -76,6 +76,8 @@ public struct SplicewrightCommands: Commands {
                 .disabled(workspace?.activeSequenceID == nil)
             Button("Detect Beats…") { workspace?.isDetectBeatsPresented = true }
                 .disabled(workspace?.activeSequenceID == nil)
+            Button("Auto Reframe Sequence…") { workspace?.isAutoReframePresented = true }
+                .disabled(workspace?.activeSequenceID == nil)
             Divider()
             Button("Apply Video Transition") { workspace?.applyDefaultTransition(audio: false) }
                 .shortcut(.applyVideoTransition, keys)

@@ -84,6 +84,7 @@ public final class WorkspaceController: ObservableObject {
     @Published public var isRemoveSilencePresented = false
     @Published public var isSceneDetectionPresented = false
     @Published public var isDetectBeatsPresented = false
+    @Published public var isAutoReframePresented = false
     /// The mask the Program monitor shows for editing, and where the Pen is drawing a new one.
     @Published public var selectedMask: MaskSelection?
     @Published public var maskPen: MaskTarget?

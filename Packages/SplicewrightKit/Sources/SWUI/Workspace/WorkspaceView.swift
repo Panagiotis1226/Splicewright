@@ -101,6 +101,9 @@ public struct WorkspaceView: View {
         .sheet(isPresented: $workspace.isRemoveSilencePresented) {
             RemoveSilenceSheet(workspace: workspace)
         }
+        .sheet(isPresented: $workspace.isAutoReframePresented) {
+            AutoReframeSheet(workspace: workspace)
+        }
         .sheet(isPresented: $workspace.isDetectBeatsPresented) {
             DetectBeatsSheet(workspace: workspace)
         }
