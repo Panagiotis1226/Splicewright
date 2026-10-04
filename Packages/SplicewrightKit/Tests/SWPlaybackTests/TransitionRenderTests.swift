@@ -284,6 +284,24 @@ final class TitleRenderTests: XCTestCase {
         XCTAssertLessThan(elsewhere, 10)
     }
 
+    /// Typewriter types the blocks in one at a time, in place; Fade takes the title out.
+    func testTitleAnimationsRevealAndFade() async throws {
+        var sequence = EditSequence(name: "A", settings: SequenceSettings(width: 640, height: 360, frameRate: .fps30,
+                                                                          colorSpace: .rec709))
+        var spec = TitleSpec(text: "\u{2588}\u{2588}", size: 0.3, positionX: 0.5, positionY: 0.3, shadow: nil)
+        spec.animation = TitleAnimation(animateIn: .typewriter, animateOut: .fade, inDuration: 1, outDuration: 0.5)
+        sequence.addTitle(spec, at: 0, duration: 90, trackID: sequence.videoTracks[0].id)
+        let start = try await render(sequence, frame: 0)
+        XCTAssertLessThan(try green(start, x: 0.47, y: 0.3), 10, "nothing typed yet")
+        let half = try await render(sequence, frame: 20)
+        XCTAssertGreaterThan(try green(half, x: 0.47, y: 0.3), 200, "the first block is in")
+        XCTAssertLessThan(try green(half, x: 0.53, y: 0.3), 10, "the second is still to come")
+        let full = try await render(sequence, frame: 45)
+        XCTAssertGreaterThan(try green(full, x: 0.53, y: 0.3), 200)
+        let leaving = try await render(sequence, frame: 89)
+        XCTAssertLessThan(try green(leaving, x: 0.47, y: 0.3), 120, "fading out at the end")
+    }
+
     func testCaptionsBurnInAtTheBottomOnlyWhenEnabled() async throws {
         var sequence = EditSequence(name: "C", settings: SequenceSettings(width: 640, height: 360, frameRate: .fps30,
                                                                           colorSpace: .rec709))

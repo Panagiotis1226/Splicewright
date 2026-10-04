@@ -341,11 +341,9 @@ public struct CompositionBuilder {
                                             sourceStart: layer.sourceStart, pixelScale: pixelScale)
                 }
                 if let title = layer.title {
-                    return InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity,
-                                            transform: .identity, sourceWidth: renderWidth, sourceHeight: renderHeight,
-                                            fallbackColor: .rec709, forcedColor: nil, transition: transition,
-                                            title: title, motion: layer.motion, clipStart: time(layer.clipStart),
-                                            sourceStart: layer.sourceStart, pixelScale: pixelScale)
+                    return Self.titleLayer(title, layer, transition: transition,
+                                           render: (renderWidth, renderHeight, pixelScale),
+                                           clip: (time(layer.clipStart), time(layer.clipDuration)))
                 }
                 if let item = project.item(layer.mediaID), item.info.isStill {
                     return Self.stillLayer(layer, item: item, transition: transition,
@@ -395,6 +393,18 @@ public struct CompositionBuilder {
 
 extension CompositionBuilder {
     /// A clip whose file is missing: a "Media Offline" card.
+    /// A title (or caption) over the whole frame.
+    static func titleLayer(_ title: TitleSpec, _ layer: RenderLayer, transition: InstructionTransition?,
+                           render: (width: Double, height: Double, pixelScale: Double),
+                           clip: (start: CMTime, duration: CMTime)) -> InstructionLayer {
+        var titled = InstructionLayer(trackID: kCMPersistentTrackID_Invalid, opacity: layer.opacity, transform: .identity,
+                                      sourceWidth: render.width, sourceHeight: render.height, fallbackColor: .rec709,
+                                      forcedColor: nil, transition: transition, title: title, motion: layer.motion,
+                                      clipStart: clip.start, sourceStart: layer.sourceStart, pixelScale: render.pixelScale)
+        titled.clipDuration = clip.duration
+        return titled
+    }
+
     static func offlineLayer(_ name: String, _ layer: RenderLayer, transition: InstructionTransition?,
                              render: (width: Double, height: Double, pixelScale: Double),
                              clipStart: CMTime) -> InstructionLayer {

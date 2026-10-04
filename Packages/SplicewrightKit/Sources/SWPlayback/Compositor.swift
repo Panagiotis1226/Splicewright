@@ -24,6 +24,8 @@ struct InstructionLayer {
     /// Composition time of the clip's first frame, and the source time shown there.
     var clipStart: CMTime = .zero
     var sourceStart: RationalTime = .zero
+    /// The clip's length, for a title's in and out animations.
+    var clipDuration: CMTime = .zero
     /// Sequence pixels → render pixels (below 1 at reduced playback resolution).
     var pixelScale: Double = 1
     /// For clips not at 100% forwards: how composition time maps to source time.
@@ -82,6 +84,19 @@ struct InstructionLayer {
 
     private var displayedPicture: DisplayedPicture {
         picture ?? DisplayedPicture(transform: transform, width: sourceWidth, height: sourceHeight)
+    }
+
+    /// A title as drawn at `time`: its in or out animation moves, scales and fades it, or
+    /// reveals its text, before Motion.
+    func titleFrame(_ spec: TitleSpec, opacity: Double, transform: Affine2D, geometry: LayerGeometry,
+                    at time: CMTime) -> TitleFrame {
+        guard let animation = spec.animation, !animation.isNone, clipDuration.seconds > 0 else {
+            return TitleFrame(spec: spec, opacity: opacity, transform: transform, geometry: geometry)
+        }
+        let state = animation.state(at: (time - clipStart).seconds, duration: clipDuration.seconds)
+        let moved = TitleSpec.animationTransform(state, spec: spec, width: sourceWidth, height: sourceHeight)
+        return TitleFrame(spec: spec, opacity: opacity * state.opacity, transform: moved.concatenating(transform),
+                          geometry: geometry, textOpacity: state.textOpacity(spec.text))
     }
 
     /// Remove Background: the person matte's pixels → render pixels. `upright` when it covers the
@@ -320,7 +335,8 @@ final class SplicewrightCompositor: NSObject, AVVideoCompositing {
             let transform = layer.transform(at: time, renderWidth: renderSize.width, renderHeight: renderSize.height)
             let opacity = layer.opacity(at: time)
             if let title = layer.title {
-                return .title(TitleFrame(spec: title, opacity: opacity, transform: transform, geometry: geometry))
+                return .title(layer.titleFrame(title, opacity: opacity, transform: transform, geometry: geometry,
+                                               at: time))
             }
             if let image = layer.image {
                 return .image(ImageFrame(url: image, width: layer.sourceWidth, height: layer.sourceHeight,

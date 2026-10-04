@@ -126,6 +126,8 @@ public struct RenderLayer: Sendable, Hashable {
     /// Where the clip starts in the sequence and in its source, to evaluate keyframes.
     public var clipStart: Int64
     public var sourceStart: RationalTime
+    /// The clip's length in frames, for a title's in and out animations.
+    public var clipDuration: Int64 = 0
     /// Set for clips not at 100% forwards, to map sequence time to source time.
     public var timing: ClipTiming?
     /// The clip's effect stack (resolved per frame by the compositor).
@@ -228,6 +230,7 @@ public enum RenderPlan {
                     var layer = RenderLayer(trackIndex: index, clipID: clip.id, mediaID: clip.mediaID,
                                             opacity: min(1, clip.opacity), transition: transition, title: clip.title,
                                             motion: clip.motion, clipStart: clip.start, sourceStart: clip.sourceStart)
+                    layer.clipDuration = clip.duration
                     if clip.isRetimed { layer.timing = clip.timing(rate: sequence.rate) }
                     // Masks that use a tracked shape take its path.
                     let linked = clip.resolvingMaskLinks()

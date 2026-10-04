@@ -12,6 +12,8 @@ struct TitleControls: View {
     @State private var size = 0.08
     @State private var positionX = 0.5
     @State private var positionY = 0.5
+    @State private var inDuration = 0.6
+    @State private var outDuration = 0.4
     @FocusState private var editingText: Bool
 
     private static let families = NSFontManager.shared.availableFontFamilies
@@ -68,6 +70,7 @@ struct TitleControls: View {
                 Text("With the Type tool (T), click the Program monitor to move the selected title.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
             }
+            animationSection
             Section("Appearance") {
                 Toggle("Stroke", isOn: optionalBinding(\.stroke, TitleStroke(), "Title Stroke"))
                 if spec.stroke != nil {
@@ -93,6 +96,53 @@ struct TitleControls: View {
         size = spec.size
         positionX = spec.positionX
         positionY = spec.positionY
+        let animation = spec.animation ?? TitleAnimation()
+        inDuration = animation.inDuration
+        outDuration = animation.outDuration
+    }
+
+    /// In and out presets: how the title comes on and goes off.
+    private var animationSection: some View {
+        let animation = spec.animation ?? TitleAnimation()
+        return Section("Animation") {
+            Picker("In", selection: animationBinding(\.animateIn)) {
+                ForEach(TitleAnimation.Style.allCases) { Text($0.displayName).tag($0) }
+            }
+            if animation.animateIn != .none {
+                durationSlider($inDuration) { $0.inDuration = inDuration }
+            }
+            Picker("Out", selection: animationBinding(\.animateOut)) {
+                ForEach(TitleAnimation.Style.allCases) { Text($0.displayName).tag($0) }
+            }
+            if animation.animateOut != .none {
+                durationSlider($outDuration) { $0.outDuration = outDuration }
+            }
+        }
+    }
+
+    private func durationSlider(_ value: Binding<Double>,
+                                commit: @escaping (inout TitleAnimation) -> Void) -> some View {
+        LabeledContent("Length") {
+            Slider(value: value, in: TitleAnimation.durationRange) { editing in
+                if !editing { update("Title Animation") { spec in
+                    var animation = spec.animation ?? TitleAnimation()
+                    commit(&animation)
+                    spec.animation = animation
+                } }
+            }
+            Text(String(format: "%.1f s", value.wrappedValue)).monospacedDigit().frame(width: 40, alignment: .trailing)
+        }
+    }
+
+    private func animationBinding(_ path: WritableKeyPath<TitleAnimation, TitleAnimation.Style>)
+        -> Binding<TitleAnimation.Style> {
+        Binding(get: { (spec.animation ?? TitleAnimation())[keyPath: path] }, set: { style in
+            update("Title Animation") { spec in
+                var animation = spec.animation ?? TitleAnimation()
+                animation[keyPath: path] = style
+                spec.animation = animation.isNone ? nil : animation
+            }
+        })
     }
 
     private func commitText() {

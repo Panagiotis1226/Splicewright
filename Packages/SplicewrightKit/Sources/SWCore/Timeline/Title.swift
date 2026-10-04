@@ -67,6 +67,8 @@ public struct TitleSpec: Sendable, Hashable, Codable {
     public var background: TitleColor?
     /// A color filling the whole frame behind the text (a color matte).
     public var backdrop: TitleColor?
+    /// How the title comes on and goes off (nil: it just appears).
+    public var animation: TitleAnimation?
 
     public init(text: String = "Title", fontFamily: String = "Helvetica Neue", isBold: Bool = true,
                 isItalic: Bool = false, size: Double = 0.08, color: TitleColor = .white,

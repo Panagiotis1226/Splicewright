@@ -44,6 +44,8 @@ struct TitleFrame {
     /// Frame-sized texture → render pixels (identity unless the title has motion).
     var transform: Affine2D = .identity
     var geometry: LayerGeometry = .none
+    /// Parts of the text hidden or fading (a typewriter's tail, words still to come in).
+    var textOpacity: [TitleTextOpacity] = []
 }
 
 /// A still image, at its own size (`width` × `height` picture pixels).
@@ -316,7 +318,8 @@ final class MetalRenderer {
 
     /// Titles are frame-sized sRGB textures; white lands at reference white in every space.
     private func drawTitle(_ title: TitleFrame, with encoder: MTLRenderCommandEncoder, width: Int, height: Int) {
-        guard let texture = titles.texture(for: title.spec, width: width, height: height) else { return }
+        guard let texture = titles.texture(for: title.spec, textOpacity: title.textOpacity, width: width,
+                                           height: height) else { return }
         let size = SIMD4(Float(width), Float(height), Float(width), Float(height))
         let t = title.transform
         var uniforms = LayerUniforms(row0: SIMD4(Float(t.a), Float(t.c), Float(t.tx), 0),

@@ -9,6 +9,7 @@ import SWCore
 final class TitleRasterizer {
     private struct Key: Hashable {
         var spec: TitleSpec
+        var textOpacity: [TitleTextOpacity]
         var width: Int
         var height: Int
     }
@@ -22,22 +23,26 @@ final class TitleRasterizer {
         self.device = device
     }
 
-    func texture(for spec: TitleSpec, width: Int, height: Int) -> MTLTexture? {
-        let key = Key(spec: spec, width: width, height: height)
+    func texture(for spec: TitleSpec, textOpacity: [TitleTextOpacity] = [], width: Int, height: Int) -> MTLTexture? {
+        var drawn = spec
+        drawn.animation = nil
+        let key = Key(spec: drawn, textOpacity: textOpacity, width: width, height: height)
         if let cached = cache[key] {
             order.removeAll { $0 == key }
             order.append(key)
             return cached
         }
-        guard let texture = makeTexture(spec, width: width, height: height) else { return nil }
+        guard let texture = makeTexture(drawn, textOpacity: textOpacity, width: width, height: height) else { return nil }
         cache[key] = texture
         order.append(key)
         if order.count > capacity { cache[order.removeFirst()] = nil }
         return texture
     }
 
-    private func makeTexture(_ spec: TitleSpec, width: Int, height: Int) -> MTLTexture? {
-        guard width > 0, height > 0, let pixels = Self.rasterize(spec, width: width, height: height) else { return nil }
+    private func makeTexture(_ spec: TitleSpec, textOpacity: [TitleTextOpacity], width: Int,
+                             height: Int) -> MTLTexture? {
+        guard width > 0, height > 0,
+              let pixels = Self.rasterize(spec, textOpacity: textOpacity, width: width, height: height) else { return nil }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: height,
                                                                   mipmapped: false)
         descriptor.usage = .shaderRead
@@ -50,21 +55,23 @@ final class TitleRasterizer {
     }
 
     /// RGBA8 premultiplied sRGB pixels, top row first.
-    static func rasterize(_ spec: TitleSpec, width: Int, height: Int) -> [UInt8]? {
+    static func rasterize(_ spec: TitleSpec, textOpacity: [TitleTextOpacity] = [], width: Int,
+                          height: Int) -> [UInt8]? {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
         let drawn = pixels.withUnsafeMutableBytes { raw -> Bool in
             guard let context = CGContext(data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8,
                                           bytesPerRow: width * 4, space: space,
                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            draw(spec, in: context, width: CGFloat(width), height: CGFloat(height), space: space)
+            draw(spec, textOpacity: textOpacity, in: context, size: CGSize(width: width, height: height), space: space)
             return true
         }
         return drawn ? pixels : nil
     }
 
-    private static func draw(_ spec: TitleSpec, in context: CGContext, width: CGFloat, height: CGFloat,
+    private static func draw(_ spec: TitleSpec, textOpacity: [TitleTextOpacity], in context: CGContext, size: CGSize,
                              space: CGColorSpace) {
+        let (width, height) = (size.width, size.height)
         let fontSize = max(1, CGFloat(spec.size) * height)
         let font = Self.font(spec, size: fontSize)
         func color(_ value: TitleColor) -> CGColor {
@@ -82,13 +89,15 @@ final class TitleRasterizer {
                                                   value: raw.baseAddress!)
             return CTParagraphStyleCreate(&setting, 1)
         }
-        func attributed(_ extra: [CFString: Any]) -> CFAttributedString {
+        func attributed(_ extra: [CFString: Any], colors: [CFString: CGColor]) -> CFAttributedString {
             var attributes: [CFString: Any] = [kCTFontAttributeName: font, kCTParagraphStyleAttributeName: paragraph]
             attributes.merge(extra) { $1 }
-            return CFAttributedStringCreate(nil, spec.text as CFString, attributes as CFDictionary)
+            attributes.merge(colors) { $1 }
+            let string = CFAttributedStringCreate(nil, spec.text as CFString, attributes as CFDictionary)
                 ?? CFAttributedStringCreate(nil, "" as CFString, nil)!
+            return fading(string, textOpacity, colors: colors)
         }
-        let fill = attributed([kCTForegroundColorAttributeName: color(spec.color)])
+        let fill = attributed([:], colors: [kCTForegroundColorAttributeName: color(spec.color)])
 
         // Lay the text out in a box at most 90% of the frame wide, centred on the title's position.
         let maxWidth = width * 0.9
@@ -129,11 +138,30 @@ final class TitleRasterizer {
             // Core Text strokes are centred on the outline; draw the stroke under the fill so
             // only its outer half shows.
             let percent = CGFloat(stroke.width) * 200
-            drawText(attributed([kCTStrokeWidthAttributeName: percent, kCTStrokeColorAttributeName: color(stroke.color)]))
+            drawText(attributed([kCTStrokeWidthAttributeName: percent],
+                                colors: [kCTStrokeColorAttributeName: color(stroke.color)]))
             context.setShadow(offset: .zero, blur: 0, color: nil)
         }
         drawText(fill)
         context.restoreGState()
+    }
+
+    /// The text with parts hidden or faded: their fill and stroke colors at that opacity, so
+    /// the layout (and so where every letter sits) doesn't change as they come in.
+    private static func fading(_ string: CFAttributedString, _ parts: [TitleTextOpacity],
+                               colors: [CFString: CGColor]) -> CFAttributedString {
+        guard !parts.isEmpty, let mutable = CFAttributedStringCreateMutableCopy(nil, 0, string) else { return string }
+        let length = CFAttributedStringGetLength(string)
+        for part in parts {
+            let location = min(max(part.location, 0), length)
+            let range = CFRange(location: location, length: min(max(part.length, 0), length - location))
+            guard range.length > 0 else { continue }
+            for (name, color) in colors {
+                let faded = color.copy(alpha: color.alpha * CGFloat(part.opacity)) ?? color
+                CFAttributedStringSetAttribute(mutable, range, name, faded)
+            }
+        }
+        return mutable
     }
 
     private static func font(_ spec: TitleSpec, size: CGFloat) -> CTFont {
