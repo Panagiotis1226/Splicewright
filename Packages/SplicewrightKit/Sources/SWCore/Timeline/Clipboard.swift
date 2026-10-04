@@ -51,6 +51,7 @@ public extension EditSequence {
     @discardableResult
     mutating func paste(_ content: ClipboardContent, at frame: Int64) -> Set<UUID> {
         var links: [UUID: UUID] = [:]
+        var groups: [UUID: UUID] = [:]
         var placements: [TrackPlacement] = []
         for item in content.items {
             let base = tracks(item.kind).firstIndex { $0.isTargeted && !$0.isLocked } ?? 0
@@ -61,6 +62,10 @@ public extension EditSequence {
             if let link = clip.linkID {
                 clip.linkID = links[link] ?? UUID()
                 links[link] = clip.linkID
+            }
+            if let group = clip.groupID {
+                clip.groupID = groups[group] ?? UUID()
+                groups[group] = clip.groupID
             }
             if content.rate != rate {
                 let start = RationalTime(frames: clip.start, rate: content.rate).frameIndex(at: rate)

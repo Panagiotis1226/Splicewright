@@ -145,6 +145,8 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
     public var opacityMasks: [Mask] = []
     /// Moves with a tracked mask on another clip (a title following a person). Schema 11.
     public var follow: FollowLink?
+    /// Clips grouped with Clip ▸ Group share this: selecting one selects them all.
+    public var groupID: UUID?
 
     public init(id: UUID = UUID(), mediaID: UUID, name: String, start: Int64, duration: Int64,
                 sourceStart: RationalTime, linkID: UUID? = nil, isEnabled: Bool = true,
@@ -197,7 +199,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, mediaID, name, start, duration, sourceStart, linkID, isEnabled, gainDB, title, motion, volume
-        case speed, isReversed, maintainsPitch, effects, isAdjustment, opacityMasks, follow
+        case speed, isReversed, maintainsPitch, effects, isAdjustment, opacityMasks, follow, groupID
         /// Schema 3 and earlier stored a constant opacity (0...1).
         case opacity
     }
@@ -223,6 +225,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         isAdjustment = try container.decodeIfPresent(Bool.self, forKey: .isAdjustment) ?? false
         opacityMasks = try container.decodeIfPresent([Mask].self, forKey: .opacityMasks) ?? []
         follow = try container.decodeIfPresent(FollowLink.self, forKey: .follow)
+        groupID = try container.decodeIfPresent(UUID.self, forKey: .groupID)
         if try container.decodeIfPresent(Motion.self, forKey: .motion) == nil,
            let legacy = try container.decodeIfPresent(Double.self, forKey: .opacity) {
             opacity = legacy
@@ -238,6 +241,7 @@ public struct Clip: Sendable, Hashable, Codable, Identifiable {
         try container.encode(duration, forKey: .duration)
         try container.encode(sourceStart, forKey: .sourceStart)
         try container.encodeIfPresent(linkID, forKey: .linkID)
+        try container.encodeIfPresent(groupID, forKey: .groupID)
         try container.encode(isEnabled, forKey: .isEnabled)
         try container.encode(gainDB, forKey: .gainDB)
         try container.encodeIfPresent(title, forKey: .title)
@@ -489,6 +493,34 @@ public struct EditSequence: Sendable, Hashable, Codable, Identifiable {
                 track.clips[index].sourceStart = source
             }
         }
+    }
+
+    /// The clips with their groups (Clip ▸ Group) and the groups' linked partners.
+    public func expandingGroups(_ ids: Set<UUID>) -> Set<UUID> {
+        var result = expandingLinks(ids)
+        while true {
+            let groups = Set(result.compactMap { clip($0)?.groupID })
+            guard !groups.isEmpty else { return result }
+            let grouped = allTracks.flatMap(\.clips).filter { $0.groupID.map(groups.contains) == true }.map(\.id)
+            let grown = expandingLinks(result.union(grouped))
+            if grown == result { return result }
+            result = grown
+        }
+    }
+
+    /// Groups the clips (two or more, linked partners included), or ungroups them and their groups.
+    /// Returns whether anything changed.
+    @discardableResult
+    public mutating func setGrouped(_ ids: Set<UUID>, _ grouped: Bool) -> Bool {
+        let members = grouped ? expandingLinks(ids) : expandingGroups(ids)
+        guard grouped ? members.count > 1 : members.contains(where: { clip($0)?.groupID != nil }) else { return false }
+        let group: UUID? = grouped ? UUID() : nil
+        updateAllTracks { track in
+            for index in track.clips.indices where members.contains(track.clips[index].id) {
+                track.clips[index].groupID = group
+            }
+        }
+        return true
     }
 
     /// Links clips together (or unlinks them when `linked` is false).

@@ -1,7 +1,7 @@
 import AppKit
 import SWCore
 
-/// Clip ▸ Add Frame Hold and Insert Frame Hold Segment, at the playhead.
+/// Clip ▸ Add Frame Hold and Insert Frame Hold Segment, at the playhead; Group and Ungroup.
 extension WorkspaceController {
     /// How long Insert Frame Hold Segment holds, as in Premiere.
     static let frameHoldSegmentSeconds = 2.0
@@ -31,5 +31,21 @@ extension WorkspaceController {
             hold = sequence.insertFrameHoldSegment(in: clip.id, at: frame, length: length)
         }
         if let hold { timeline.selection = [hold] }
+    }
+
+    /// Clip ▸ Group: the selected clips (and their linked partners) select and move together.
+    public func groupSelectedClips() {
+        let ids = timeline.selection
+        var changed = false
+        editSequence("Group") { sequence, _ in changed = sequence.setGrouped(ids, true) }
+        if !changed { NSSound.beep() }
+    }
+
+    /// Clip ▸ Ungroup: the selected clips' groups come apart.
+    public func ungroupSelectedClips() {
+        let ids = timeline.selection
+        var changed = false
+        editSequence("Ungroup") { sequence, _ in changed = sequence.setGrouped(ids, false) }
+        if !changed { NSSound.beep() }
     }
 }

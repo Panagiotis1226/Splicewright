@@ -19,6 +19,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
     case applyVideoTransition, applyAudioTransition
     case pasteAttributes
     case speedDuration
+    case groupClips, ungroupClips
     // Timeline view
     case zoomIn, zoomOut, zoomToFit, toggleSnapping
     // File
@@ -57,7 +58,8 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
              .previousMarker:
             return .marking
         case .insertEdit, .overwriteEdit, .liftEdit, .extractEdit, .deleteSelection, .rippleDelete, .addEdit,
-             .addEditAllTracks, .openInSource, .applyVideoTransition, .applyAudioTransition, .pasteAttributes, .speedDuration:
+             .addEditAllTracks, .openInSource, .applyVideoTransition, .applyAudioTransition, .pasteAttributes, .speedDuration,
+             .groupClips, .ungroupClips:
             return .editing
         case .zoomIn, .zoomOut, .zoomToFit, .toggleSnapping:
             return .timeline
@@ -94,7 +96,7 @@ public enum CommandID: String, Sendable, Hashable, Codable, CaseIterable, Coding
         .zoomIn: "Zoom In", .zoomOut: "Zoom Out", .zoomToFit: "Zoom to Sequence", .toggleSnapping: "Snap",
         .importMedia: "Import…", .newBin: "New Bin", .exportMedia: "Export Media…", .newSequence: "New Sequence…",
         .newTitle: "New Title", .toggleProxies: "Toggle Proxies", .pasteAttributes: "Paste Attributes",
-        .speedDuration: "Speed/Duration…",
+        .speedDuration: "Speed/Duration…", .groupClips: "Group", .ungroupClips: "Ungroup",
     ]
 
     public var tool: EditTool? {

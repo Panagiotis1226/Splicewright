@@ -154,10 +154,10 @@ extension TimelineCanvas {
         drag = Drag(kind: .move(ids: timeline.selection, startRow: hit.row), original: sequence, actionName: "Move")
     }
 
-    /// Premiere selection: click selects the clip and its linked partners; ⇧ toggles;
-    /// ⌥ ignores links.
+    /// Premiere selection: click selects the clip, its linked partners and its group; ⇧ toggles;
+    /// ⌥ ignores links and groups.
     private func select(_ clip: Clip, in sequence: EditSequence, event: NSEvent) {
-        let group = event.modifierFlags.contains(.option) ? [clip.id] : sequence.expandingLinks([clip.id])
+        let group = event.modifierFlags.contains(.option) ? [clip.id] : sequence.expandingGroups([clip.id])
         if event.modifierFlags.contains(.shift) {
             if timeline.selection.contains(clip.id) {
                 timeline.selection.subtract(group)
